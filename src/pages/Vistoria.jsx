@@ -53,14 +53,24 @@ const Vistoria = ({ onBack }) => {
     setLoading(false);
   };
 
-  const buscarMilitar = async (re, campo) => {
+ const buscarMilitar = async (re, campo) => {
     if (re.length < 4) return;
-    const res = await gasApi.post(GAS_URL, { action: 'buscarMilitar', payload: { re } });
-    if (res.data.status === 'success') {
-      setFormData(prev => ({ ...prev, [`${campo}_nome`]: `${res.data.patente} ${res.data.nome}` }));
+    try {
+      // Usamos o gasApi direto, sem passar GAS_URL, pois ele já conhece a URL
+      const res = await gasApi.buscarMilitar(re); 
+      if (res.status === 'success') {
+        setFormData(prev => ({ 
+          ...prev, 
+          [`${campo}_nome`]: `${res.patente} ${res.nome}`,
+          [`${campo}_re`]: re 
+        }));
+      } else {
+        console.log("Militar não encontrado");
+      }
+    } catch (error) {
+      console.error("Erro ao buscar militar:", error);
     }
   };
-
   const toggleChecklist = (item) => {
     setChecklist(prev => ({
       ...prev,
