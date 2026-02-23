@@ -1,66 +1,28 @@
 import axios from 'axios';
 
-// Sua URL atualizada do Google Apps Script
 const GAS_URL = 'https://script.google.com/macros/s/AKfycbxqssl_yJzN1ugOIAve3D2_xkvJ4507AXmwsuBTAk3-jiuvYxk7AN-2dZfsr1D6cUyJ9A/exec';
 
 export const gasApi = {
-  /**
-   * Realiza o login completo
-   */
-  login: async (re, senha) => {
+  // Função genérica para simplificar as chamadas
+  post: async (action, payload = {}) => {
     try {
       const response = await axios.post(GAS_URL, {
-        action: 'login',
-        payload: { re, senha }
+        action,
+        payload
       }, { headers: { 'Content-Type': 'text/plain' } });
       return response.data;
     } catch (error) {
-      return { status: "error", message: "Erro ao conectar com o servidor" };
+      return { status: "error", message: "Erro de conexão" };
     }
   },
 
-  /**
-   * Checa o perfil do usuário (ADMIN, GARAGEIRO ou POLICIAL) 
-   * apenas com o RE, para decidir se mostra o campo de senha.
-   */
-  checkProfile: async (re) => {
-    try {
-      const response = await axios.post(GAS_URL, {
-        action: 'checkProfile',
-        payload: { re }
-      }, { headers: { 'Content-Type': 'text/plain' } });
-      return response.data;
-    } catch (error) {
-      return { status: "error", message: "Erro ao verificar perfil" };
-    }
-  },
-
-  /**
-   * Envia os dados da vistoria e as fotos em Base64
-   */
-  saveVistoria: async (dados) => {
-    try {
-      const response = await axios.post(GAS_URL, {
-        action: 'saveVistoria',
-        payload: dados
-      }, { headers: { 'Content-Type': 'text/plain' } });
-      return response.data;
-    } catch (error) {
-      return { status: "error", message: "Erro ao salvar vistoria" };
-    }
-  },
-
-  /**
-   * Busca a lista de viaturas na planilha de Patrimônio
-   */
-  getViaturas: async () => {
-    try {
-      const response = await axios.post(GAS_URL, { 
-        action: 'getViaturas' 
-      }, { headers: { 'Content-Type': 'text/plain' } });
-      return response.data;
-    } catch (error) {
-      return { status: "error", message: "Erro ao carregar viaturas" };
-    }
-  }
+  login: (re, senha) => gasApi.post('login', { re, senha }),
+  
+  checkProfile: (re) => gasApi.post('checkProfile', { re }),
+  
+  saveVistoria: (dados) => gasApi.post('saveVistoria', dados),
+  
+  getViaturas: (apenasEmServico) => gasApi.post('getViaturas', { apenasEmServico }),
+  
+  buscarMilitar: (re) => gasApi.post('buscarMilitar', { re }) // Adicionado aqui!
 };
