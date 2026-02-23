@@ -9,17 +9,19 @@ const Login = () => {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const { login } = useAuth();
 
-  const handleSubmit = async (e) => {
+const handleSubmit = async (e) => {
     e.preventDefault();
     setError('');
     setIsSubmitting(true);
 
-    if (!re || !senha) {
-      setError('Preencha todos os campos');
+    if (!re) {
+      setError('Informe seu RE');
       setIsSubmitting(false);
       return;
     }
 
+    // O sistema tenta logar. O seu GAS (Google Script) deve estar 
+    // preparado para aceitar senha em branco para usuários não-admin.
     const result = await login(re, senha);
     
     if (!result.success) {
