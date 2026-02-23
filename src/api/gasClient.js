@@ -1,7 +1,7 @@
 import axios from 'axios';
 
 // Sua URL atualizada do Google Apps Script
-const GAS_URL = 'https://script.google.com/macros/s/AKfycbyvHuSu3NC11cPaYfgnSlB_MvTyeGvnK1NJeeHZafZyTqCDoSENTGHRr8XFIABYEVKq2g/exec';
+const GAS_URL = 'https://script.google.com/macros/s/AKfycbz6ize8YaZWkaQ9UblR1qd03u2ElQ0sacR-y1piPMkj3zP_ivdVK3LTjUoJOHYCdn89pw/exec';
 
 export const gasApi = {
   /**
