@@ -1,196 +1,238 @@
 import React, { useState, useEffect } from 'react';
 import { useAuth } from '../lib/AuthContext';
 import { gasApi } from '../api/gasClient';
-import { Camera, Save, AlertTriangle, ArrowLeft, Loader2, CheckCircle2 } from 'lucide-react';
-import imageCompression from 'browser-image-compression';
+import { 
+  ArrowLeft, CheckCircle2, AlertCircle, ShieldCheck, 
+  User, Stepper, ChevronRight, Save, Loader2 
+} from 'lucide-react';
+
+const ITENS_CHECKLIST = [
+  "Documento da Viatura", "Estepe", "Chave de Roda", "Macaco", "Triângulo", "Extintor",
+  "Nível de Água", "Porta Traseira", "Porta Dianteira", "Pneus", "Capô", "Cinto",
+  "Paralama Dianteiro", "Paralama Traseiro", "Parachoque Dianteiro", "Parachoque Traseiro",
+  "Lanternas", "Caçamba", "Vidros e Portas", "Retrovisor Externo", "Retrovisor Interno",
+  "Maçanetas", "Para-brisas", "Sirene", "Giroscópio", "Rádio", "Painel de Instrumentos",
+  "Bancos", "Forro Interno", "Tapetes", "Protetor Dianteiro", "Regulador dos Bancos"
+];
 
 const Vistoria = ({ onBack }) => {
   const { user } = useAuth();
+  const [step, setStep] = useState(1);
   const [loading, setLoading] = useState(false);
   const [viaturas, setViaturas] = useState([]);
-  const [fotos, setFotos] = useState([]);
-  
-  // Estado do Formulário
+  const [tipoVistoria, setTipoVistoria] = useState('ENTRADA'); // ENTRADA ou SAÍDA
+
+  // Estados de identificação e guarnição
   const [formData, setFormData] = useState({
-    viatura_id: '',
-    km_atual: '',
-    tipo_servico: 'ENTRADA', // ENTRADA ou SAÍDA
-    viatura_em_condicoes: true,
-    houve_alteracoes: false,
+    prefixo_vtr: '',
+    hodometro: '',
+    tipo_patrulhamento: '',
+    possui_video: false,
+    video_funcional: false,
+    motorista_re: '', motorista_nome: '',
+    comandante_re: '', comandante_nome: '',
+    patrulheiro_re: '', patrulheiro_nome: '',
     observacoes: '',
-    checklist_luzes: 'OK',
-    checklist_pneus: 'OK',
-    checklist_oleo: 'OK',
-    checklist_limpeza: 'OK',
-    checklist_equipamentos: 'OK'
+    termo_aceite: false,
+    houve_alteracoes: false
   });
 
-  // Busca viaturas ao carregar
-  useEffect(() => {
-    const fetchViaturas = async () => {
-      const res = await gasApi.getViaturas();
-      if (res.status === 'success') setViaturas(res.data);
-    };
-    fetchViaturas();
-  }, []);
+  // Checklist: Inicia tudo como "OK"
+  const [checklist, setChecklist] = useState(
+    ITENS_CHECKLIST.reduce((acc, item) => ({ ...acc, [item]: 'OK' }), {})
+  );
 
-  // Função para comprimir e converter imagem para Base64
-  const handleFileChange = async (e) => {
-    const files = Array.from(e.target.files);
-    const options = { maxSizeMB: 0.8, maxWidthOrHeight: 1280, useWebWorker: true };
-    
+  useEffect(() => {
+    carregarViaturas();
+  }, [tipoVistoria]);
+
+  const carregarViaturas = async () => {
     setLoading(true);
-    try {
-      const compressedFiles = await Promise.all(
-        files.map(async (file) => {
-          const compressed = await imageCompression(file, options);
-          return await imageCompression.getDataUrlFromFile(compressed);
-        })
-      );
-      setFotos([...fotos, ...compressedFiles]);
-    } catch (err) {
-      alert("Erro ao processar fotos");
-    }
+    const res = await gasApi.getViaturas(tipoVistoria === 'SAÍDA');
+    if (res.status === 'success') setViaturas(res.data);
     setLoading(false);
   };
 
-  const handleSubmit = async (e) => {
-    e.preventDefault();
-    if (!formData.viatura_id || !formData.km_atual) return alert("Preencha os campos obrigatórios");
+  const buscarMilitar = async (re, campo) => {
+    if (re.length < 4) return;
+    const res = await gasApi.post(GAS_URL, { action: 'buscarMilitar', payload: { re } });
+    if (res.data.status === 'success') {
+      setFormData(prev => ({ ...prev, [`${campo}_nome`]: `${res.data.patente} ${res.data.nome}` }));
+    }
+  };
 
+  const toggleChecklist = (item) => {
+    setChecklist(prev => ({
+      ...prev,
+      [item]: prev[item] === 'OK' ? 'FALHA' : 'OK'
+    }));
+  };
+
+  const itensComFalha = Object.values(checklist).filter(v => v === 'FALHA').length;
+
+  const handleFinalizar = async () => {
     setLoading(true);
     const payload = {
       ...formData,
-      policial_re: user.re,
-      policial_nome: user.nome,
-      fotos_vistoria: fotos // O Script vai receber os Base64 e salvar no Drive
+      tipo_vistoria: tipoVistoria,
+      checklist: JSON.stringify(checklist),
+      data_hora_sistema: new Date().toLocaleString('pt-BR')
     };
-
+    
     const res = await gasApi.saveVistoria(payload);
     if (res.status === 'success') {
-      alert("Vistoria enviada com sucesso!");
+      alert("Registro finalizado com sucesso!");
       onBack();
-    } else {
-      alert("Erro ao salvar: " + res.message);
     }
     setLoading(false);
   };
 
   return (
-    <div className="min-h-screen bg-white pb-20">
-      <div className="bg-slate-800 text-white p-4 flex items-center gap-4 sticky top-0 z-10">
-        <button onClick={onBack}><ArrowLeft /></button>
-        <h1 className="font-bold uppercase">Nova Vistoria</h1>
+    <div className="min-h-screen bg-[#F1F5F9] pb-10">
+      {/* Header */}
+      <div className="bg-[#1E3A8A] text-white p-4 shadow-lg sticky top-0 z-50 flex items-center justify-between">
+        <button onClick={onBack} className="p-1"><ArrowLeft /></button>
+        <span className="font-bold uppercase text-sm tracking-widest">{tipoVistoria} DE SERVIÇO</span>
+        <div className="w-6" />
       </div>
 
-      <form onSubmit={handleSubmit} className="p-4 space-y-6">
-        {/* Seleção de Viatura */}
-        <section className="space-y-2">
-          <label className="font-bold text-slate-700">Viatura (Prefixo/Placa)</label>
-          <select 
-            className="w-full p-3 border rounded-lg bg-slate-50"
-            onChange={(e) => setFormData({...formData, viatura_id: e.target.value})}
-            required
-          >
-            <option value="">Selecione a Viatura</option>
-            {viaturas.map(v => (
-              <option key={v.Placa} value={v.Prefixo}>{v.Prefixo} - {v.Placa}</option>
-            ))}
-          </select>
-        </section>
+      <div className="max-w-xl mx-auto p-4 space-y-4">
+        
+        {/* Passo 1: Seleção de Tipo */}
+        {step === 1 && (
+          <div className="space-y-4 animate-in fade-in duration-500">
+            <div className="bg-white rounded-xl shadow-sm border overflow-hidden flex">
+              <button 
+                onClick={() => setTipoVistoria('ENTRADA')}
+                className={`flex-1 py-4 font-black text-xs ${tipoVistoria === 'ENTRADA' ? 'bg-green-600 text-white' : 'bg-slate-50 text-slate-400'}`}
+              >ENTRADA DE SERVIÇO</button>
+              <button 
+                onClick={() => setTipoVistoria('SAÍDA')}
+                className={`flex-1 py-4 font-black text-xs ${tipoVistoria === 'SAÍDA' ? 'bg-orange-500 text-white' : 'bg-slate-50 text-slate-400'}`}
+              >SAÍDA DE SERVIÇO</button>
+            </div>
 
-        {/* KM e Tipo */}
-        <div className="grid grid-cols-2 gap-4">
-          <div className="space-y-2">
-            <label className="font-bold text-slate-700">KM Atual</label>
-            <input 
-              type="number" 
-              className="w-full p-3 border rounded-lg bg-slate-50"
-              onChange={(e) => setFormData({...formData, km_atual: e.target.value})}
-              required
-            />
-          </div>
-          <div className="space-y-2">
-            <label className="font-bold text-slate-700">Operação</label>
-            <select 
-              className="w-full p-3 border rounded-lg bg-slate-50"
-              onChange={(e) => setFormData({...formData, tipo_servico: e.target.value})}
+            <section className="bg-white p-6 rounded-2xl shadow-sm border space-y-5">
+              <h3 className="text-[10px] font-black text-slate-400 uppercase tracking-tighter flex items-center gap-2">
+                <ShieldCheck size={14}/> Identificação da Viatura
+              </h3>
+              
+              <div className="space-y-4">
+                <div>
+                  <label className="text-xs font-bold text-slate-600">Viatura</label>
+                  <select 
+                    className="w-full mt-1 p-3 bg-slate-50 border rounded-xl font-bold"
+                    onChange={(e) => setFormData({...formData, prefixo_vtr: e.target.value})}
+                  >
+                    <option value="">Selecione a viatura...</option>
+                    {viaturas.map(v => <option key={v.Placa} value={v.Prefixo}>{v.Prefixo} - {v.Placa} - {v.Modelo}</option>)}
+                  </select>
+                </div>
+
+                <div>
+                  <label className="text-xs font-bold text-slate-600">Hodômetro (KM)</label>
+                  <input 
+                    type="number" 
+                    className="w-full mt-1 p-3 bg-slate-50 border rounded-xl font-bold"
+                    placeholder="Digite a quilometragem"
+                    onChange={(e) => setFormData({...formData, hodometro: e.target.value})}
+                  />
+                </div>
+              </div>
+
+              {tipoVistoria === 'ENTRADA' && (
+                <div className="pt-4 border-t space-y-4">
+                   <h3 className="text-[10px] font-black text-slate-400 uppercase tracking-tighter">Guarnição</h3>
+                   {['motorista', 'comandante', 'patrulheiro'].map(cargo => (
+                     <div key={cargo} className="space-y-1">
+                        <input 
+                          placeholder={`RE do ${cargo}`}
+                          className="w-full p-3 bg-slate-50 border rounded-xl text-sm"
+                          onBlur={(e) => buscarMilitar(e.target.value, cargo)}
+                        />
+                        {formData[`${cargo}_nome`] && (
+                          <div className="p-2 bg-green-50 text-green-700 text-xs font-bold rounded-lg flex items-center gap-2">
+                            <CheckCircle2 size={12}/> {formData[`${cargo}_nome`]}
+                          </div>
+                        )}
+                     </div>
+                   ))}
+                </div>
+              )}
+            </section>
+
+            <button 
+              onClick={() => setStep(2)}
+              disabled={!formData.prefixo_vtr || !formData.hodometro}
+              className="w-full bg-slate-800 text-white py-4 rounded-2xl font-black flex items-center justify-center gap-2 disabled:opacity-50"
             >
-              <option value="ENTRADA">ENTRADA</option>
-              <option value="SAÍDA">SAÍDA</option>
-            </select>
+              PROSSEGUIR PARA CHECKLIST <ChevronRight size={18}/>
+            </button>
           </div>
-        </div>
+        )}
 
-        {/* Checklist Rápido */}
-        <section className="bg-slate-50 p-4 rounded-xl border space-y-4">
-          <h3 className="font-bold text-slate-800 flex items-center gap-2">
-            <CheckCircle2 size={18} className="text-green-600" /> Checklist Geral
-          </h3>
-          {['luzes', 'pneus', 'oleo', 'equipamentos'].map(item => (
-            <div key={item} className="flex items-center justify-between">
-              <span className="capitalize text-slate-600">{item}</span>
-              <select 
-                className="p-1 border rounded"
-                onChange={(e) => setFormData({...formData, [`checklist_${item}`]: e.target.value})}
-              >
-                <option value="OK">OK</option>
-                <option value="AVARIA">AVARIA</option>
-              </select>
+        {/* Passo 2: Checklist */}
+        {step === 2 && (
+          <div className="space-y-4 animate-in slide-in-from-right duration-500">
+            <div className="bg-white p-4 rounded-2xl shadow-sm border flex justify-around">
+              <div className="text-center">
+                <p className="text-2xl font-black text-green-600">{32 - itensComFalha}</p>
+                <p className="text-[10px] font-bold text-slate-400 uppercase">Itens OK</p>
+              </div>
+              <div className="text-center">
+                <p className="text-2xl font-black text-red-500">{itensComFalha}</p>
+                <p className="text-[10px] font-bold text-slate-400 uppercase">Com Falha</p>
+              </div>
             </div>
-          ))}
-        </section>
 
-        {/* Ocorrência Grave */}
-        <div className={`p-4 rounded-xl border-2 transition-colors ${formData.houve_alteracoes ? 'border-red-500 bg-red-50' : 'border-slate-200 bg-white'}`}>
-          <label className="flex items-center gap-3 cursor-pointer">
-            <input 
-              type="checkbox" 
-              className="w-6 h-6"
-              onChange={(e) => setFormData({...formData, houve_alteracoes: e.target.checked})}
-            />
-            <div>
-              <span className="font-bold text-slate-800">OCORRÊNCIA GRAVE / AVARIA?</span>
-              <p className="text-xs text-slate-500">Isso impedirá a exclusão automática das fotos após 6 meses.</p>
+            <div className="space-y-2">
+              {ITENS_CHECKLIST.map(item => (
+                <div 
+                  key={item}
+                  onClick={() => toggleChecklist(item)}
+                  className="bg-white p-4 rounded-xl border flex justify-between items-center active:scale-95 transition-all cursor-pointer"
+                >
+                  <span className="text-sm font-bold text-slate-700">{item}</span>
+                  <span className={`px-4 py-1 rounded-full text-[10px] font-black ${checklist[item] === 'OK' ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'}`}>
+                    {checklist[item]}
+                  </span>
+                </div>
+              ))}
             </div>
-          </label>
-        </div>
 
-        {/* Fotos */}
-        <section className="space-y-3">
-          <label className="font-bold text-slate-700 flex items-center gap-2">
-            <Camera size={20} /> Fotos da Vistoria ({fotos.length})
-          </label>
-          <input 
-            type="file" 
-            accept="image/*" 
-            multiple 
-            onChange={handleFileChange}
-            className="hidden" 
-            id="foto-upload"
-          />
-          <label 
-            htmlFor="foto-upload"
-            className="flex items-center justify-center p-8 border-2 border-dashed border-slate-300 rounded-xl bg-slate-50 text-slate-500 hover:bg-slate-100 cursor-pointer"
-          >
-            Clique para tirar fotos ou anexar
-          </label>
-          
-          <div className="grid grid-cols-3 gap-2">
-            {fotos.map((img, i) => (
-              <img key={i} src={img} className="w-full h-24 object-cover rounded-lg border" alt="preview" />
-            ))}
+            <section className="bg-white p-4 rounded-2xl border space-y-4">
+              <textarea 
+                className="w-full p-3 bg-slate-50 border rounded-xl text-sm"
+                placeholder="Observações (opcional)"
+                rows="3"
+                onChange={(e) => setFormData({...formData, observacoes: e.target.value})}
+              />
+              
+              <div className="p-4 bg-slate-50 rounded-xl border-2 border-dashed border-slate-200">
+                <label className="flex items-start gap-3 cursor-pointer">
+                  <input 
+                    type="checkbox" 
+                    className="w-5 h-5 mt-1" 
+                    onChange={(e) => setFormData({...formData, termo_aceite: e.target.checked})}
+                  />
+                  <p className="text-[11px] leading-tight text-slate-600">
+                    <strong>TERMO DE RESPONSABILIDADE:</strong> EU, <span className="text-blue-700 font-bold uppercase">{formData.motorista_nome || user.nome}</span>, declaro ter recebido/entregue a viatura <span className="text-blue-700 font-bold">{formData.prefixo_vtr}</span> nas condições descritas e me responsabilizo pelo uso.
+                  </p>
+                </label>
+              </div>
+            </section>
+
+            <button 
+              onClick={handleFinalizar}
+              disabled={!formData.termo_aceite || loading}
+              className="w-full bg-green-600 text-white py-5 rounded-2xl font-black shadow-lg flex items-center justify-center gap-3 disabled:opacity-50"
+            >
+              {loading ? <Loader2 className="animate-spin"/> : <><Save size={20}/> FINALIZAR {tipoVistoria}</>}
+            </button>
           </div>
-        </section>
+        )}
 
-        <button
-          type="submit"
-          disabled={loading}
-          className="w-full bg-slate-800 text-white font-bold py-4 rounded-xl flex items-center justify-center gap-2"
-        >
-          {loading ? <Loader2 className="animate-spin" /> : <><Save /> SALVAR VISTORIA</>}
-        </button>
-      </form>
+      </div>
     </div>
   );
 };
