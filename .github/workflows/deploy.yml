@@ -19,7 +19,7 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: 20
-          cache: 'npm'
+          # Removi a linha do cache para evitar o erro de lock file
       - name: Install dependencies
         run: npm install
       - name: Build
