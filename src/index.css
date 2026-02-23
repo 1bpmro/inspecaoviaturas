@@ -2,17 +2,72 @@
 @tailwind components;
 @tailwind utilities;
 
+/* 1. VARIÁVEIS DE CORES (MODO CLARO POR PADRÃO) */
 :root {
-  font-family: Inter, system-ui, Avenir, Helvetica, Arial, sans-serif;
-  background-color: #f4f4f5;
-  color: #18181b;
+  --bg-app: #f1f5f9;      /* Cinza Azulado Claro */
+  --bg-card: #ffffff;     /* Branco puro */
+  --text-main: #0f172a;   /* Slate quase preto */
+  --text-muted: #64748b;  /* Slate cinza */
+  --border-color: #e2e8f0;
+  --accent: #1e3a8a;      /* Azul Militar PM */
+  --btn-text: #ffffff;
 }
 
+/* 2. MODO ESCURO AUTOMÁTICO (DETECTA O SISTEMA DO CELULAR) */
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg-app: #020617;    /* Preto Profundo */
+    --bg-card: #0f172a;   /* Azul Noite */
+    --text-main: #f8fafc; /* Branco gelo */
+    --text-muted: #94a3b8;
+    --border-color: #1e293b;
+    --accent: #3b82f6;    /* Azul brilhante para contraste */
+  }
+}
+
+/* 3. RESET E BASE */
 body {
   margin: 0;
-  display: flex;
-  min-width: 320px;
+  padding: 0;
+  background-color: var(--bg-app);
+  color: var(--text-main);
+  font-family: 'Inter', system-ui, -apple-system, sans-serif;
+  -webkit-font-smoothing: antialiased;
   min-height: 100vh;
+}
+
+/* 4. COMPONENTES TÁTICOS (REUTILIZÁVEIS) */
+@layer components {
+  /* Cartão robusto com borda inferior para dar peso */
+  .vtr-card {
+    @apply bg-[var(--bg-card)] border-2 border-[var(--border-color)] rounded-[2.5rem] 
+           shadow-xl shadow-slate-900/5 border-b-[6px] transition-all duration-300;
+  }
+  
+  /* Input estilo formulário oficial */
+  .vtr-input {
+    @apply w-full p-4 bg-[var(--bg-app)] border-2 border-[var(--border-color)] rounded-2xl 
+           font-bold text-[var(--text-main)] outline-none focus:border-[var(--accent)] 
+           placeholder:text-[var(--text-muted)] transition-all;
+  }
+
+  /* Botão principal 'Blindado' */
+  .btn-tatico {
+    @apply bg-slate-900 dark:bg-blue-700 text-white py-5 rounded-[2rem] font-black 
+           uppercase tracking-widest shadow-2xl active:scale-95 transition-all 
+           disabled:opacity-20 disabled:grayscale flex items-center justify-center gap-3;
+  }
+
+  /* Item do checklist que muda de cor ao ser clicado */
+  .checklist-item-ok {
+    @apply p-4 rounded-2xl border-2 border-[var(--border-color)] bg-[var(--bg-card)]
+           flex justify-between items-center cursor-pointer active:scale-95 transition-all;
+  }
+
+  .checklist-item-falha {
+    @apply p-4 rounded-2xl border-2 border-red-500 bg-red-50 dark:bg-red-900/20
+           flex justify-between items-center cursor-pointer active:scale-95 transition-all;
+  }
 }
 
 #root {
