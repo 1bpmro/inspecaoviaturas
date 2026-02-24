@@ -50,7 +50,7 @@ const Vistoria = ({ onBack }) => {
     timeoutRef.current = setTimeout(() => {
       alert("Sessão encerrada por inatividade para sua segurança.");
       logout();
-    }, 600000); // 10 min
+    }, 300000); // 10 min
   }, [logout]);
 
   useEffect(() => {
