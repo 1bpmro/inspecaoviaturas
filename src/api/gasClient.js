@@ -1,6 +1,6 @@
 import axios from 'axios';
 
-const GAS_URL = 'https://script.google.com/macros/s/AKfycbx362OzXA5j4F168SPQB--JS8TeUU_FVel_07bLwKY7tElzeHaBa1pYpXpijUltPHM5kA/exec';
+const GAS_URL = 'https://script.google.com/macros/s/AKfycbzRQJd4bt0eYQvPQahhvAdT6UgeBcRp-_98Adayuql9s7w0aIK5_0Q8W3U-h5SCQB6eng/exec';
 
 export const gasApi = {
   post: async (action, payload = {}) => {
