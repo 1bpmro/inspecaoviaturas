@@ -22,14 +22,18 @@ const ITENS_SAIDA = [
 ];
 
 const TIPOS_SERVICO = ["Patrulhamento Ordinário", "Operação", "Força Tática", "Patrulha Comunitária", "Patrulhamento Rural", "Outro"];
-const SUB_PATRULHA = ["Patrulha Escolar", "Base Móvel", "Patrulha Comercial"];
+const SUB_PAT_LISTA = ["Patrulha Escolar", "Base Móvel", "Patrulha Comercial"];
 
 const Vistoria = ({ onBack }) => {
   const { user } = useAuth();
   const [step, setStep] = useState(1);
   const [loading, setLoading] = useState(false);
   const [uploading, setUploading] = useState(false);
+  
+  // ESTADOS DE CACHE LOCAL
   const [viaturas, setViaturas] = useState([]);
+  const [efetivoLocal, setEfetivoLocal] = useState([]);
+  
   const [tipoVistoria, setTipoVistoria] = useState('ENTRADA');
   const [fotos, setFotos] = useState([]);
   const [protegerFotos, setProtegerFotos] = useState(false);
@@ -46,17 +50,57 @@ const Vistoria = ({ onBack }) => {
   const itensAtuais = tipoVistoria === 'ENTRADA' ? ITENS_ENTRADA : ITENS_SAIDA;
   const temAvaria = Object.values(checklist).includes('FALHA');
 
+  // 1. CARGA INICIAL DO CACHE (Sobe tudo pro App de uma vez)
   useEffect(() => {
-    const carregarDados = async () => {
-      const res = await gasApi.getViaturas();
-      if (res.status === 'success') setViaturas(res.data);
+    const sincronizarDados = async () => {
+      setLoading(true);
+      try {
+        const [resVtr, resMil] = await Promise.all([
+          gasApi.getViaturas(),
+          gasApi.getEfetivoCompleto() // Esta função deve estar no seu gasClient
+        ]);
+        
+        if (resVtr.status === 'success') setViaturas(resVtr.data);
+        if (resMil.status === 'success') setEfetivoLocal(resMil.data);
+      } catch (e) {
+        console.error("Erro na sincronização inicial");
+      } finally {
+        setLoading(false);
+      }
     };
-    carregarDados();
+    sincronizarDados();
   }, []);
 
   useEffect(() => {
     setChecklist(itensAtuais.reduce((acc, item) => ({ ...acc, [item]: 'OK' }), {}));
   }, [tipoVistoria, itensAtuais]);
+
+  // 2. BUSCA INSTANTÂNEA NO CACHE (Sem idas ao servidor)
+  const buscarMilitarNoCache = (reRaw) => {
+    if (!reRaw || reRaw.length < 4) return null;
+    let reLimpo = reRaw.replace(/\D/g, '');
+    if (reLimpo.length > 0 && reLimpo.length <= 6) reLimpo = "1000" + reLimpo;
+    return efetivoLocal.find(m => m.re.toString() === reLimpo);
+  };
+
+  const handleMatriculaChange = (valor, cargo) => {
+    const militar = buscarMilitarNoCache(valor);
+    if (militar) {
+      setFormData(prev => ({
+        ...prev,
+        [`${cargo}_re`]: valor,
+        [`${cargo}_nome`]: `${militar.patente} ${militar.nome}`,
+        [`${cargo}_unidade`]: militar.unidade || '1º BPM'
+      }));
+    } else {
+      setFormData(prev => ({ 
+        ...prev, 
+        [`${cargo}_re`]: valor, 
+        [`${cargo}_nome`]: '', 
+        [`${cargo}_unidade`]: '' 
+      }));
+    }
+  };
 
   const handleVtrChange = (prefixo) => {
     const vtr = viaturas.find(v => v.Prefixo === prefixo);
@@ -81,21 +125,6 @@ const Vistoria = ({ onBack }) => {
       }));
     } else {
       setFormData(prev => ({ ...prev, prefixo_vtr: prefixo, placa_vtr: vtr.Placa || '' }));
-    }
-  };
-
-  const buscarMilitar = async (matRaw, cargo) => {
-    if (!matRaw || matRaw.length < 4) return;
-    const res = await gasApi.buscarMilitar(matRaw);
-    if (res.status === 'success') {
-      setFormData(prev => ({ 
-        ...prev, 
-        [`${cargo}_nome`]: `${res.patente} ${res.nome}`,
-        [`${cargo}_unidade`]: '1º BPM' // Se achou no sistema, é do batalhão
-      }));
-    } else {
-      // Se não achar, limpa o nome e unidade para preenchimento manual
-      setFormData(prev => ({ ...prev, [`${cargo}_nome`]: '', [`${cargo}_unidade`]: '' }));
     }
   };
 
@@ -136,6 +165,8 @@ const Vistoria = ({ onBack }) => {
 
         {step === 1 && (
           <div className="space-y-6 animate-in fade-in">
+            {loading && <div className="flex items-center justify-center gap-2 text-blue-600 font-black text-[10px] animate-pulse"><Loader2 size={14} className="animate-spin"/> SINCRONIZANDO EFETIVO...</div>}
+            
             <section className="bg-[var(--bg-card)] rounded-[2.5rem] p-6 shadow-sm border border-[var(--border-color)] space-y-5">
               <div className="grid grid-cols-2 gap-3">
                 <select className="vtr-input !py-4" value={formData.prefixo_vtr} onChange={(e) => handleVtrChange(e.target.value)}>
@@ -150,89 +181,78 @@ const Vistoria = ({ onBack }) => {
                 </select>
               </div>
 
-              {/* CAMPOS DINÂMICOS DE OPERAÇÃO/PATRULHA */}
               {(formData.tipo_servico === 'Operação' || formData.tipo_servico === 'Outro') && (
-                <input 
-                  placeholder="NOME DA OPERAÇÃO / DESTINO" 
-                  className="vtr-input !bg-orange-50 dark:!bg-orange-900/10 border-orange-200 animate-in zoom-in-95 uppercase" 
-                  value={formData.unidade_externa} 
-                  onChange={(e) => setFormData({...formData, unidade_externa: e.target.value})} 
-                />
+                <input placeholder="NOME DA OPERAÇÃO / DESTINO" className="vtr-input !bg-orange-50 dark:!bg-orange-900/10 border-orange-200 animate-in zoom-in-95 uppercase" value={formData.unidade_externa} onChange={(e) => setFormData({...formData, unidade_externa: e.target.value})} />
               )}
 
               {formData.tipo_servico === 'Patrulha Comunitária' && (
-                <select 
-                  className="vtr-input !bg-blue-50 dark:!bg-blue-900/10 border-blue-200 animate-in zoom-in-95" 
-                  value={formData.unidade_externa} 
-                  onChange={(e) => setFormData({...formData, unidade_externa: e.target.value})}
-                >
+                <select className="vtr-input !bg-blue-50 dark:!bg-blue-900/10 border-blue-200 animate-in zoom-in-95" value={formData.unidade_externa} onChange={(e) => setFormData({...formData, unidade_externa: e.target.value})}>
                   <option value="">Modalidade da Patrulha</option>
-                  {SUB_PATRULHA.map(s => <option key={s} value={s}>{s}</option>)}
+                  {SUB_PAT_LISTA.map(s => <option key={s} value={s}>{s}</option>)}
                 </select>
               )}
 
               <input type="number" className="vtr-input" placeholder="Hodômetro Atual" value={formData.hodometro} onChange={(e) => setFormData({...formData, hodometro: e.target.value})} />
 
-              {/* MILITARES DA GUARNIÇÃO */}
-              {['motorista', 'comandante', 'patrulheiro'].map(cargo => (
-                <div key={cargo} className="space-y-1 pt-2">
-                  <input 
-                    placeholder={`MATRÍCULA ${cargo.toUpperCase()}`} 
-                    className="vtr-input !bg-[var(--bg-app)]" 
-                    value={formData[`${cargo}_re`]}
-                    onChange={(e) => setFormData({...formData, [`${cargo}_re`]: e.target.value})}
-                    onBlur={(e) => buscarMilitar(e.target.value, cargo)} 
-                  />
-                  
-                  {/* Se for Militar Externo (não achou no banco) */}
-                  {!formData[`${cargo}_nome`] && formData[`${cargo}_re`].length >= 4 && (
-                    <div className="grid grid-cols-1 gap-2 p-3 bg-yellow-50 dark:bg-yellow-900/10 border border-yellow-200 rounded-2xl animate-in slide-in-from-top-2">
-                      <div className="flex items-center gap-2">
-                        <UserPlus size={14} className="text-yellow-600"/>
-                        <input 
-                          placeholder="GRADUAÇÃO E NOME DE GUERRA" 
-                          className="bg-transparent border-none text-[10px] font-bold w-full focus:ring-0 uppercase"
-                          value={formData[`${cargo}_nome`]}
-                          onChange={(e) => setFormData({...formData, [`${cargo}_nome`]: e.target.value.toUpperCase()})}
-                        />
-                      </div>
-                      <div className="flex items-center gap-2 border-t border-yellow-200 pt-2">
-                        <Building2 size={14} className="text-yellow-600"/>
-                        <input 
-                          placeholder="UNIDADE (EX: BPCHOQUE, 5º BPM...)" 
-                          className="bg-transparent border-none text-[10px] font-bold w-full focus:ring-0 uppercase"
-                          value={formData[`${cargo}_unidade`]}
-                          onChange={(e) => setFormData({...formData, [`${cargo}_unidade`]: e.target.value.toUpperCase()})}
-                        />
-                      </div>
-                    </div>
-                  )}
+              {['motorista', 'comandante', 'patrulheiro'].map(cargo => {
+                const militar = buscarMilitarNoCache(formData[`${cargo}_re`]);
+                const digitouOito = formData[`${cargo}_re`].length >= 7;
 
-                  {formData[`${cargo}_nome`] && (
-                    <div className="p-2 text-[10px] font-black text-green-600 flex items-center justify-between">
-                      <span className="flex items-center gap-1"><CheckCircle2 size={12}/> {formData[`${cargo}_nome`]}</span>
-                      <span className="opacity-60">{formData[`${cargo}_unidade`]}</span>
-                    </div>
-                  )}
-                </div>
-              ))}
+                return (
+                  <div key={cargo} className="space-y-1 pt-2">
+                    <input 
+                      placeholder={`MATRÍCULA ${cargo.toUpperCase()}`} 
+                      className="vtr-input !bg-[var(--bg-app)]" 
+                      value={formData[`${cargo}_re`]}
+                      onChange={(e) => handleMatriculaChange(e.target.value, cargo)}
+                    />
+                    
+                    {/* NOME ENCONTRADO (INSTANTÂNEO) */}
+                    {militar && (
+                      <div className="p-2 text-[10px] font-black text-green-600 flex items-center justify-between animate-in fade-in">
+                        <span className="flex items-center gap-1"><CheckCircle2 size={12}/> {formData[`${cargo}_nome`]}</span>
+                        <span className="opacity-60">{formData[`${cargo}_unidade`]}</span>
+                      </div>
+                    )}
+
+                    {/* CAIXA AMARELA (SÓ SE NÃO EXISTIR NO CACHE E JÁ TIVER DIGITADO) */}
+                    {!militar && digitouOito && (
+                      <div className="grid grid-cols-1 gap-2 p-3 bg-yellow-50 dark:bg-yellow-900/10 border border-yellow-200 rounded-2xl animate-in slide-in-from-top-2">
+                        <div className="flex items-center gap-2">
+                          <UserPlus size={14} className="text-yellow-600"/>
+                          <input 
+                            placeholder="GRADUAÇÃO E NOME DE GUERRA" 
+                            className="bg-transparent border-none text-[10px] font-bold w-full focus:ring-0 uppercase"
+                            value={formData[`${cargo}_nome`]}
+                            onChange={(e) => setFormData({...formData, [`${cargo}_nome`]: e.target.value.toUpperCase()})}
+                          />
+                        </div>
+                        <div className="flex items-center gap-2 border-t border-yellow-200 pt-2">
+                          <Building2 size={14} className="text-yellow-600"/>
+                          <input 
+                            placeholder="UNIDADE (BPCHOQUE, 5º BPM...)" 
+                            className="bg-transparent border-none text-[10px] font-bold w-full focus:ring-0 uppercase"
+                            value={formData[`${cargo}_unidade`]}
+                            onChange={(e) => setFormData({...formData, [`${cargo}_unidade`]: e.target.value.toUpperCase()})}
+                          />
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
             </section>
-            <button onClick={() => setStep(2)} disabled={!formData.prefixo_vtr} className="btn-tatico w-full">PROSSEGUIR <ChevronRight/></button>
+            <button onClick={() => setStep(2)} disabled={!formData.prefixo_vtr} className="btn-tatico w-full uppercase">Itens de Inspeção <ChevronRight/></button>
           </div>
         )}
 
         {step === 2 && (
           <div className="space-y-6 animate-in slide-in-from-right-4">
-            <div 
-              onClick={() => setProtegerFotos(!protegerFotos)}
-              className={`p-5 rounded-3xl border-2 cursor-pointer transition-all flex items-center gap-4 ${protegerFotos ? 'bg-blue-600 border-blue-400 text-white shadow-lg' : 'bg-slate-100 border-slate-300 text-slate-600'}`}
-            >
+            <div onClick={() => setProtegerFotos(!protegerFotos)} className={`p-5 rounded-3xl border-2 cursor-pointer transition-all flex items-center gap-4 ${protegerFotos ? 'bg-blue-600 border-blue-400 text-white shadow-lg' : 'bg-slate-100 border-slate-300 text-slate-600'}`}>
               {protegerFotos ? <Lock size={32} /> : <Unlock size={32} className="opacity-50" />}
               <div>
                 <h4 className="font-black text-xs uppercase">Proteção de Dados</h4>
-                <p className="text-[10px] font-medium leading-tight opacity-90">
-                  {protegerFotos ? "ESTA INSPEÇÃO NÃO SERÁ APAGADA PELO SISTEMA" : "Clique para salvar permanentemente (Ocorrências Graves)"}
-                </p>
+                <p className="text-[10px] font-medium leading-tight opacity-90">{protegerFotos ? "ESTA INSPEÇÃO NÃO SERÁ APAGADA PELO SISTEMA" : "Clique para salvar permanentemente (Ocorrências Graves)"}</p>
               </div>
             </div>
 
@@ -272,9 +292,7 @@ const Vistoria = ({ onBack }) => {
 
             <div className="flex gap-2">
               <button onClick={() => setStep(1)} className="flex-1 bg-[var(--bg-card)] p-5 rounded-2xl font-black border-2 border-[var(--border-color)]">VOLTAR</button>
-              <button onClick={handleFinalizar} disabled={!formData.termo_aceite || loading} className="btn-tatico flex-[2]">
-                {loading ? <Loader2 className="animate-spin mx-auto"/> : "FINALIZAR"}
-              </button>
+              <button onClick={handleFinalizar} disabled={!formData.termo_aceite || loading} className="btn-tatico flex-[2]">{loading ? <Loader2 className="animate-spin mx-auto"/> : "FINALIZAR"}</button>
             </div>
           </div>
         )}
