@@ -2,15 +2,15 @@ import React, { useState } from 'react';
 import { useAuth } from './lib/AuthContext';
 import Login from './pages/Login';
 import Vistoria from './pages/Vistoria';
-import ConsultarFrota from './pages/ConsultarFrota'; // Importando a nova página
-import { ClipboardCheck, LogOut, Car, User, Shield, LayoutDashboard } from 'lucide-react';
+import ConsultarFrota from './pages/ConsultarFrota';
+import Garageiro from './pages/Garageiro'; // Importando a nova página
+import { ClipboardCheck, LogOut, Car, Shield, LayoutDashboard, ShieldCheck } from 'lucide-react';
 
 const Dashboard = ({ onNavigate }) => {
   const { user, logout, isAdmin } = useAuth();
 
   return (
     <div className="min-h-screen bg-[var(--bg-app)]">
-      {/* NAV TÁTICA */}
       <nav className="bg-slate-900 text-white p-5 shadow-2xl flex justify-between items-center border-b-4 border-blue-900 sticky top-0 z-50">
         <div className="flex items-center gap-3">
           <Shield className="text-blue-400" size={24} />
@@ -24,20 +24,36 @@ const Dashboard = ({ onNavigate }) => {
         </button>
       </nav>
 
-      <main className="p-6 max-w-xl mx-auto space-y-8">
-        <header className="animate-in fade-in slide-in-from-left duration-500">
+      <main className="p-6 max-w-xl mx-auto space-y-6">
+        <header>
           <h2 className="text-2xl font-black text-slate-800 tracking-tight">Olá, {user.patente} {user.nome}</h2>
-          <p className="text-xs font-bold text-slate-500 uppercase tracking-widest mt-1">Selecione uma operação de serviço</p>
+          <p className="text-xs font-bold text-slate-500 uppercase tracking-widest mt-1">Selecione uma operação</p>
         </header>
 
-        <div className="grid grid-cols-1 gap-4 animate-in fade-in slide-in-from-bottom-6 duration-700">
+        <div className="grid grid-cols-1 gap-4">
           
+          {/* BOTÃO GARAGEIRO (Apenas Garageiro ou Admin) */}
+          {(user.role === 'GARAGEIRO' || isAdmin) && (
+            <button 
+              onClick={() => onNavigate('garageiro')}
+              className="vtr-card p-6 flex items-center gap-5 border-l-8 border-amber-500 transition-all active:scale-[0.98]"
+            >
+              <div className="p-4 bg-amber-600 text-white rounded-2xl shadow-lg shadow-amber-200">
+                <ShieldCheck size={32} />
+              </div>
+              <div>
+                <h3 className="font-black text-lg text-slate-800 uppercase leading-none">Controle de Pátio</h3>
+                <p className="text-xs text-slate-500 font-bold mt-1">Validação de Entradas</p>
+              </div>
+            </button>
+          )}
+
           {/* Botão Nova Vistoria */}
           <button 
             onClick={() => onNavigate('vistoria')}
             className="vtr-card p-6 flex items-center gap-5 group text-left transition-all active:scale-[0.98]"
           >
-            <div className="p-4 bg-blue-600 text-white rounded-2xl shadow-lg shadow-blue-200 group-hover:bg-blue-700 transition-colors">
+            <div className="p-4 bg-blue-600 text-white rounded-2xl shadow-lg shadow-blue-200">
               <ClipboardCheck size={32} />
             </div>
             <div>
@@ -51,7 +67,7 @@ const Dashboard = ({ onNavigate }) => {
             onClick={() => onNavigate('frota')}
             className="vtr-card p-6 flex items-center gap-5 group text-left transition-all active:scale-[0.98]"
           >
-            <div className="p-4 bg-slate-800 text-white rounded-2xl shadow-lg shadow-slate-200 group-hover:bg-slate-900 transition-colors">
+            <div className="p-4 bg-slate-800 text-white rounded-2xl shadow-lg shadow-slate-200">
               <Car size={32} />
             </div>
             <div>
@@ -59,24 +75,7 @@ const Dashboard = ({ onNavigate }) => {
               <p className="text-xs text-slate-500 font-bold mt-1">Status atual das viaturas</p>
             </div>
           </button>
-
-          {/* Painel Administrativo (Apenas para Admins) */}
-          {isAdmin && (
-            <button className="vtr-card p-6 flex items-center gap-5 bg-amber-50 border-amber-200 group text-left transition-all active:scale-[0.98]">
-              <div className="p-4 bg-amber-500 text-white rounded-2xl shadow-lg shadow-amber-200">
-                <LayoutDashboard size={32} />
-              </div>
-              <div>
-                <h3 className="font-black text-lg text-amber-900 uppercase leading-none">Gestão e Relatórios</h3>
-                <p className="text-xs text-amber-700 font-bold mt-1">Controle de efetivo e VTRs</p>
-              </div>
-            </button>
-          )}
         </div>
-
-        <footer className="text-center pt-10 opacity-20">
-          <p className="text-[9px] font-black uppercase tracking-[0.4em]">Sistema de Inspeção de Viaturas</p>
-        </footer>
       </main>
     </div>
   );
@@ -84,18 +83,15 @@ const Dashboard = ({ onNavigate }) => {
 
 function App() {
   const { isAuthenticated } = useAuth();
-  const [view, setView] = useState('dashboard'); // 'dashboard', 'vistoria', 'frota'
+  const [view, setView] = useState('dashboard');
 
   if (!isAuthenticated) return <Login />;
 
-  // Navegação entre as telas
   switch(view) {
-    case 'vistoria':
-      return <Vistoria onBack={() => setView('dashboard')} />;
-    case 'frota':
-      return <ConsultarFrota onBack={() => setView('dashboard')} />;
-    default:
-      return <Dashboard onNavigate={(target) => setView(target)} />;
+    case 'vistoria': return <Vistoria onBack={() => setView('dashboard')} />;
+    case 'frota': return <ConsultarFrota onBack={() => setView('dashboard')} />;
+    case 'garageiro': return <Garageiro onBack={() => setView('dashboard')} />;
+    default: return <Dashboard onNavigate={(target) => setView(target)} />;
   }
 }
 
