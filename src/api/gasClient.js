@@ -21,6 +21,12 @@ export const gasApi = {
   getViaturas: (apenasEmServico) => gasApi.post('getViaturas', { apenasEmServico }),
   buscarMilitar: (re) => gasApi.post('buscarMilitar', { re }),
   
+  /**
+   * BUSCA DE EFETIVO COMPLETO PARA CACHE
+   * Utilizada para tornar a busca de militares instantânea no frontend
+   */
+  getEfetivoCompleto: () => gasApi.post('getEfetivoCompleto'),
+  
   // Rotas do Garageiro
   getVistoriasPendentes: () => gasApi.post('getVistoriasPendentes'),
   confirmarVistoriaGarageiro: (dados) => gasApi.post('confirmarVistoriaGarageiro', dados),
