@@ -30,7 +30,6 @@ const Vistoria = ({ onBack }) => {
   const [loading, setLoading] = useState(false);
   const [uploading, setUploading] = useState(false);
   
-  // ESTADOS DE CACHE LOCAL
   const [viaturas, setViaturas] = useState([]);
   const [efetivoLocal, setEfetivoLocal] = useState([]);
   
@@ -50,16 +49,14 @@ const Vistoria = ({ onBack }) => {
   const itensAtuais = tipoVistoria === 'ENTRADA' ? ITENS_ENTRADA : ITENS_SAIDA;
   const temAvaria = Object.values(checklist).includes('FALHA');
 
-  // 1. CARGA INICIAL DO CACHE (Sobe tudo pro App de uma vez)
   useEffect(() => {
     const sincronizarDados = async () => {
       setLoading(true);
       try {
         const [resVtr, resMil] = await Promise.all([
           gasApi.getViaturas(),
-          gasApi.getEfetivoCompleto() // Esta função deve estar no seu gasClient
+          gasApi.getEfetivoCompleto()
         ]);
-        
         if (resVtr.status === 'success') setViaturas(resVtr.data);
         if (resMil.status === 'success') setEfetivoLocal(resMil.data);
       } catch (e) {
@@ -75,7 +72,6 @@ const Vistoria = ({ onBack }) => {
     setChecklist(itensAtuais.reduce((acc, item) => ({ ...acc, [item]: 'OK' }), {}));
   }, [tipoVistoria, itensAtuais]);
 
-  // 2. BUSCA INSTANTÂNEA NO CACHE (Sem idas ao servidor)
   const buscarMilitarNoCache = (reRaw) => {
     if (!reRaw || reRaw.length < 4) return null;
     let reLimpo = reRaw.replace(/\D/g, '');
@@ -168,6 +164,32 @@ const Vistoria = ({ onBack }) => {
             {loading && <div className="flex items-center justify-center gap-2 text-blue-600 font-black text-[10px] animate-pulse"><Loader2 size={14} className="animate-spin"/> SINCRONIZANDO EFETIVO...</div>}
             
             <section className="bg-[var(--bg-card)] rounded-[2.5rem] p-6 shadow-sm border border-[var(--border-color)] space-y-5">
+              
+              {/* --- CARD DA GUARNIÇÃO TÁTICO --- */}
+              <div className="bg-slate-900 rounded-3xl p-5 mb-4 shadow-2xl border-b-4 border-blue-600 animate-in slide-in-from-top-4">
+                <div className="flex items-center gap-2 mb-4 border-b border-white/10 pb-2">
+                  <Users className="text-blue-400" size={18} />
+                  <span className="text-[10px] font-black text-white tracking-widest uppercase">Guarnição</span>
+                </div>
+                <div className="space-y-3">
+                  {[
+                    { label: 'MT', cargo: 'motorista' },
+                    { label: 'CMD', cargo: 'comandante' },
+                    { label: 'AUX', cargo: 'patrulheiro' }
+                  ].map(m => (
+                    <div key={m.cargo} className="flex items-center justify-between">
+                      <span className="text-[9px] font-black text-blue-500 w-8">{m.label}</span>
+                      <div className={`flex-1 ml-2 h-8 flex items-center px-3 rounded-lg border ${formData[`${m.cargo}_nome`] ? 'bg-blue-900/40 border-blue-500/50' : 'bg-white/5 border-dashed border-white/20'}`}>
+                        <span className={`text-[10px] font-bold uppercase truncate ${formData[`${m.cargo}_nome`] ? 'text-white' : 'text-white/20 italic'}`}>
+                          {formData[`${m.cargo}_nome`] || `---`}
+                        </span>
+                      </div>
+                      {formData[`${m.cargo}_nome`] && <CheckCircle2 size={14} className="text-green-500 ml-2 animate-pulse" />}
+                    </div>
+                  ))}
+                </div>
+              </div>
+
               <div className="grid grid-cols-2 gap-3">
                 <select className="vtr-input !py-4" value={formData.prefixo_vtr} onChange={(e) => handleVtrChange(e.target.value)}>
                   <option value="">VTR</option>
@@ -207,15 +229,6 @@ const Vistoria = ({ onBack }) => {
                       onChange={(e) => handleMatriculaChange(e.target.value, cargo)}
                     />
                     
-                    {/* NOME ENCONTRADO (INSTANTÂNEO) */}
-                    {militar && (
-                      <div className="p-2 text-[10px] font-black text-green-600 flex items-center justify-between animate-in fade-in">
-                        <span className="flex items-center gap-1"><CheckCircle2 size={12}/> {formData[`${cargo}_nome`]}</span>
-                        <span className="opacity-60">{formData[`${cargo}_unidade`]}</span>
-                      </div>
-                    )}
-
-                    {/* CAIXA AMARELA (SÓ SE NÃO EXISTIR NO CACHE E JÁ TIVER DIGITADO) */}
                     {!militar && digitouOito && (
                       <div className="grid grid-cols-1 gap-2 p-3 bg-yellow-50 dark:bg-yellow-900/10 border border-yellow-200 rounded-2xl animate-in slide-in-from-top-2">
                         <div className="flex items-center gap-2">
