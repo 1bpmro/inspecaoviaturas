@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { useAuth } from '../lib/AuthContext';
 import { gasApi } from '../api/gasClient';
 import imageCompression from 'browser-image-compression';
@@ -41,25 +41,23 @@ const Vistoria = ({ onBack }) => {
   const [checklist, setChecklist] = useState({});
   const itensAtuais = tipoVistoria === 'ENTRADA' ? ITENS_ENTRADA : ITENS_SAIDA;
 
-  // Carregamento inicial com Cache Local para celeridade
+  // Carregamento de viaturas e reset de checklist
   useEffect(() => {
-    const cachedVtrs = localStorage.getItem('vtr_cache');
-    if (cachedVtrs) setViaturas(JSON.parse(cachedVtrs));
-    
+    const carregarViaturas = async () => {
+      setLoading(true);
+      const res = await gasApi.getViaturas();
+      if (res.status === 'success') {
+        setViaturas(res.data);
+      }
+      setLoading(false);
+    };
+
     carregarViaturas();
+    
+    // Inicia o checklist com tudo OK
     const novoChecklist = itensAtuais.reduce((acc, item) => ({ ...acc, [item]: 'OK' }), {});
     setChecklist(novoChecklist);
-  }, [tipoVistoria]);
-
-  const carregarViaturas = async () => {
-    setLoading(true);
-    const res = await gasApi.getViaturas(tipoVistoria === 'SAÍDA');
-    if (res.status === 'success') {
-      setViaturas(res.data);
-      localStorage.setItem('vtr_cache', JSON.stringify(res.data));
-    }
-    setLoading(false);
-  };
+  }, [tipoVistoria]); 
 
   const buscarMilitar = async (re, campo) => {
     if (re.length < 4) return;
@@ -81,7 +79,7 @@ const Vistoria = ({ onBack }) => {
 
     setUploading(true);
     try {
-      const options = { maxSizeMB: 0.8, maxWidthOrHeight: 1024, useWebWorker: true };
+      const options = { maxSizeMB: 0.6, maxWidthOrHeight: 1024, useWebWorker: true };
       const compressedFile = await imageCompression(imageFile, options);
       
       const reader = new FileReader();
@@ -103,26 +101,44 @@ const Vistoria = ({ onBack }) => {
   const itensComFalha = Object.values(checklist).filter(v => v === 'FALHA').length;
 
   const handleFinalizar = async () => {
+    if (fotos.length === 0 && itensComFalha > 0) {
+      alert("Atenção: É obrigatório anexar fotos quando houver avarias.");
+      return;
+    }
+
     setLoading(true);
+    
+    // Filtramos apenas o que está com FALHA para o resumo da planilha
+    const resumoFalhas = Object.entries(checklist)
+      .filter(([_, status]) => status === 'FALHA')
+      .map(([item]) => item)
+      .join(', ');
+
     const payload = {
       ...formData,
       tipo_vistoria: tipoVistoria,
-      checklist: JSON.stringify(checklist),
-      fotos: JSON.stringify(fotos), // Enviando array de base64
-      houve_alteracoes: itensComFalha > 0 || formData.observacoes.length > 0,
-      data_hora_sistema: new Date().toLocaleString('pt-BR')
+      checklist_resumo: resumoFalhas || "SEM ALTERAÇÕES",
+      fotos_vistoria: fotos, 
+      militar_logado: `${user.patente} ${user.nome} (RE ${user.re})`
     };
-    
-    const res = await gasApi.saveVistoria(payload);
-    if (res.status === 'success') {
-      alert("Registro finalizado com sucesso!");
-      onBack();
+
+    try {
+      const res = await gasApi.saveVistoria(payload);
+      if (res.status === 'success') {
+        alert("Vistoria enviada com sucesso!");
+        onBack();
+      } else {
+        alert("Erro: " + res.message);
+      }
+    } catch (error) {
+      alert("Erro de conexão.");
+    } finally {
+      setLoading(false);
     }
-    setLoading(false);
   };
 
   return (
-    <div className="min-h-screen bg-[var(--bg-app)] pb-10 transition-all font-sans text-slate-900">
+    <div className="min-h-screen bg-slate-50 pb-10 font-sans text-slate-900">
       <header className="bg-slate-900 text-white p-5 shadow-2xl sticky top-0 z-50 border-b-4 border-blue-900">
         <div className="max-w-xl mx-auto flex items-center justify-between">
           <button onClick={onBack} className="p-2 hover:bg-slate-800 rounded-full"><ArrowLeft size={24}/></button>
@@ -137,30 +153,34 @@ const Vistoria = ({ onBack }) => {
       <main className="max-w-xl mx-auto p-4 space-y-6">
         {step === 1 && (
           <div className="space-y-6 animate-in slide-in-from-bottom-4 duration-500">
-            <div className="vtr-card p-1.5 flex bg-slate-200 border-none shadow-inner">
-              <button onClick={() => setTipoVistoria('ENTRADA')} className={`flex-1 py-3 rounded-2xl font-black text-[10px] transition-all ${tipoVistoria === 'ENTRADA' ? 'bg-green-600 text-white shadow-lg' : 'text-slate-500'}`}>ENTRADA</button>
-              <button onClick={() => setTipoVistoria('SAÍDA')} className={`flex-1 py-3 rounded-2xl font-black text-[10px] transition-all ${tipoVistoria === 'SAÍDA' ? 'bg-orange-500 text-white shadow-lg' : 'text-slate-500'}`}>SAÍDA</button>
+            <div className="flex bg-slate-200 p-1 rounded-2xl">
+              <button onClick={() => setTipoVistoria('ENTRADA')} className={`flex-1 py-3 rounded-xl font-black text-[10px] transition-all ${tipoVistoria === 'ENTRADA' ? 'bg-green-600 text-white shadow-lg' : 'text-slate-500'}`}>ENTRADA</button>
+              <button onClick={() => setTipoVistoria('SAÍDA')} className={`flex-1 py-3 rounded-xl font-black text-[10px] transition-all ${tipoVistoria === 'SAÍDA' ? 'bg-orange-500 text-white shadow-lg' : 'text-slate-500'}`}>SAÍDA</button>
             </div>
 
-            <section className="vtr-card p-6 space-y-5">
+            <section className="bg-white rounded-3xl p-6 shadow-sm border border-slate-100 space-y-5">
               <div className="flex items-center gap-2 border-b pb-4 border-slate-100">
                 <ShieldCheck className="text-blue-600" size={20}/>
                 <h3 className="text-xs font-black uppercase">Dados do Equipamento</h3>
               </div>
               <div className="space-y-4">
-                <select className="vtr-input" value={formData.prefixo_vtr} onChange={(e) => setFormData({...formData, prefixo_vtr: e.target.value})}>
+                <select className="vtr-input w-full p-3 bg-slate-50 rounded-xl border" value={formData.prefixo_vtr} onChange={(e) => setFormData({...formData, prefixo_vtr: e.target.value})}>
                   <option value="">Selecione a VTR</option>
                   {viaturas.map(v => <option key={v.Placa} value={v.Prefixo}>{v.Prefixo} - {v.Placa}</option>)}
                 </select>
-                <input type="number" className="vtr-input" placeholder="Hodômetro Atual" onChange={(e) => setFormData({...formData, hodometro: e.target.value})} />
+                <input type="number" className="vtr-input w-full p-3 bg-slate-50 rounded-xl border" placeholder="Hodômetro Atual" value={formData.hodometro} onChange={(e) => setFormData({...formData, hodometro: e.target.value})} />
               </div>
 
               <div className="space-y-4 pt-4 border-t border-slate-50">
                 {['motorista', 'comandante', 'patrulheiro'].map(cargo => (
                   <div key={cargo}>
-                    <input placeholder={`RE do ${cargo}`} className="vtr-input !py-3 !text-sm" onBlur={(e) => buscarMilitar(e.target.value, cargo)} />
+                    <input 
+                      placeholder={`RE do ${cargo}`} 
+                      className="vtr-input w-full p-3 bg-slate-50 rounded-xl border text-sm" 
+                      onBlur={(e) => buscarMilitar(e.target.value, cargo)} 
+                    />
                     {formData[`${cargo}_nome`] && (
-                      <div className="mt-2 p-2 bg-blue-50 text-blue-700 text-[10px] font-black rounded-lg flex items-center gap-2 animate-in zoom-in-95">
+                      <div className="mt-2 p-2 bg-blue-50 text-blue-700 text-[10px] font-black rounded-lg flex items-center gap-2">
                         <CheckCircle2 size={12}/> {formData[`${cargo}_nome`]}
                       </div>
                     )}
@@ -169,18 +189,24 @@ const Vistoria = ({ onBack }) => {
               </div>
             </section>
 
-            <button onClick={() => setStep(2)} disabled={!formData.prefixo_vtr || !formData.hodometro} className="btn-tatico w-full">CONFERIR ITENS <ChevronRight size={20}/></button>
+            <button 
+              onClick={() => setStep(2)} 
+              disabled={!formData.prefixo_vtr || !formData.hodometro} 
+              className="w-full bg-slate-900 text-white p-4 rounded-2xl font-black flex items-center justify-center gap-2 disabled:opacity-50"
+            >
+              CONFERIR ITENS <ChevronRight size={20}/>
+            </button>
           </div>
         )}
 
         {step === 2 && (
           <div className="space-y-4 animate-in slide-in-from-right duration-500">
             <div className="flex gap-3">
-              <div className="flex-1 vtr-card p-4 text-center border-b-4 border-b-green-500">
+              <div className="flex-1 bg-white p-4 rounded-2xl text-center border-b-4 border-green-500 shadow-sm">
                 <p className="text-2xl font-black text-green-600">{itensAtuais.length - itensComFalha}</p>
                 <p className="text-[9px] font-black text-slate-400 uppercase">Integridade OK</p>
               </div>
-              <div className="flex-1 vtr-card p-4 text-center border-b-4 border-b-red-500">
+              <div className="flex-1 bg-white p-4 rounded-2xl text-center border-b-4 border-red-500 shadow-sm">
                 <p className="text-2xl font-black text-red-600">{itensComFalha}</p>
                 <p className="text-[9px] font-black text-slate-400 uppercase">Avarias/Faltas</p>
               </div>
@@ -188,15 +214,18 @@ const Vistoria = ({ onBack }) => {
 
             <div className="grid gap-2">
               {itensAtuais.map(item => (
-                <div key={item} onClick={() => toggleChecklist(item)} className={checklist[item] === 'OK' ? 'checklist-item-ok' : 'checklist-item-falha'}>
-                  <span className="text-sm font-bold uppercase">{item}</span>
+                <div 
+                  key={item} 
+                  onClick={() => toggleChecklist(item)} 
+                  className={`p-4 rounded-2xl flex justify-between items-center cursor-pointer transition-all border ${checklist[item] === 'OK' ? 'bg-white border-slate-100' : 'bg-red-50 border-red-200'}`}
+                >
+                  <span className={`text-sm font-bold uppercase ${checklist[item] === 'OK' ? 'text-slate-700' : 'text-red-700'}`}>{item}</span>
                   <div className={`px-3 py-1 rounded-lg text-[10px] font-black ${checklist[item] === 'OK' ? 'bg-green-100 text-green-700' : 'bg-red-600 text-white'}`}>{checklist[item]}</div>
                 </div>
               ))}
             </div>
 
-            {/* SEÇÃO DE FOTOS OPERACIONAL */}
-            <div className="vtr-card p-6 space-y-4">
+            <div className="bg-white rounded-3xl p-6 shadow-sm border border-slate-100 space-y-4">
               <h3 className="text-xs font-black uppercase flex items-center gap-2 text-slate-700">
                 <Camera size={18} className="text-blue-600" /> Registro Visual (Máx 4)
               </h3>
@@ -216,17 +245,26 @@ const Vistoria = ({ onBack }) => {
               </div>
             </div>
 
-            <section className="vtr-card p-6 space-y-4">
-              <textarea className="vtr-input text-sm" placeholder="Descreva aqui qualquer alteração ou avaria constatada..." rows="3" onChange={(e) => setFormData({...formData, observacoes: e.target.value})} />
+            <section className="bg-white rounded-3xl p-6 shadow-sm border border-slate-100 space-y-4">
+              <textarea 
+                className="w-full p-4 bg-slate-50 rounded-2xl border text-sm" 
+                placeholder="Descreva aqui qualquer alteração ou avaria constatada..." 
+                rows="3" 
+                onChange={(e) => setFormData({...formData, observacoes: e.target.value})} 
+              />
               <div className={`p-4 rounded-2xl border-2 border-dashed transition-all ${formData.termo_aceite ? 'bg-blue-50 border-blue-400' : 'bg-slate-50 border-slate-300'}`}>
                 <label className="flex items-start gap-3 cursor-pointer">
                   <input type="checkbox" className="w-6 h-6 rounded-lg mt-1" onChange={(e) => setFormData({...formData, termo_aceite: e.target.checked})} />
                   <p className="text-[10px] font-bold text-slate-600 leading-tight">
-                    CONFIRMO que realizei a inspeção física e as fotos anexadas condizem com o estado atual da VTR {formData.prefixo_vtr}.
+                    CONFIRMO que realizei a inspeção física e as fotos anexadas condizem com o estado atual da VTR.
                   </p>
                 </label>
               </div>
-              <button onClick={handleFinalizar} disabled={!formData.termo_aceite || loading} className="btn-tatico w-full">
+              <button 
+                onClick={handleFinalizar} 
+                disabled={!formData.termo_aceite || loading} 
+                className="w-full bg-blue-700 text-white p-4 rounded-2xl font-black flex items-center justify-center gap-2 disabled:opacity-50 shadow-lg shadow-blue-200"
+              >
                 {loading ? <Loader2 className="animate-spin"/> : <><Save size={20}/> FINALIZAR VISTORIA</>}
               </button>
             </section>
