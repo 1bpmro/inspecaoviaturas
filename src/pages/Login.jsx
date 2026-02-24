@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { useAuth } from '../lib/AuthContext';
 import { gasApi } from '../api/gasClient';
 import { Lock, User, Loader2, ArrowRight } from 'lucide-react';
-// 1. Importação do Brasão (Certifique-se de que o arquivo está em src/assets/icon-512.png)
+// Importação corrigida para o arquivo existente na sua pasta assets
 import brasaoBpm from '../assets/icon-512.png';
 
 const Login = () => {
@@ -25,7 +25,8 @@ const Login = () => {
   useEffect(() => {
     const verificar = async () => {
       const reLimpo = formatarRE(re);
-      if (reLimpo.length >= 8) { // Considerando o 1000 + 4 dígitos
+      // Ajustado para 7 pois 1000 + 3 dígitos já é um RE válido
+      if (reLimpo.length >= 7) { 
         setLoadingPerfil(true);
         const res = await gasApi.checkProfile(reLimpo);
         if (res.status === 'success') {
@@ -47,7 +48,6 @@ const Login = () => {
     setError('');
     setIsSubmitting(true);
     
-    // Higieniza o RE antes de enviar para o login
     const reFinal = formatarRE(re);
     const result = await login(reFinal, senha);
     
@@ -58,58 +58,62 @@ const Login = () => {
   const precisaSenha = perfil === 'ADMIN' || perfil === 'GARAGEIRO';
 
   return (
-    <div className="min-h-screen flex flex-col items-center justify-center bg-slate-900 p-4 relative">
-      <div className="max-w-md w-full bg-white rounded-[2.5rem] shadow-2xl overflow-hidden border-b-[8px] border-blue-600">
+    <div className="min-h-screen flex flex-col items-center justify-center bg-[var(--bg-app)] p-4 relative transition-colors duration-500">
+      {/* O card agora usa var(--bg-card) para mudar de branco para azul escuro automaticamente */}
+      <div className="max-w-md w-full bg-[var(--bg-card)] rounded-[2.5rem] shadow-2xl overflow-hidden border-b-[8px] border-[var(--accent)] border-2 border-[var(--border-color)]">
         
-        {/* CABEÇALHO ATUALIZADO */}
-        <div className="bg-slate-800 p-8 text-center">
-          {/* 1. Brasão no lugar do emoji */}
+        {/* CABEÇALHO - Mantido escuro para destaque militar, mas adaptável */}
+        <div className="bg-slate-900 dark:bg-slate-950 p-8 text-center transition-colors">
           <img 
             src={brasaoBpm} 
             alt="Brasão 1º BPM" 
             className="w-24 h-24 mx-auto mb-4 drop-shadow-2xl object-contain" 
           />
           
-          {/* 2. Título: 1º BPM - BATALHÃO RONDON */}
           <h1 className="text-xl font-black text-white uppercase tracking-tighter">
             1º BPM - BATALHÃO RONDON
           </h1>
           
-          {/* 3. Subtítulo: Sistema de inspeção de viaturas do 1º BPM - RO */}
-          <p className="text-blue-400 text-[10px] font-bold tracking-widest uppercase mt-1">
+          <p className="text-blue-400 text-[10px] font-bold tracking-widest uppercase mt-1 opacity-90">
             Sistema de inspeção de viaturas do 1º BPM - RO
           </p>
         </div>
 
         <form onSubmit={handleSubmit} className="p-8 space-y-6">
           {error && (
-            <div className="bg-red-50 border-l-4 border-red-500 p-3 text-red-700 text-xs font-bold animate-shake">
+            <div className="bg-red-50 dark:bg-red-900/20 border-l-4 border-red-500 p-3 text-red-700 dark:text-red-400 text-xs font-bold animate-pulse">
               {error}
             </div>
           )}
 
           <div className="relative">
-            <label className="text-[10px] font-black text-slate-400 uppercase absolute left-3 top-2">Matrícula (RE)</label>
-            <User className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-300" size={20} />
+            <label className="text-[10px] font-black text-[var(--text-muted)] uppercase absolute left-3 top-2">
+              Matrícula (RE)
+            </label>
+            <User className="absolute right-4 top-1/2 -translate-y-1/2 text-[var(--text-muted)]" size={20} />
             <input 
               type="text" 
               value={re} 
               onChange={(e) => setRe(e.target.value)} 
-              className="w-full pt-7 pb-3 px-3 bg-slate-50 border-2 border-slate-100 focus:border-blue-500 rounded-2xl outline-none font-bold text-xl transition-all"
+              className="vtr-input pt-7 pb-3 px-3" 
               placeholder="00000"
             />
-            {loadingPerfil && <Loader2 className="absolute right-12 top-1/2 -translate-y-1/2 animate-spin text-blue-500" size={16} />}
+            {loadingPerfil && (
+              <Loader2 className="absolute right-12 top-1/2 -translate-y-1/2 animate-spin text-[var(--accent)]" size={16} />
+            )}
           </div>
 
           {precisaSenha && (
             <div className="relative animate-in slide-in-from-top-4 duration-300">
-              <label className="text-[10px] font-black text-slate-400 uppercase absolute left-3 top-2">Senha de Acesso</label>
-              <Lock className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-300" size={20} />
+              <label className="text-[10px] font-black text-[var(--text-muted)] uppercase absolute left-3 top-2">
+                Senha de Acesso
+              </label>
+              <Lock className="absolute right-4 top-1/2 -translate-y-1/2 text-[var(--text-muted)]" size={20} />
               <input 
                 type="password" 
                 value={senha} 
                 onChange={(e) => setSenha(e.target.value)}
-                className="w-full pt-7 pb-3 px-3 bg-slate-50 border-2 border-blue-100 focus:border-blue-500 rounded-2xl outline-none font-bold text-xl"
+                className="vtr-input pt-7 pb-3 px-3 border-[var(--accent)]/30"
                 placeholder="••••••••"
                 autoFocus
               />
@@ -119,18 +123,20 @@ const Login = () => {
           <button 
             type="submit" 
             disabled={isSubmitting || (re.length < 3)} 
-            className="w-full bg-slate-900 hover:bg-blue-700 text-white font-black py-5 rounded-2xl shadow-lg transition-all flex items-center justify-center gap-3 uppercase tracking-widest disabled:opacity-30 active:scale-95"
+            className="btn-tatico w-full"
           >
-            {isSubmitting ? <Loader2 className="animate-spin" /> : (
+            {isSubmitting ? (
+              <Loader2 className="animate-spin" />
+            ) : (
               <>Acessar <ArrowRight size={20} /></>
             )}
           </button>
         </form>
       </div>
 
-      {/* 4. RODAPÉ (Footer) com Easter Egg potencial */}
+      {/* RODAPÉ DINÂMICO */}
       <footer className="mt-8 mb-4">
-        <p className="text-[10px] text-slate-500 font-black uppercase tracking-[0.3em] opacity-40 text-center">
+        <p className="text-[10px] text-[var(--text-muted)] font-black uppercase tracking-[0.3em] opacity-60 text-center">
           Sistema criado para uso exclusivo do 1º BPM - RO
         </p>
       </footer>
