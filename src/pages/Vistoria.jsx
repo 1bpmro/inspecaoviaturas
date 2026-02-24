@@ -49,6 +49,9 @@ const Vistoria = ({ onBack }) => {
   const itensAtuais = tipoVistoria === 'ENTRADA' ? ITENS_ENTRADA : ITENS_SAIDA;
   const temAvaria = Object.values(checklist).includes('FALHA');
 
+  // Helper para evitar erro de .replace() em números ou nulos
+  const toStr = (val) => (val !== undefined && val !== null ? String(val) : '');
+
   useEffect(() => {
     const sincronizarDados = async () => {
       setLoading(true);
@@ -73,25 +76,27 @@ const Vistoria = ({ onBack }) => {
   }, [tipoVistoria, itensAtuais]);
 
   const buscarMilitarNoCache = (reRaw) => {
-    if (!reRaw || reRaw.length < 4) return null;
-    let reLimpo = reRaw.replace(/\D/g, '');
+    const reString = toStr(reRaw);
+    if (!reString || reString.length < 4) return null;
+    let reLimpo = reString.replace(/\D/g, '');
     if (reLimpo.length > 0 && reLimpo.length <= 6) reLimpo = "1000" + reLimpo;
-    return efetivoLocal.find(m => m.re.toString() === reLimpo);
+    return efetivoLocal.find(m => toStr(m.re) === reLimpo);
   };
 
   const handleMatriculaChange = (valor, cargo) => {
-    const militar = buscarMilitarNoCache(valor);
+    const valStr = toStr(valor);
+    const militar = buscarMilitarNoCache(valStr);
     if (militar) {
       setFormData(prev => ({
         ...prev,
-        [`${cargo}_re`]: valor,
+        [`${cargo}_re`]: valStr,
         [`${cargo}_nome`]: `${militar.patente} ${militar.nome}`,
         [`${cargo}_unidade`]: militar.unidade || '1º BPM'
       }));
     } else {
       setFormData(prev => ({ 
         ...prev, 
-        [`${cargo}_re`]: valor, 
+        [`${cargo}_re`]: valStr, 
         [`${cargo}_nome`]: '', 
         [`${cargo}_unidade`]: '' 
       }));
@@ -99,28 +104,28 @@ const Vistoria = ({ onBack }) => {
   };
 
   const handleVtrChange = (prefixo) => {
-    const vtr = viaturas.find(v => v.Prefixo === prefixo);
+    const vtr = viaturas.find(v => toStr(v.Prefixo) === toStr(prefixo));
     if (!vtr) return;
 
     if (tipoVistoria === 'SAÍDA') {
       setFormData(prev => ({
         ...prev,
-        prefixo_vtr: prefixo,
-        placa_vtr: vtr.Placa || '',
-        tipo_servico: vtr.UltimoTipoServico || '',
-        motorista_re: vtr.UltimoMotoristaRE || '',
-        motorista_nome: vtr.UltimoMotoristaNome || '',
-        motorista_unidade: vtr.UltimoMotoristaUnidade || '1º BPM',
-        comandante_re: vtr.UltimoComandanteRE || '',
-        comandante_nome: vtr.UltimoComandanteNome || '',
-        comandante_unidade: vtr.UltimoComandanteUnidade || '1º BPM',
-        patrulheiro_re: vtr.UltimoPatrulheiroRE || '',
-        patrulheiro_nome: vtr.UltimoPatrulheiroNome || '',
-        patrulheiro_unidade: vtr.UltimoPatrulheiroUnidade || '1º BPM',
-        hodometro: vtr.UltimoKM || ''
+        prefixo_vtr: toStr(vtr.Prefixo),
+        placa_vtr: toStr(vtr.Placa),
+        tipo_servico: toStr(vtr.UltimoTipoServico),
+        motorista_re: toStr(vtr.UltimoMotoristaRE),
+        motorista_nome: toStr(vtr.UltimoMotoristaNome),
+        motorista_unidade: toStr(vtr.UltimoMotoristaUnidade) || '1º BPM',
+        comandante_re: toStr(vtr.UltimoComandanteRE),
+        comandante_nome: toStr(vtr.UltimoComandanteNome),
+        comandante_unidade: toStr(vtr.UltimoComandanteUnidade) || '1º BPM',
+        patrulheiro_re: toStr(vtr.UltimoPatrulheiroRE),
+        patrulheiro_nome: toStr(vtr.UltimoPatrulheiroNome),
+        patrulheiro_unidade: toStr(vtr.UltimoPatrulheiroUnidade) || '1º BPM',
+        hodometro: toStr(vtr.UltimoKM)
       }));
     } else {
-      setFormData(prev => ({ ...prev, prefixo_vtr: prefixo, placa_vtr: vtr.Placa || '' }));
+      setFormData(prev => ({ ...prev, prefixo_vtr: toStr(vtr.Prefixo), placa_vtr: toStr(vtr.Placa) }));
     }
   };
 
@@ -165,23 +170,23 @@ const Vistoria = ({ onBack }) => {
             
             <section className="bg-[var(--bg-card)] rounded-[2.5rem] p-6 shadow-sm border border-[var(--border-color)] space-y-5">
               
-              {/* --- CARD DA GUARNIÇÃO TÁTICO --- */}
-              <div className="bg-slate-900 rounded-3xl p-5 mb-4 shadow-2xl border-b-4 border-blue-600 animate-in slide-in-from-top-4">
+              {/* CARD DA GUARNIÇÃO TÁTICO */}
+              <div className="bg-slate-900 rounded-3xl p-5 mb-4 shadow-2xl border-b-4 border-blue-600">
                 <div className="flex items-center gap-2 mb-4 border-b border-white/10 pb-2">
                   <Users className="text-blue-400" size={18} />
-                  <span className="text-[10px] font-black text-white tracking-widest uppercase">Guarnição</span>
+                  <span className="text-[10px] font-black text-white tracking-widest uppercase">Formação da Guarnição</span>
                 </div>
                 <div className="space-y-3">
                   {[
-                    { label: 'MT', cargo: 'motorista' },
+                    { label: 'MOT', cargo: 'motorista' },
                     { label: 'CMD', cargo: 'comandante' },
-                    { label: 'AUX', cargo: 'patrulheiro' }
+                    { label: 'PTR', cargo: 'patrulheiro' }
                   ].map(m => (
-                    <div key={m.cargo} className="flex items-center justify-between">
+                    <div key={m.label} className="flex items-center justify-between">
                       <span className="text-[9px] font-black text-blue-500 w-8">{m.label}</span>
-                      <div className={`flex-1 ml-2 h-8 flex items-center px-3 rounded-lg border ${formData[`${m.cargo}_nome`] ? 'bg-blue-900/40 border-blue-500/50' : 'bg-white/5 border-dashed border-white/20'}`}>
+                      <div className={`flex-1 ml-2 h-8 flex items-center px-3 rounded-lg border transition-colors ${formData[`${m.cargo}_nome`] ? 'bg-blue-900/30 border-blue-500/50' : 'bg-white/5 border-dashed border-white/20'}`}>
                         <span className={`text-[10px] font-bold uppercase truncate ${formData[`${m.cargo}_nome`] ? 'text-white' : 'text-white/20 italic'}`}>
-                          {formData[`${m.cargo}_nome`] || `---`}
+                          {formData[`${m.cargo}_nome`] || `Aguardando ${m.cargo}...`}
                         </span>
                       </div>
                       {formData[`${m.cargo}_nome`] && <CheckCircle2 size={14} className="text-green-500 ml-2 animate-pulse" />}
@@ -204,11 +209,11 @@ const Vistoria = ({ onBack }) => {
               </div>
 
               {(formData.tipo_servico === 'Operação' || formData.tipo_servico === 'Outro') && (
-                <input placeholder="NOME DA OPERAÇÃO / DESTINO" className="vtr-input !bg-orange-50 dark:!bg-orange-900/10 border-orange-200 animate-in zoom-in-95 uppercase" value={formData.unidade_externa} onChange={(e) => setFormData({...formData, unidade_externa: e.target.value})} />
+                <input placeholder="NOME DA OPERAÇÃO / DESTINO" className="vtr-input !bg-orange-50 dark:!bg-orange-900/10 border-orange-200 uppercase" value={formData.unidade_externa} onChange={(e) => setFormData({...formData, unidade_externa: e.target.value})} />
               )}
 
               {formData.tipo_servico === 'Patrulha Comunitária' && (
-                <select className="vtr-input !bg-blue-50 dark:!bg-blue-900/10 border-blue-200 animate-in zoom-in-95" value={formData.unidade_externa} onChange={(e) => setFormData({...formData, unidade_externa: e.target.value})}>
+                <select className="vtr-input !bg-blue-50 dark:!bg-blue-900/10 border-blue-200" value={formData.unidade_externa} onChange={(e) => setFormData({...formData, unidade_externa: e.target.value})}>
                   <option value="">Modalidade da Patrulha</option>
                   {SUB_PAT_LISTA.map(s => <option key={s} value={s}>{s}</option>)}
                 </select>
@@ -218,7 +223,7 @@ const Vistoria = ({ onBack }) => {
 
               {['motorista', 'comandante', 'patrulheiro'].map(cargo => {
                 const militar = buscarMilitarNoCache(formData[`${cargo}_re`]);
-                const digitouOito = formData[`${cargo}_re`].length >= 7;
+                const digitouOito = toStr(formData[`${cargo}_re`]).length >= 7;
 
                 return (
                   <div key={cargo} className="space-y-1 pt-2">
@@ -243,7 +248,7 @@ const Vistoria = ({ onBack }) => {
                         <div className="flex items-center gap-2 border-t border-yellow-200 pt-2">
                           <Building2 size={14} className="text-yellow-600"/>
                           <input 
-                            placeholder="UNIDADE (BPCHOQUE, 5º BPM...)" 
+                            placeholder="UNIDADE (EXTERNA)" 
                             className="bg-transparent border-none text-[10px] font-bold w-full focus:ring-0 uppercase"
                             value={formData[`${cargo}_unidade`]}
                             onChange={(e) => setFormData({...formData, [`${cargo}_unidade`]: e.target.value.toUpperCase()})}
@@ -281,7 +286,10 @@ const Vistoria = ({ onBack }) => {
             <div className={`bg-[var(--bg-card)] rounded-[2.5rem] p-6 border-2 ${temAvaria ? 'border-red-500' : 'border-[var(--border-color)]'}`}>
               <div className="grid grid-cols-4 gap-2">
                 {fotos.map((f, i) => (
-                  <div key={i} className="relative aspect-square rounded-2xl overflow-hidden"><img src={f} className="object-cover w-full h-full"/><button onClick={() => setFotos(fotos.filter((_, idx) => idx !== i))} className="absolute top-1 right-1 bg-red-600 text-white rounded-full p-1"><X size={10}/></button></div>
+                  <div key={i} className="relative aspect-square rounded-2xl overflow-hidden">
+                    <img src={f} className="object-cover w-full h-full" alt="vistoria"/>
+                    <button onClick={() => setFotos(fotos.filter((_, idx) => idx !== i))} className="absolute top-1 right-1 bg-red-600 text-white rounded-full p-1"><X size={10}/></button>
+                  </div>
                 ))}
                 {fotos.length < 4 && (
                   <label className="aspect-square rounded-2xl border-2 border-dashed flex items-center justify-center cursor-pointer">
@@ -289,9 +297,11 @@ const Vistoria = ({ onBack }) => {
                     <input type="file" accept="image/*" capture="environment" className="hidden" onChange={async (e) => {
                       const file = e.target.files[0]; if (!file) return;
                       setUploading(true);
-                      const compressed = await imageCompression(file, { maxSizeMB: 0.5 });
-                      const reader = new FileReader(); reader.readAsDataURL(compressed);
-                      reader.onloadend = () => { setFotos(p => [...p, reader.result]); setUploading(false); };
+                      try {
+                        const compressed = await imageCompression(file, { maxSizeMB: 0.5 });
+                        const reader = new FileReader(); reader.readAsDataURL(compressed);
+                        reader.onloadend = () => { setFotos(p => [...p, reader.result]); setUploading(false); };
+                      } catch (err) { setUploading(false); }
                     }} />
                   </label>
                 )}
