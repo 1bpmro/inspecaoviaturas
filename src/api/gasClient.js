@@ -25,4 +25,10 @@ export const gasApi = {
   getViaturas: (apenasEmServico) => gasApi.post('getViaturas', { apenasEmServico }),
   
   buscarMilitar: (re) => gasApi.post('buscarMilitar', { re }) // Adicionado aqui!
+
+  getVistoriasPendentes: () => gasApi.post('getVistoriasPendentes'),
+  
+  confirmarVistoriaGarageiro: (dados) => gasApi.post('confirmarVistoriaGarageiro', dados),
+  
+  alterarStatusViatura: (prefixo, novoStatus) => gasApi.post('alterarStatusViatura', { prefixo, novoStatus }),
 };
