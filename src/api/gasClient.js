@@ -1,8 +1,9 @@
 import axios from 'axios';
 
-const GAS_URL = 'https://script.google.com/macros/s/AKfycby3HNERAH69cTcYHv9l6X_ZrTKNyED4a9dfIyU5QCDfQqJRBLXQdnvx7_39YOpE6H6O7g/exec';
+const GAS_URL = 'https://script.google.com/macros/s/AKfycbw3h5004CW1xuTK-l5Z1X9qgUdFKBwRrxaDCtjSAONoFD-uXukQnV7ayu_AgoZ9PU-PIA/exec';
 
 export const gasApi = {
+  // Ajustado para garantir que a estrutura action/payload chegue correta ao GAS
   post: async (action, payload = {}) => {
     try {
       const response = await axios.post(GAS_URL, {
@@ -20,15 +21,23 @@ export const gasApi = {
   saveVistoria: (dados) => gasApi.post('saveVistoria', dados),
   getViaturas: (apenasEmServico) => gasApi.post('getViaturas', { apenasEmServico }),
   buscarMilitar: (re) => gasApi.post('buscarMilitar', { re }),
-  
-  /**
-   * BUSCA DE EFETIVO COMPLETO PARA CACHE
-   * Utilizada para tornar a busca de militares instantânea no frontend
-   */
   getEfetivoCompleto: () => gasApi.post('getEfetivoCompleto'),
   
   // Rotas do Garageiro
   getVistoriasPendentes: () => gasApi.post('getVistoriasPendentes'),
   confirmarVistoriaGarageiro: (dados) => gasApi.post('confirmarVistoriaGarageiro', dados),
-  alterarStatusViatura: (prefixo, novoStatus) => gasApi.post('alterarStatusViatura', { prefixo, novoStatus })
+  alterarStatusViatura: (prefixo, novoStatus) => gasApi.post('alterarStatusViatura', { prefixo, novoStatus }),
+
+  /**
+   * NOVA: Faz o upload da foto de avaria tirada pelo garageiro
+   */
+  uploadFoto: async (file) => {
+    const reader = new FileReader();
+    const base64Promise = new Promise((resolve) => {
+      reader.onload = () => resolve(reader.result);
+      reader.readAsDataURL(file);
+    });
+    const base64 = await base64Promise;
+    return gasApi.post('uploadFotoGarageiro', { base64, name: file.name });
+  }
 };
