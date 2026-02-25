@@ -22,7 +22,6 @@ const ITENS_SAIDA = [
 ];
 
 const TIPOS_SERVICO = ["Patrulhamento Ordinário", "Operação", "Força Tática", "Patrulha Comunitária", "Patrulhamento Rural", "Outro"];
-const SUB_PAT_LISTA = ["Patrulha Escolar", "Base Móvel", "Patrulha Comercial"];
 
 const Vistoria = ({ onBack }) => {
   const { user } = useAuth();
@@ -36,8 +35,6 @@ const Vistoria = ({ onBack }) => {
   const [tipoVistoria, setTipoVistoria] = useState('ENTRADA');
   const [fotos, setFotos] = useState([]);
   const [protegerFotos, setProtegerFotos] = useState(false);
-
-  // NOVO: State para armazenar o KM de entrada para comparação
   const [kmReferencia, setKmReferencia] = useState(0);
   
   const [formData, setFormData] = useState({
@@ -54,7 +51,6 @@ const Vistoria = ({ onBack }) => {
 
   const toStr = (val) => (val !== undefined && val !== null ? String(val) : '');
 
-  // RESET TOTAL AO ALTERAR TIPO
   const handleTrocaTipo = (novoTipo) => {
     setTipoVistoria(novoTipo);
     setKmReferencia(0);
@@ -79,11 +75,8 @@ const Vistoria = ({ onBack }) => {
         ]);
         if (resVtr.status === 'success') setViaturas(resVtr.data);
         if (resMil.status === 'success') setEfetivoLocal(resMil.data);
-      } catch (e) {
-        console.error("Erro na sincronização inicial");
-      } finally {
-        setLoading(false);
-      }
+      } catch (e) { console.error("Erro na sincronização"); } 
+      finally { setLoading(false); }
     };
     sincronizarDados();
   }, []);
@@ -136,12 +129,13 @@ const Vistoria = ({ onBack }) => {
     const vtr = viaturas.find(v => toStr(v.Prefixo) === toStr(prefixo));
     if (!vtr) return;
 
-    // Guardamos o KM que está no banco para comparação
-    setKmReferencia(Number(vtr.UltimoKM) || 0);
+    const kmAnterior = Number(vtr.UltimoKM) || 0;
+    setKmReferencia(kmAnterior);
 
     if (tipoVistoria === 'SAÍDA') {
-      setFormData(prev => ({
-        ...prev,
+      // INJEÇÃO COMPLETA: Garante que os dados da guarnição e KM sejam salvos no formData
+      setFormData({
+        ...formData,
         prefixo_vtr: toStr(vtr.Prefixo),
         placa_vtr: toStr(vtr.Placa),
         tipo_servico: toStr(vtr.UltimoTipoServico),
@@ -156,13 +150,13 @@ const Vistoria = ({ onBack }) => {
         patrulheiro_unidade: toStr(vtr.UltimoPatrulheiroUnidade) || '1º BPM',
         hodometro: toStr(vtr.UltimoKM),
         videomonitoramento: toStr(vtr.UltimoVideoMonitoramento || '')
-      }));
+      });
     } else {
       setFormData(prev => ({ ...prev, prefixo_vtr: toStr(vtr.Prefixo), placa_vtr: toStr(vtr.Placa) }));
     }
   };
 
-  // VALIDAÇÃO DE KM: Se for saída, o novo KM deve ser estritamente maior que o antigo
+  // VALIDAÇÃO RIGOROSA: Hodômetro de saída não pode ser igual ou menor que o de entrada
   const kmInvalido = tipoVistoria === 'SAÍDA' && Number(formData.hodometro) <= kmReferencia;
 
   const handleFinalizar = async () => {
@@ -240,7 +234,7 @@ const Vistoria = ({ onBack }) => {
                 <div className="grid grid-cols-2 gap-3">
                   <input 
                     type="number" 
-                    className={`vtr-input ${kmInvalido ? 'border-red-500 bg-red-50 text-red-900' : ''}`} 
+                    className={`vtr-input ${kmInvalido ? '!border-red-500 !bg-red-50 text-red-900' : ''}`} 
                     placeholder="Hodômetro" 
                     value={formData.hodometro} 
                     onChange={(e) => setFormData({...formData, hodometro: e.target.value})} 
@@ -283,7 +277,7 @@ const Vistoria = ({ onBack }) => {
               disabled={!formData.prefixo_vtr || !formData.motorista_nome || !formData.comandante_nome || !formData.hodometro || !formData.videomonitoramento || kmInvalido} 
               className={`btn-tatico w-full uppercase flex items-center justify-center gap-2 ${(!formData.prefixo_vtr || !formData.motorista_nome || !formData.comandante_nome || !formData.hodometro || !formData.videomonitoramento || kmInvalido) ? 'opacity-30 grayscale cursor-not-allowed' : 'opacity-100'}`}
             >
-              {kmInvalido ? "KM INVÁLIDO" : "PRÓXIMO"} <ChevronRight/>
+              {kmInvalido ? "KM DEVE SER MAIOR" : "PRÓXIMO"} <ChevronRight/>
             </button>
           </div>
         )}
