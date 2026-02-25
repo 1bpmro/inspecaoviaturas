@@ -51,6 +51,20 @@ const Vistoria = ({ onBack }) => {
 
   const toStr = (val) => (val !== undefined && val !== null ? String(val) : '');
 
+  // FUNÇÃO DE RESET TOTAL DOS CAMPOS AO MUDAR O TIPO
+  const handleTrocaTipo = (novoTipo) => {
+    setTipoVistoria(novoTipo);
+    setFormData({
+      prefixo_vtr: '', placa_vtr: '', hodometro: '', tipo_servico: '', unidade_externa: '',
+      motorista_re: '', motorista_nome: '', motorista_unidade: '',
+      comandante_re: '', comandante_nome: '', comandante_unidade: '',
+      patrulheiro_re: '', patrulheiro_nome: '', patrulheiro_unidade: '',
+      termo_aceite: false
+    });
+    setFotos([]);
+    setStep(1);
+  };
+
   useEffect(() => {
     const sincronizarDados = async () => {
       setLoading(true);
@@ -78,7 +92,6 @@ const Vistoria = ({ onBack }) => {
     let reString = toStr(reRaw).replace(/\D/g, '');
     if (!reString || reString.length < 4) return null;
     
-    // Tenta buscar com 1000 se for curto
     if (reString.length > 0 && reString.length <= 6 && !reString.startsWith("1000")) {
         const comMil = "1000" + reString;
         const militar = efetivoLocal.find(m => toStr(m.re) === comMil);
@@ -88,10 +101,8 @@ const Vistoria = ({ onBack }) => {
     return efetivoLocal.find(m => toStr(m.re) === reString);
   };
 
-  // 1. Enquanto digita: permite apagar e só completa se achar no cache
   const handleMatriculaChange = (valor, cargo) => {
     let reLimpo = toStr(valor).replace(/\D/g, '');
-    
     setFormData(prev => ({ ...prev, [`${cargo}_re`]: reLimpo }));
 
     if (reLimpo.length >= 4) {
@@ -113,7 +124,6 @@ const Vistoria = ({ onBack }) => {
     }
   };
 
-  // 2. Ao sair do campo: Se for RE externo/curto, injeta o 1000 automaticamente
   const handleMatriculaBlur = (cargo) => {
     const reAtual = toStr(formData[`${cargo}_re`]);
     if (reAtual.length > 0 && reAtual.length <= 6 && !reAtual.startsWith("1000")) {
@@ -180,14 +190,15 @@ const Vistoria = ({ onBack }) => {
       </header>
 
       <main className="max-w-xl mx-auto p-4 space-y-6">
+        {/* BOTÕES DE ENTRADA/SAIDA COM RESET */}
         <div className="flex bg-slate-200 dark:bg-slate-800 p-1 rounded-2xl">
-          <button onClick={() => { setTipoVistoria('ENTRADA'); setFormData(f => ({...f, prefixo_vtr: ''})) }} className={`flex-1 py-3 rounded-xl font-black text-[10px] ${tipoVistoria === 'ENTRADA' ? 'bg-green-600 text-white shadow-lg' : 'text-slate-500'}`}>ENTRADA</button>
-          <button onClick={() => { setTipoVistoria('SAÍDA'); setFormData(f => ({...f, prefixo_vtr: ''})) }} className={`flex-1 py-3 rounded-xl font-black text-[10px] ${tipoVistoria === 'SAÍDA' ? 'bg-orange-500 text-white shadow-lg' : 'text-slate-500'}`}>SAÍDA</button>
+          <button onClick={() => handleTrocaTipo('ENTRADA')} className={`flex-1 py-3 rounded-xl font-black text-[10px] ${tipoVistoria === 'ENTRADA' ? 'bg-green-600 text-white shadow-lg' : 'text-slate-500'}`}>ENTRADA</button>
+          <button onClick={() => handleTrocaTipo('SAÍDA')} className={`flex-1 py-3 rounded-xl font-black text-[10px] ${tipoVistoria === 'SAÍDA' ? 'bg-orange-500 text-white shadow-lg' : 'text-slate-500'}`}>SAÍDA</button>
         </div>
 
         {step === 1 && (
           <div className="space-y-6 animate-in fade-in">
-            {loading && <div className="flex items-center justify-center gap-2 text-blue-600 font-black text-[10px] animate-pulse"><Loader2 size={14} className="animate-spin"/> SINCRONIZANDO EFETIVO...</div>}
+            {loading && <div className="flex items-center justify-center gap-2 text-blue-600 font-black text-[10px] animate-pulse"><Loader2 size={14} className="animate-spin"/> SINCRONIZANDO...</div>}
             
             <section className="bg-[var(--bg-card)] rounded-[2.5rem] p-6 shadow-sm border border-[var(--border-color)] space-y-5">
               
@@ -218,9 +229,19 @@ const Vistoria = ({ onBack }) => {
               <div className="grid grid-cols-2 gap-3">
                 <select className="vtr-input !py-4" value={formData.prefixo_vtr} onChange={(e) => handleVtrChange(e.target.value)}>
                   <option value="">VTR</option>
-                  {viaturas.filter(v => tipoVistoria === 'SAÍDA' ? v.Status === 'EM SERVIÇO' : true).map(v => (
-                    <option key={v.Prefixo} value={v.Prefixo}>{v.Prefixo}</option>
-                  ))}
+                  {viaturas
+                    .filter(v => {
+                      if (tipoVistoria === 'SAÍDA') {
+                        return v.Status === 'EM SERVIÇO';
+                      } else {
+                        // Entrada: Filtra apenas as que podem entrar em serviço
+                        return v.Status === 'Operacional' || v.Status === 'DISPONÍVEL';
+                      }
+                    })
+                    .map(v => (
+                      <option key={v.Prefixo} value={v.Prefixo}>{v.Prefixo}</option>
+                    ))
+                  }
                 </select>
                 <select className="vtr-input !py-4" value={formData.tipo_servico} onChange={(e) => setFormData({...formData, tipo_servico: e.target.value, unidade_externa: ''})}>
                   <option value="">SERVIÇO</option>
