@@ -108,23 +108,30 @@ function App() {
   if (!isAuthenticated) return <Login />;
 
   // Renderização condicional das telas
-  const renderView = () => {
-    switch(view) {
-      case 'vistoria': 
-        return <Vistoria onBack={() => setView('dashboard')} />;
-      case 'frota': 
-        return <ConsultarFrota onBack={() => setView('dashboard')} />;
-      case 'garageiro': 
-        // Proteção extra: se não for garageiro/admin, volta pro dashboard
-        if (isGarageiro || isAdmin) {
-          return <Garageiro onBack={() => setView('dashboard')} />;
-        }
+const renderView = () => {
+  switch(view) {
+    case 'vistoria': 
+      // TRAVA DE SEGURANÇA: Garageiro não faz vistoria de motorista
+      if (isGarageiro && !isAdmin) {
+        alert("Acesso negado: Garageiros devem usar o 'Controle de Pátio'.");
         setView('dashboard');
         return null;
-      default: 
-        return <Dashboard onNavigate={(target) => setView(target)} />;
-    }
-  };
+      }
+      return <Vistoria onBack={() => setView('dashboard')} />;
+    
+    case 'frota': 
+      return <ConsultarFrota onBack={() => setView('dashboard')} />;
+    
+    case 'garageiro': 
+      if (isGarageiro || isAdmin) {
+        return <Garageiro onBack={() => setView('dashboard')} />;
+      }
+      setView('dashboard');
+      return null;
+    default: 
+      return <Dashboard onNavigate={(target) => setView(target)} />;
+  }
+};
 
   return renderView();
 }
