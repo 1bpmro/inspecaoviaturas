@@ -49,7 +49,7 @@ const Vistoria = ({ onBack }) => {
   const itensAtuais = tipoVistoria === 'ENTRADA' ? ITENS_ENTRADA : ITENS_SAIDA;
   const temAvaria = Object.values(checklist).includes('FALHA');
 
-  // Helper para evitar erro de .replace() em números ou nulos
+  // Helper fundamental para evitar erro de .replace() em números vindos da planilha
   const toStr = (val) => (val !== undefined && val !== null ? String(val) : '');
 
   useEffect(() => {
@@ -76,27 +76,36 @@ const Vistoria = ({ onBack }) => {
   }, [tipoVistoria, itensAtuais]);
 
   const buscarMilitarNoCache = (reRaw) => {
-    const reString = toStr(reRaw);
+    let reString = toStr(reRaw).replace(/\D/g, '');
     if (!reString || reString.length < 4) return null;
-    let reLimpo = reString.replace(/\D/g, '');
-    if (reLimpo.length > 0 && reLimpo.length <= 6) reLimpo = "1000" + reLimpo;
-    return efetivoLocal.find(m => toStr(m.re) === reLimpo);
+    
+    // Regra do 1000 Universal aplicada na busca
+    if (reString.length > 0 && reString.length <= 6) reString = "1000" + reString;
+    
+    return efetivoLocal.find(m => toStr(m.re) === reString);
   };
 
   const handleMatriculaChange = (valor, cargo) => {
-    const valStr = toStr(valor);
-    const militar = buscarMilitarNoCache(valStr);
+    let reLimpo = toStr(valor).replace(/\D/g, '');
+    
+    // REGRA DO 1000 UNIVERSAL: Se o RE for curto, injeta o 1000 na frente na hora de salvar no estado
+    if (reLimpo.length > 0 && reLimpo.length <= 6) {
+      reLimpo = "1000" + reLimpo;
+    }
+
+    const militar = buscarMilitarNoCache(reLimpo);
+    
     if (militar) {
       setFormData(prev => ({
         ...prev,
-        [`${cargo}_re`]: valStr,
+        [`${cargo}_re`]: reLimpo,
         [`${cargo}_nome`]: `${militar.patente} ${militar.nome}`,
         [`${cargo}_unidade`]: militar.unidade || '1º BPM'
       }));
     } else {
       setFormData(prev => ({ 
         ...prev, 
-        [`${cargo}_re`]: valStr, 
+        [`${cargo}_re`]: reLimpo, 
         [`${cargo}_nome`]: '', 
         [`${cargo}_unidade`]: '' 
       }));
@@ -223,7 +232,7 @@ const Vistoria = ({ onBack }) => {
 
               {['motorista', 'comandante', 'patrulheiro'].map(cargo => {
                 const militar = buscarMilitarNoCache(formData[`${cargo}_re`]);
-                const digitouOito = toStr(formData[`${cargo}_re`]).length >= 7;
+                const digitouOito = toStr(formData[`${cargo}_re`]).length >= 8;
 
                 return (
                   <div key={cargo} className="space-y-1 pt-2">
@@ -260,7 +269,16 @@ const Vistoria = ({ onBack }) => {
                 );
               })}
             </section>
-            <button onClick={() => setStep(2)} disabled={!formData.prefixo_vtr} className="btn-tatico w-full uppercase">Itens de Inspeção <ChevronRight/></button>
+            
+            {/* BOTÃO COM TRAVA DE SEGURANÇA: VTR + MOTORISTA + COMANDANTE OBRIGATÓRIOS */}
+            <button 
+              onClick={() => setStep(2)} 
+              disabled={!formData.prefixo_vtr || !formData.motorista_nome || !formData.comandante_nome} 
+              className={`btn-tatico w-full uppercase transition-all flex items-center justify-center gap-2 ${(!formData.prefixo_vtr || !formData.motorista_nome || !formData.comandante_nome) ? 'opacity-30 grayscale cursor-not-allowed' : 'opacity-100'}`}
+            >
+              {(!formData.motorista_nome || !formData.comandante_nome) ? "Identifique a Guarnição" : "Itens de Inspeção"}
+              <ChevronRight/>
+            </button>
           </div>
         )}
 
