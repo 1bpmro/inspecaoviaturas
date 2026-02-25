@@ -3,7 +3,7 @@ import { useAuth } from './lib/AuthContext';
 import Login from './pages/Login';
 import Vistoria from './pages/Vistoria';
 import ConsultarFrota from './pages/ConsultarFrota';
-import Garageiro from './pages/Garageiro'; 
+import Garageiro from './pages/GarageiroDashboard'; 
 import { ClipboardCheck, LogOut, Car, Shield, ShieldCheck } from 'lucide-react';
 
 const Dashboard = ({ onNavigate }) => {
