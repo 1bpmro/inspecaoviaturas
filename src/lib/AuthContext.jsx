@@ -26,24 +26,33 @@ export const AuthProvider = ({ children }) => {
 
   // Efeito para monitorar F5 e Inatividade
   useEffect(() => {
-    // 1. No carregamento (se deu F5), limpa o storage e força logout
-    sessionStorage.removeItem('1bpm_user_session');
-    setUser(null);
+    // Detecta se a página foi recarregada (F5)
+    // Se o tipo de navegação for 'reload', nós matamos a sessão
+    const perfEntries = window.performance.getEntriesByType("navigation");
+    const isReload = perfEntries.length > 0 && perfEntries[0].type === "reload";
+
+    if (isReload) {
+      sessionStorage.removeItem('1bpm_user_session');
+      setUser(null);
+    }
+
     setLoading(false);
 
-    // 2. Se o usuário estiver logado, monitora interações
+    // Monitor de interações - só ativa se houver usuário logado
     if (user) {
       const events = ['mousedown', 'mousemove', 'keypress', 'scroll', 'touchstart'];
       
+      const handleInteraction = () => resetInactivityTimer();
+
       events.forEach(event => {
-        window.addEventListener(event, resetInactivityTimer);
+        window.addEventListener(event, handleInteraction);
       });
 
       resetInactivityTimer(); // Inicia o timer
 
       return () => {
         events.forEach(event => {
-          window.removeEventListener(event, resetInactivityTimer);
+          window.removeEventListener(event, handleInteraction);
         });
         if (inactivityTimer.current) clearTimeout(inactivityTimer.current);
       };
@@ -55,7 +64,7 @@ export const AuthProvider = ({ children }) => {
       const res = await gasApi.login(re, senha);
       if (res.status === 'success') {
         setUser(res.user);
-        // Usando sessionStorage: os dados somem ao fechar a aba
+        // sessionStorage ajuda no isolamento da aba
         sessionStorage.setItem('1bpm_user_session', JSON.stringify(res.user));
         return { success: true };
       } else {
