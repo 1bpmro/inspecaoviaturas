@@ -16,10 +16,17 @@ const ITENS_ENTRADA = [
   "Bancos", "Forro Interno", "Tapetes", "Protetor Dianteiro", "Regulador dos Bancos"
 ];
 
-const ITENS_SAIDA = [
-  "Viatura Entregue Limpa", "Viatura em Condições de Uso", "Avarias Constatadas",
-  "Limpeza Interna", "Limpeza Externa", "Pertences da Guarnição Retirados"
-];
+// Mapeamento para inversão lógica na Saída
+const MAPA_FALHAS_SAIDA = {
+  "Viatura Entregue Limpa": "VIATURA ENTREGUE SUJA",
+  "Viatura em Condições de Uso": "VIATURA SEM CONDIÇÕES DE USO",
+  "Avarias Constatadas": "AVARIAS CONSTATADAS",
+  "Limpeza Interna": "SEM LIMPEZA INTERNA",
+  "Limpeza Externa": "SEM LIMPEZA EXTERNA",
+  "Pertences da Guarnição Retirados": "ENCONTRADO PERTENCES DA GUARNIÇÃO"
+};
+
+const ITENS_SAIDA = Object.keys(MAPA_FALHAS_SAIDA);
 
 const TIPOS_SERVICO = ["Patrulhamento Ordinário", "Operação", "Força Tática", "Patrulha Comunitária", "Patrulhamento Rural", "Outro"];
 
@@ -37,7 +44,6 @@ const Vistoria = ({ onBack }) => {
   const [protegerFotos, setProtegerFotos] = useState(false);
   const [kmReferencia, setKmReferencia] = useState(0);
   
-  // NOMES DE CHAVES AJUSTADOS PARA BATER COM O Código.gs
   const [formData, setFormData] = useState({
     prefixo_vtr: '', 
     placa_vtr: '', 
@@ -56,6 +62,20 @@ const Vistoria = ({ onBack }) => {
   const temAvaria = Object.values(checklist).includes('FALHA');
 
   const toStr = (val) => (val !== undefined && val !== null ? String(val) : '');
+
+  // Nova função para gerar o texto do checklist_resumo conforme a lógica solicitada
+  const formatarResumoChecklist = () => {
+    const falhas = Object.entries(checklist).filter(([_, status]) => status === 'FALHA').map(([item]) => item);
+    
+    if (falhas.length === 0) return "SEM ALTERAÇÕES";
+
+    if (tipoVistoria === 'ENTRADA') {
+      return `FALHA NOS SEGUINTES ITENS: (${falhas.join(', ')})`;
+    } else {
+      // Para Saída, converte o item do frontend para o texto de falha real
+      return falhas.map(item => MAPA_FALHAS_SAIDA[item] || item).join(', ');
+    }
+  };
 
   const handleTrocaTipo = (novoTipo) => {
     setTipoVistoria(novoTipo);
@@ -89,7 +109,7 @@ const Vistoria = ({ onBack }) => {
 
   useEffect(() => {
     setChecklist(itensAtuais.reduce((acc, item) => ({ ...acc, [item]: 'OK' }), {}));
-  }, [tipoVistoria, itensAtuais]);
+  }, [tipoVistoria]);
 
   const buscarMilitarNoCache = (reRaw) => {
     let reString = toStr(reRaw).replace(/\D/g, '');
@@ -174,9 +194,7 @@ const Vistoria = ({ onBack }) => {
       const payloadFinal = {
         ...formData,
         tipo_vistoria: tipoVistoria,
-        checklist_resumo: Object.entries(checklist)
-          .filter(([_, s]) => s === 'FALHA')
-          .map(([i]) => i).join(', ') || "SEM ALTERAÇÕES",
+        checklist_resumo: formatarResumoChecklist(),
         fotos_vistoria: fotos,
         proteger_ocorrencia: protegerFotos,
         militar_logado: `${user.patente} ${user.nome}`,
@@ -253,7 +271,6 @@ const Vistoria = ({ onBack }) => {
                 </select>
               </div>
 
-              {/* CAMPOS DINÂMICOS - ALINHADOS COM O CABEÇALHO DO SCRIPT */}
               {(formData.tipo_servico === 'Operação' || formData.tipo_servico === 'Outro') && (
                 <div className="animate-in slide-in-from-top-2">
                    <input 
@@ -317,7 +334,6 @@ const Vistoria = ({ onBack }) => {
                     onChange={(e) => handleMatriculaChange(e.target.value, cargo)}
                     onBlur={() => handleMatriculaBlur(cargo)}
                   />
-                  {/* Cadastro de Militar Externo */}
                   {formData[`${cargo}_re`].length >= 4 && !buscarMilitarNoCache(formData[`${cargo}_re`]) && (
                     <div className="grid grid-cols-1 gap-2 p-3 bg-blue-50 dark:bg-blue-900/10 border border-blue-200 rounded-2xl animate-in zoom-in-95">
                       <p className="text-[8px] font-black text-blue-600 uppercase">Militar Externo/Novo</p>
@@ -384,9 +400,20 @@ const Vistoria = ({ onBack }) => {
               </div>
             </div>
 
-            <label className="flex items-center gap-3 p-5 bg-[var(--bg-card)] border-2 border-[var(--border-color)] rounded-3xl cursor-pointer hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors">
-              <input type="checkbox" className="w-6 h-6 rounded-lg text-blue-600" checked={formData.termo_aceite} onChange={(e) => setFormData({...formData, termo_aceite: e.target.checked})} />
-              <span className="text-[10px] font-black uppercase leading-tight text-slate-500">Confirmo que as informações relatadas são verídicas e condizem com o estado real da viatura.</span>
+            {/* TERMOS DE RESPONSABILIDADE PERSONALIZADOS */}
+            <label className="flex items-start gap-4 p-5 bg-[var(--bg-card)] border-2 border-[var(--border-color)] rounded-3xl cursor-pointer hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors">
+              <input type="checkbox" className="w-6 h-6 mt-1 rounded-lg text-blue-600" checked={formData.termo_aceite} onChange={(e) => setFormData({...formData, termo_aceite: e.target.checked})} />
+              <div className="text-[10px] font-black uppercase leading-relaxed text-slate-600 dark:text-slate-400">
+                {tipoVistoria === 'ENTRADA' ? (
+                  <p>
+                    <span className="text-blue-600">TERMO DE RESPONSABILIDADE:</span> EU, <span className="text-slate-900 dark:text-white underline">{formData.motorista_nome || '[NOME DO MOTORISTA]'}</span>, declaro ter recebido a viatura <span className="text-slate-900 dark:text-white underline">{formData.prefixo_vtr || '[PREFIXO]'}</span> nas condições descritas conforme este formulário de inspeção de viatura, e me responsabilizando por seu uso. Informo que <span className="bg-yellow-300 text-black px-1">LI TODAS AS CONDIÇÕES ACIMA</span> e concordo com todas as condições descritas.
+                  </p>
+                ) : (
+                  <p>
+                    <span className="text-orange-600">TERMO DE ENTREGA:</span> EU, <span className="text-slate-900 dark:text-white underline">{formData.motorista_nome || '[NOME DO MOTORISTA]'}</span>, declaro estar entregando a viatura <span className="text-slate-900 dark:text-white underline">{formData.prefixo_vtr || '[PREFIXO]'}</span> nas condições descritas neste formulário. Confirmo que <span className="bg-yellow-300 text-black px-1">LI E VERIFIQUEI TODAS AS INFORMAÇÕES</span> e estou ciente das condições de entrega.
+                  </p>
+                )}
+              </div>
             </label>
 
             <div className="flex gap-2">
