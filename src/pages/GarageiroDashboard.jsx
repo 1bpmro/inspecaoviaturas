@@ -6,19 +6,17 @@ import {
   Search, ShieldCheck, Lock, Unlock, History, Camera, User, X
 } from 'lucide-react';
 
-const GarageiroDashboard = () => {
+const GarageiroDashboard = ({ onBack }) => {
   const { user } = useAuth();
   const [tab, setTab] = useState('pendentes'); 
   const [vistorias, setVistorias] = useState([]);
   const [viaturas, setViaturas] = useState([]);
   const [loading, setLoading] = useState(true);
   
-  // Estados do Modal de Conferência
   const [showModal, setShowModal] = useState(false);
   const [selectedVtr, setSelectedVtr] = useState(null);
   const [conf, setConf] = useState({ limpa: false, motoristaOk: false, avaria: false, obs: '' });
   
-  // Estados para Foto de Avaria
   const [fotoAvaria, setFotoAvaria] = useState(null);
   const [uploading, setUploading] = useState(false);
 
@@ -43,10 +41,8 @@ const GarageiroDashboard = () => {
   const handleFileChange = async (e) => {
     const file = e.target.files[0];
     if (!file) return;
-
     setUploading(true);
     try {
-      // Chama sua API de upload (ajuste o nome do método se necessário no seu gasClient)
       const res = await gasApi.uploadFoto(file); 
       if (res.status === 'success') {
         setFotoAvaria(res.url);
@@ -70,12 +66,11 @@ const GarageiroDashboard = () => {
       limpeza: conf.limpa ? 'LIMPA' : 'SUJA',
       obs_garageiro: conf.obs,
       garageiro_re: user.re,
-      foto_avaria: fotoAvaria // Enviando o link da foto para a nova aba
+      foto_avaria: fotoAvaria 
     });
 
     if (res.status === 'success') {
       setShowModal(false);
-      // Reset total dos estados
       setFotoAvaria(null);
       setConf({ limpa: false, motoristaOk: false, avaria: false, obs: '' });
       fetchData();
@@ -84,26 +79,27 @@ const GarageiroDashboard = () => {
 
   return (
     <div className="min-h-screen bg-slate-100 flex flex-col">
-      {/* NAV SUPERIOR */}
       <header className="bg-slate-900 text-white p-4 shadow-xl border-b-4 border-amber-500">
         <div className="max-w-6xl mx-auto flex justify-between items-center">
           <div className="flex items-center gap-3">
+            <button onClick={onBack} className="p-2 hover:bg-slate-800 rounded-lg transition-colors">
+               <X size={20} />
+            </button>
             <div className="bg-amber-500 p-2 rounded-lg text-slate-900">
               <ShieldCheck size={24} />
             </div>
             <div>
-              <h1 className="font-black uppercase tracking-tighter text-lg">Fiscalização de Pátio</h1>
-              <p className="text-[10px] font-bold text-amber-500 uppercase tracking-widest">1º BPM - Rondon • Sala de Monitoramento</p>
+              <h1 className="font-black uppercase tracking-tighter text-lg leading-none">Fiscalização de Pátio</h1>
+              <p className="text-[10px] font-bold text-amber-500 uppercase tracking-widest">1º BPM - Rondon</p>
             </div>
           </div>
           <div className="text-right">
-            <p className="text-[10px] text-slate-400 font-bold uppercase">Garageiro de Serviço</p>
+            <p className="text-[10px] text-slate-400 font-bold uppercase">Garageiro</p>
             <p className="text-sm font-black text-white">{user?.patente} {user?.nome}</p>
           </div>
         </div>
       </header>
 
-      {/* TABS */}
       <nav className="bg-white border-b border-slate-200 sticky top-0 z-10">
         <div className="max-w-6xl mx-auto flex">
           <button onClick={() => setTab('pendentes')} className={`flex-1 p-4 text-xs font-black uppercase transition-all border-b-2 ${tab === 'pendentes' ? 'border-amber-500 text-amber-600 bg-amber-50/50' : 'border-transparent text-slate-400'}`}>
@@ -113,7 +109,7 @@ const GarageiroDashboard = () => {
           </button>
           <button onClick={() => setTab('frota')} className={`flex-1 p-4 text-xs font-black uppercase transition-all border-b-2 ${tab === 'frota' ? 'border-amber-500 text-amber-600 bg-amber-50/50' : 'border-transparent text-slate-400'}`}>
             <span className="flex items-center justify-center gap-2">
-              <Car size={16} /> Frota Total
+              <Car size={16} /> Frota Total ({viaturas.length})
             </span>
           </button>
         </div>
@@ -121,32 +117,29 @@ const GarageiroDashboard = () => {
 
       <main className="p-4 max-w-6xl mx-auto w-full flex-1">
         {loading ? (
-           <div className="py-20 text-center animate-pulse font-black text-slate-400 uppercase text-xs">Sincronizando com a nuvem...</div>
+           <div className="py-20 text-center animate-pulse font-black text-slate-400 uppercase text-xs">Sincronizando...</div>
         ) : (
           <>
             {tab === 'pendentes' && (
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
                 {vistorias.length === 0 ? (
                   <div className="col-span-full py-20 text-center bg-white rounded-[2rem] border-2 border-dashed border-slate-200">
-                    <p className="text-slate-400 font-bold uppercase text-xs">Nenhuma VTR aguardando no portão.</p>
+                    <p className="text-slate-400 font-bold uppercase text-xs">Nenhum check-in pendente.</p>
                   </div>
                 ) : vistorias.map((vtr, i) => (
-                  <div key={i} className="bg-white border-2 border-slate-200 rounded-[2rem] p-5 shadow-sm hover:border-amber-400 transition-all group">
+                  <div key={i} className="bg-white border-2 border-slate-200 rounded-[2rem] p-5 shadow-sm hover:border-amber-400 transition-all">
                     <div className="flex justify-between items-start mb-4">
-                      <span className="text-3xl font-black text-slate-900 tracking-tighter">{vtr.prefixo_vtr}</span>
+                      <span className="text-3xl font-black text-slate-900 tracking-tighter">{vtr.prefixo_vtr || vtr.Prefixo}</span>
                       <span className="bg-blue-100 text-blue-700 px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-widest">Devolução</span>
                     </div>
                     <div className="space-y-1 mb-6">
                       <p className="text-xs font-bold text-slate-500 uppercase flex items-center gap-1">
                          <User size={12} /> {vtr.motorista_nome}
                       </p>
-                      <p className="text-[10px] text-slate-400 font-bold uppercase tracking-tight">Enviado às: {vtr.Data_Hora}</p>
+                      <p className="text-[10px] text-slate-400 font-bold uppercase">Enviado em: {vtr.Data_Hora}</p>
                     </div>
-                    <button 
-                      onClick={() => { setSelectedVtr(vtr); setShowModal(true); }}
-                      className="w-full py-4 bg-slate-900 text-white rounded-2xl font-black uppercase text-xs tracking-widest hover:bg-amber-600 transition-all flex items-center justify-center gap-2"
-                    >
-                      <CheckCircle2 size={16} /> Iniciar Conferência Física
+                    <button onClick={() => { setSelectedVtr(vtr); setShowModal(true); }} className="w-full py-4 bg-slate-900 text-white rounded-2xl font-black uppercase text-xs tracking-widest hover:bg-amber-600 transition-all flex items-center justify-center gap-2">
+                      <CheckCircle2 size={16} /> Iniciar Conferência
                     </button>
                   </div>
                 ))}
@@ -164,24 +157,32 @@ const GarageiroDashboard = () => {
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-100 font-bold uppercase">
-                    {viaturas.map((v, i) => (
-                      <tr key={i} className="hover:bg-slate-50 transition-colors">
-                        <td className="p-4">
-                          <p className="font-black text-slate-800">{v.prefixo}</p>
-                          <p className="text-[10px] text-slate-400">{v.placa}</p>
-                        </td>
-                        <td className="p-4">
-                          <span className={`text-[9px] font-black px-2 py-1 rounded-md ${v.status === 'disponivel' ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'}`}>
-                            {v.status}
-                          </span>
-                        </td>
-                        <td className="p-4 text-right">
-                          <button className="text-slate-400 hover:text-amber-600 transition-colors p-2">
-                             {v.status === 'disponivel' ? <Lock size={18} /> : <Unlock size={18} />}
-                          </button>
-                        </td>
-                      </tr>
-                    ))}
+                    {viaturas.map((v, i) => {
+                      // Normalização para aceitar "Status" ou "status" e "EM SERVIÇO" ou "disponivel"
+                      const s = (v.Status || v.status || "").toString().toUpperCase();
+                      const prefixo = v.Prefixo || v.prefixo;
+                      const placa = v.Placa || v.placa;
+                      const isDisponivel = s.includes("DISPON") || s === "OK";
+
+                      return (
+                        <tr key={i} className="hover:bg-slate-50 transition-colors">
+                          <td className="p-4">
+                            <p className="font-black text-slate-800">{prefixo}</p>
+                            <p className="text-[10px] text-slate-400">{placa}</p>
+                          </td>
+                          <td className="p-4">
+                            <span className={`text-[9px] font-black px-2 py-1 rounded-md ${isDisponivel ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'}`}>
+                              {s || "S/ INF"}
+                            </span>
+                          </td>
+                          <td className="p-4 text-right">
+                            <button className="text-slate-400 hover:text-amber-600 transition-colors p-2">
+                               {isDisponivel ? <Lock size={18} /> : <Unlock size={18} />}
+                            </button>
+                          </td>
+                        </tr>
+                      );
+                    })}
                   </tbody>
                 </table>
               </div>
@@ -190,13 +191,12 @@ const GarageiroDashboard = () => {
         )}
       </main>
 
-      {/* MODAL DE CONFERÊNCIA */}
       {showModal && selectedVtr && (
         <div className="fixed inset-0 bg-slate-900/80 backdrop-blur-sm z-50 flex items-center justify-center p-4">
           <div className="bg-white w-full max-w-lg rounded-[2.5rem] shadow-2xl overflow-hidden animate-in fade-in zoom-in duration-300">
             <div className="bg-slate-900 p-6 text-white flex justify-between items-center">
               <div>
-                <h2 className="text-2xl font-black tracking-tighter uppercase">Check-in VTR {selectedVtr.prefixo_vtr}</h2>
+                <h2 className="text-2xl font-black tracking-tighter uppercase">Check-in VTR {selectedVtr.prefixo_vtr || selectedVtr.Prefixo}</h2>
                 <p className="text-[10px] text-amber-500 font-black uppercase tracking-widest">Conferência de Devolução</p>
               </div>
               <button onClick={() => { setShowModal(false); setFotoAvaria(null); }} className="text-slate-400 hover:text-white"><X /></button>
@@ -220,11 +220,9 @@ const GarageiroDashboard = () => {
                 </label>
               </div>
 
-              {/* CAMPO DE FOTO CONDICIONAL */}
               {conf.avaria && (
                 <div className="p-4 bg-red-50 border-2 border-dashed border-red-200 rounded-2xl animate-in slide-in-from-top-2">
                   <p className="text-[10px] font-black text-red-600 uppercase mb-2 tracking-widest text-center">📸 Registro Obrigatório da Avaria</p>
-                  
                   <label className="flex flex-col items-center justify-center gap-2 cursor-pointer py-4 bg-white hover:bg-red-100 transition-all rounded-xl shadow-inner min-h-[140px]">
                     {fotoAvaria ? (
                       <div className="relative w-full px-2">
@@ -239,7 +237,6 @@ const GarageiroDashboard = () => {
                     )}
                     <input type="file" accept="image/*" capture="environment" className="hidden" onChange={handleFileChange} disabled={uploading} />
                   </label>
-                  {uploading && <p className="text-center text-[9px] font-bold text-red-500 animate-pulse mt-2">ENVIANDO PROVA PARA O SISTEMA...</p>}
                 </div>
               )}
 
