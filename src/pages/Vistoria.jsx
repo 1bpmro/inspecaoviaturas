@@ -125,7 +125,7 @@ const Vistoria = ({ onBack }) => {
     }
   };
 
- const handleVtrChange = (prefixo) => {
+  const handleVtrChange = (prefixo) => {
     const vtr = viaturas.find(v => toStr(v.Prefixo) === toStr(prefixo));
     if (!vtr) return;
 
@@ -133,13 +133,11 @@ const Vistoria = ({ onBack }) => {
     setKmReferencia(kmAnterior);
 
     if (tipoVistoria === 'SAÍDA') {
-      // FORÇANDO a atualização de todos os campos de uma vez
       const novosDados = {
         ...formData,
         prefixo_vtr: toStr(vtr.Prefixo),
         placa_vtr: toStr(vtr.Placa),
         tipo_servico: toStr(vtr.UltimoTipoServico) || '',
-        // Dados da Guarnição vindo do Banco
         motorista_re: toStr(vtr.UltimoMotoristaRE),
         motorista_nome: toStr(vtr.UltimoMotoristaNome),
         motorista_unidade: toStr(vtr.UltimoMotoristaUnidade) || '1º BPM',
@@ -149,11 +147,9 @@ const Vistoria = ({ onBack }) => {
         patrulheiro_re: toStr(vtr.UltimoPatrulheiroRE),
         patrulheiro_nome: toStr(vtr.UltimoPatrulheiroNome),
         patrulheiro_unidade: toStr(vtr.UltimoPatrulheiroUnidade) || '1º BPM',
-        // Hodômetro inicia com o valor de referência para o usuário editar
         hodometro: toStr(vtr.UltimoKM),
         videomonitoramento: toStr(vtr.UltimoVideoMonitoramento || '')
       };
-      
       setFormData(novosDados);
     } else {
       setFormData(prev => ({ 
@@ -164,7 +160,6 @@ const Vistoria = ({ onBack }) => {
     }
   };
 
-  // VALIDAÇÃO RIGOROSA: Hodômetro de saída não pode ser igual ou menor que o de entrada
   const kmInvalido = tipoVistoria === 'SAÍDA' && Number(formData.hodometro) <= kmReferencia;
 
   const handleFinalizar = async () => {
@@ -238,24 +233,57 @@ const Vistoria = ({ onBack }) => {
                 </select>
               </div>
 
-              <div className="space-y-2">
-                <div className="grid grid-cols-2 gap-3">
-                  <input 
-                    type="number" 
-                    className={`vtr-input ${kmInvalido ? '!border-red-500 !bg-red-50 text-red-900' : ''}`} 
-                    placeholder="Hodômetro" 
-                    value={formData.hodometro} 
-                    onChange={(e) => setFormData({...formData, hodometro: e.target.value})} 
+              {/* CAMPOS DINÂMICOS DE SERVIÇO */}
+              {(formData.tipo_servico === 'Operação' || formData.tipo_servico === 'Outro') && (
+                <div className="animate-in slide-in-from-top-2">
+                   <input 
+                    placeholder={formData.tipo_servico === 'Operação' ? "NOME DA OPERAÇÃO" : "DESCREVA O SERVIÇO"} 
+                    className="vtr-input w-full !border-blue-500 !bg-blue-50/10" 
+                    value={formData.unidade_externa} 
+                    onChange={(e) => setFormData({...formData, unidade_externa: e.target.value.toUpperCase()})} 
                   />
-                  <select className="vtr-input" value={formData.videomonitoramento} onChange={(e) => setFormData({...formData, videomonitoramento: e.target.value})}>
-                    <option value="">VÍDEO</option>
-                    <option value="OPERANTE">OPERANTE</option>
-                    <option value="INOPERANTE">INOPERANTE</option>
-                    <option value="NÃO POSSUI">NÃO POSSUI</option>
+                </div>
+              )}
+
+              {formData.tipo_servico === 'Patrulha Comunitária' && (
+                <div className="animate-in slide-in-from-top-2">
+                  <select 
+                    className="vtr-input w-full !border-blue-500 !bg-blue-50/10" 
+                    value={formData.unidade_externa} 
+                    onChange={(e) => setFormData({...formData, unidade_externa: e.target.value})}
+                  >
+                    <option value="">MODALIDADE COMUNITÁRIA</option>
+                    <option value="Patrulha Comercial">Patrulha Comercial</option>
+                    <option value="Patrulha Escolar">Patrulha Escolar</option>
+                    <option value="Base Móvel">Base Móvel</option>
                   </select>
                 </div>
+              )}
+
+              <div className="space-y-1">
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="space-y-1">
+                    <span className="text-[9px] font-black text-slate-400 ml-2 uppercase">Hodômetro</span>
+                    <input 
+                      type="number" 
+                      className={`vtr-input ${kmInvalido ? '!border-red-500 !bg-red-50 text-red-900' : ''}`} 
+                      placeholder="KM ATUAL" 
+                      value={formData.hodometro} 
+                      onChange={(e) => setFormData({...formData, hodometro: e.target.value})} 
+                    />
+                  </div>
+                  <div className="space-y-1">
+                    <span className="text-[9px] font-black text-slate-400 ml-2 uppercase">Videomonitoramento</span>
+                    <select className="vtr-input text-[10px]" value={formData.videomonitoramento} onChange={(e) => setFormData({...formData, videomonitoramento: e.target.value})}>
+                      <option value="">SELECIONE</option>
+                      <option value="OPERANTE">OPERANTE</option>
+                      <option value="INOPERANTE">INOPERANTE</option>
+                      <option value="NÃO POSSUI">NÃO POSSUI</option>
+                    </select>
+                  </div>
+                </div>
                 {kmInvalido && (
-                  <p className="text-[9px] font-black text-red-600 flex items-center gap-1 animate-pulse">
+                  <p className="text-[9px] font-black text-red-600 flex items-center gap-1 animate-pulse ml-2">
                     <AlertTriangle size={10}/> KM DEVE SER MAIOR QUE O DE ENTRADA ({kmReferencia})
                   </p>
                 )}
