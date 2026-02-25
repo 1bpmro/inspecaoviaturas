@@ -4,7 +4,7 @@ import { gasApi } from '../api/gasClient';
 import imageCompression from 'browser-image-compression';
 import { 
   ArrowLeft, CheckCircle2, ChevronRight, Loader2, Camera, X, Plus, 
-  Car, Users, ShieldAlert, AlertTriangle, Lock, Unlock, UserPlus, Building2
+  Car, Users, ShieldAlert, AlertTriangle, Lock, Unlock, UserPlus, Building2, Monitor
 } from 'lucide-react';
 
 const ITENS_ENTRADA = [
@@ -36,9 +36,12 @@ const Vistoria = ({ onBack }) => {
   const [tipoVistoria, setTipoVistoria] = useState('ENTRADA');
   const [fotos, setFotos] = useState([]);
   const [protegerFotos, setProtegerFotos] = useState(false);
+
+  // NOVO: State para armazenar o KM de entrada para comparação
+  const [kmReferencia, setKmReferencia] = useState(0);
   
   const [formData, setFormData] = useState({
-    prefixo_vtr: '', placa_vtr: '', hodometro: '', tipo_servico: '', unidade_externa: '',
+    prefixo_vtr: '', placa_vtr: '', hodometro: '', videomonitoramento: '', tipo_servico: '', unidade_externa: '',
     motorista_re: '', motorista_nome: '', motorista_unidade: '',
     comandante_re: '', comandante_nome: '', comandante_unidade: '',
     patrulheiro_re: '', patrulheiro_nome: '', patrulheiro_unidade: '',
@@ -51,11 +54,12 @@ const Vistoria = ({ onBack }) => {
 
   const toStr = (val) => (val !== undefined && val !== null ? String(val) : '');
 
-  // FUNÇÃO DE RESET TOTAL DOS CAMPOS AO MUDAR O TIPO
+  // RESET TOTAL AO ALTERAR TIPO
   const handleTrocaTipo = (novoTipo) => {
     setTipoVistoria(novoTipo);
+    setKmReferencia(0);
     setFormData({
-      prefixo_vtr: '', placa_vtr: '', hodometro: '', tipo_servico: '', unidade_externa: '',
+      prefixo_vtr: '', placa_vtr: '', hodometro: '', videomonitoramento: '', tipo_servico: '', unidade_externa: '',
       motorista_re: '', motorista_nome: '', motorista_unidade: '',
       comandante_re: '', comandante_nome: '', comandante_unidade: '',
       patrulheiro_re: '', patrulheiro_nome: '', patrulheiro_unidade: '',
@@ -91,13 +95,11 @@ const Vistoria = ({ onBack }) => {
   const buscarMilitarNoCache = (reRaw) => {
     let reString = toStr(reRaw).replace(/\D/g, '');
     if (!reString || reString.length < 4) return null;
-    
     if (reString.length > 0 && reString.length <= 6 && !reString.startsWith("1000")) {
         const comMil = "1000" + reString;
         const militar = efetivoLocal.find(m => toStr(m.re) === comMil);
         if (militar) return militar;
     }
-    
     return efetivoLocal.find(m => toStr(m.re) === reString);
   };
 
@@ -108,7 +110,6 @@ const Vistoria = ({ onBack }) => {
     if (reLimpo.length >= 4) {
       let reParaBusca = (reLimpo.length <= 6 && !reLimpo.startsWith("1000")) ? "1000" + reLimpo : reLimpo;
       const militar = buscarMilitarNoCache(reParaBusca);
-
       if (militar) {
         setFormData(prev => ({
           ...prev,
@@ -127,16 +128,16 @@ const Vistoria = ({ onBack }) => {
   const handleMatriculaBlur = (cargo) => {
     const reAtual = toStr(formData[`${cargo}_re`]);
     if (reAtual.length > 0 && reAtual.length <= 6 && !reAtual.startsWith("1000")) {
-      setFormData(prev => ({
-        ...prev,
-        [`${cargo}_re`]: "1000" + reAtual
-      }));
+      setFormData(prev => ({ ...prev, [`${cargo}_re`]: "1000" + reAtual }));
     }
   };
 
   const handleVtrChange = (prefixo) => {
     const vtr = viaturas.find(v => toStr(v.Prefixo) === toStr(prefixo));
     if (!vtr) return;
+
+    // Guardamos o KM que está no banco para comparação
+    setKmReferencia(Number(vtr.UltimoKM) || 0);
 
     if (tipoVistoria === 'SAÍDA') {
       setFormData(prev => ({
@@ -153,12 +154,16 @@ const Vistoria = ({ onBack }) => {
         patrulheiro_re: toStr(vtr.UltimoPatrulheiroRE),
         patrulheiro_nome: toStr(vtr.UltimoPatrulheiroNome),
         patrulheiro_unidade: toStr(vtr.UltimoPatrulheiroUnidade) || '1º BPM',
-        hodometro: toStr(vtr.UltimoKM)
+        hodometro: toStr(vtr.UltimoKM),
+        videomonitoramento: toStr(vtr.UltimoVideoMonitoramento || '')
       }));
     } else {
       setFormData(prev => ({ ...prev, prefixo_vtr: toStr(vtr.Prefixo), placa_vtr: toStr(vtr.Placa) }));
     }
   };
+
+  // VALIDAÇÃO DE KM: Se for saída, o novo KM deve ser estritamente maior que o antigo
+  const kmInvalido = tipoVistoria === 'SAÍDA' && Number(formData.hodometro) <= kmReferencia;
 
   const handleFinalizar = async () => {
     if (temAvaria && fotos.length === 0) return alert("Obrigatório foto para itens em FALHA.");
@@ -190,7 +195,6 @@ const Vistoria = ({ onBack }) => {
       </header>
 
       <main className="max-w-xl mx-auto p-4 space-y-6">
-        {/* BOTÕES DE ENTRADA/SAIDA COM RESET */}
         <div className="flex bg-slate-200 dark:bg-slate-800 p-1 rounded-2xl">
           <button onClick={() => handleTrocaTipo('ENTRADA')} className={`flex-1 py-3 rounded-xl font-black text-[10px] ${tipoVistoria === 'ENTRADA' ? 'bg-green-600 text-white shadow-lg' : 'text-slate-500'}`}>ENTRADA</button>
           <button onClick={() => handleTrocaTipo('SAÍDA')} className={`flex-1 py-3 rounded-xl font-black text-[10px] ${tipoVistoria === 'SAÍDA' ? 'bg-orange-500 text-white shadow-lg' : 'text-slate-500'}`}>SAÍDA</button>
@@ -198,8 +202,6 @@ const Vistoria = ({ onBack }) => {
 
         {step === 1 && (
           <div className="space-y-6 animate-in fade-in">
-            {loading && <div className="flex items-center justify-center gap-2 text-blue-600 font-black text-[10px] animate-pulse"><Loader2 size={14} className="animate-spin"/> SINCRONIZANDO...</div>}
-            
             <section className="bg-[var(--bg-card)] rounded-[2.5rem] p-6 shadow-sm border border-[var(--border-color)] space-y-5">
               
               <div className="bg-slate-900 rounded-3xl p-5 mb-4 shadow-2xl border-b-4 border-blue-600">
@@ -208,11 +210,7 @@ const Vistoria = ({ onBack }) => {
                   <span className="text-[10px] font-black text-white tracking-widest uppercase">Formação da Guarnição</span>
                 </div>
                 <div className="space-y-3">
-                  {[
-                    { label: 'MOT', cargo: 'motorista' },
-                    { label: 'CMD', cargo: 'comandante' },
-                    { label: 'PTR', cargo: 'patrulheiro' }
-                  ].map(m => (
+                  {[{ label: 'MOT', cargo: 'motorista' }, { label: 'CMD', cargo: 'comandante' }, { label: 'PTR', cargo: 'patrulheiro' }].map(m => (
                     <div key={m.label} className="flex items-center justify-between">
                       <span className="text-[9px] font-black text-blue-500 w-8">{m.label}</span>
                       <div className={`flex-1 ml-2 h-8 flex items-center px-3 rounded-lg border transition-colors ${formData[`${m.cargo}_nome`] ? 'bg-blue-900/30 border-blue-500/50' : 'bg-white/5 border-dashed border-white/20'}`}>
@@ -220,7 +218,6 @@ const Vistoria = ({ onBack }) => {
                           {formData[`${m.cargo}_nome`] || `Aguardando ${m.cargo}...`}
                         </span>
                       </div>
-                      {formData[`${m.cargo}_nome`] && <CheckCircle2 size={14} className="text-green-500 ml-2 animate-pulse" />}
                     </div>
                   ))}
                 </div>
@@ -229,19 +226,9 @@ const Vistoria = ({ onBack }) => {
               <div className="grid grid-cols-2 gap-3">
                 <select className="vtr-input !py-4" value={formData.prefixo_vtr} onChange={(e) => handleVtrChange(e.target.value)}>
                   <option value="">VTR</option>
-                  {viaturas
-                    .filter(v => {
-                      if (tipoVistoria === 'SAÍDA') {
-                        return v.Status === 'EM SERVIÇO';
-                      } else {
-                        // Entrada: Filtra apenas as que podem entrar em serviço
-                        return v.Status === 'Operacional' || v.Status === 'DISPONÍVEL';
-                      }
-                    })
-                    .map(v => (
-                      <option key={v.Prefixo} value={v.Prefixo}>{v.Prefixo}</option>
-                    ))
-                  }
+                  {viaturas.filter(v => tipoVistoria === 'SAÍDA' ? v.Status === 'EM SERVIÇO' : (v.Status === 'Operacional' || v.Status === 'DISPONÍVEL')).map(v => (
+                    <option key={v.Prefixo} value={v.Prefixo}>{v.Prefixo}</option>
+                  ))}
                 </select>
                 <select className="vtr-input !py-4" value={formData.tipo_servico} onChange={(e) => setFormData({...formData, tipo_servico: e.target.value, unidade_externa: ''})}>
                   <option value="">SERVIÇO</option>
@@ -249,83 +236,69 @@ const Vistoria = ({ onBack }) => {
                 </select>
               </div>
 
-              {(formData.tipo_servico === 'Operação' || formData.tipo_servico === 'Outro') && (
-                <input placeholder="NOME DA OPERAÇÃO / DESTINO" className="vtr-input !bg-orange-50 dark:!bg-orange-900/10 border-orange-200 uppercase" value={formData.unidade_externa} onChange={(e) => setFormData({...formData, unidade_externa: e.target.value})} />
-              )}
+              <div className="space-y-2">
+                <div className="grid grid-cols-2 gap-3">
+                  <input 
+                    type="number" 
+                    className={`vtr-input ${kmInvalido ? 'border-red-500 bg-red-50 text-red-900' : ''}`} 
+                    placeholder="Hodômetro" 
+                    value={formData.hodometro} 
+                    onChange={(e) => setFormData({...formData, hodometro: e.target.value})} 
+                  />
+                  <select className="vtr-input" value={formData.videomonitoramento} onChange={(e) => setFormData({...formData, videomonitoramento: e.target.value})}>
+                    <option value="">VÍDEO</option>
+                    <option value="OPERANTE">OPERANTE</option>
+                    <option value="INOPERANTE">INOPERANTE</option>
+                    <option value="NÃO POSSUI">NÃO POSSUI</option>
+                  </select>
+                </div>
+                {kmInvalido && (
+                  <p className="text-[9px] font-black text-red-600 flex items-center gap-1 animate-pulse">
+                    <AlertTriangle size={10}/> KM DEVE SER MAIOR QUE O DE ENTRADA ({kmReferencia})
+                  </p>
+                )}
+              </div>
 
-              {formData.tipo_servico === 'Patrulha Comunitária' && (
-                <select className="vtr-input !bg-blue-50 dark:!bg-blue-900/10 border-blue-200" value={formData.unidade_externa} onChange={(e) => setFormData({...formData, unidade_externa: e.target.value})}>
-                  <option value="">Modalidade da Patrulha</option>
-                  {SUB_PAT_LISTA.map(s => <option key={s} value={s}>{s}</option>)}
-                </select>
-              )}
-
-              <input type="number" className="vtr-input" placeholder="Hodômetro Atual" value={formData.hodometro} onChange={(e) => setFormData({...formData, hodometro: e.target.value})} />
-
-              {['motorista', 'comandante', 'patrulheiro'].map(cargo => {
-                const reString = toStr(formData[`${cargo}_re`]);
-                const militar = buscarMilitarNoCache(reString);
-                const digitouSuficiente = reString.length >= 8;
-
-                return (
-                  <div key={cargo} className="space-y-1 pt-2">
-                    <input 
-                      placeholder={`MATRÍCULA ${cargo.toUpperCase()}`} 
-                      className="vtr-input !bg-[var(--bg-app)]" 
-                      value={formData[`${cargo}_re`]}
-                      onChange={(e) => handleMatriculaChange(e.target.value, cargo)}
-                      onBlur={() => handleMatriculaBlur(cargo)}
-                    />
-                    
-                    {!militar && digitouSuficiente && (
-                      <div className="grid grid-cols-1 gap-2 p-3 bg-yellow-50 dark:bg-yellow-900/10 border border-yellow-200 rounded-2xl animate-in slide-in-from-top-2">
-                        <div className="flex items-center gap-2">
-                          <UserPlus size={14} className="text-yellow-600"/>
-                          <input 
-                            placeholder="GRADUAÇÃO E NOME DE GUERRA" 
-                            className="bg-transparent border-none text-[10px] font-bold w-full focus:ring-0 uppercase"
-                            value={formData[`${cargo}_nome`]}
-                            onChange={(e) => setFormData({...formData, [`${cargo}_nome`]: e.target.value.toUpperCase()})}
-                          />
-                        </div>
-                        <div className="flex items-center gap-2 border-t border-yellow-200 pt-2">
-                          <Building2 size={14} className="text-yellow-600"/>
-                          <input 
-                            placeholder="UNIDADE (EXTERNA)" 
-                            className="bg-transparent border-none text-[10px] font-bold w-full focus:ring-0 uppercase"
-                            value={formData[`${cargo}_unidade`]}
-                            onChange={(e) => setFormData({...formData, [`${cargo}_unidade`]: e.target.value.toUpperCase()})}
-                          />
-                        </div>
-                      </div>
-                    )}
-                  </div>
-                );
-              })}
+              {['motorista', 'comandante', 'patrulheiro'].map(cargo => (
+                <div key={cargo} className="space-y-1 pt-2">
+                  <input 
+                    placeholder={`MATRÍCULA ${cargo.toUpperCase()}`} 
+                    className="vtr-input !bg-[var(--bg-app)]" 
+                    value={formData[`${cargo}_re`]}
+                    onChange={(e) => handleMatriculaChange(e.target.value, cargo)}
+                    onBlur={() => handleMatriculaBlur(cargo)}
+                  />
+                  {!buscarMilitarNoCache(formData[`${cargo}_re`]) && formData[`${cargo}_re`].length >= 8 && (
+                    <div className="grid grid-cols-1 gap-2 p-3 bg-yellow-50 dark:bg-yellow-900/10 border border-yellow-200 rounded-2xl animate-in slide-in-from-top-2">
+                      <input placeholder="GRADUAÇÃO E NOME" className="bg-transparent border-none text-[10px] font-bold w-full uppercase" value={formData[`${cargo}_nome`]} onChange={(e) => setFormData({...formData, [`${cargo}_nome`]: e.target.value.toUpperCase()})} />
+                      <input placeholder="UNIDADE EXTERNA" className="bg-transparent border-none text-[10px] font-bold w-full uppercase border-t border-yellow-200 pt-2" value={formData[`${cargo}_unidade`]} onChange={(e) => setFormData({...formData, [`${cargo}_unidade`]: e.target.value.toUpperCase()})} />
+                    </div>
+                  )}
+                </div>
+              ))}
             </section>
             
             <button 
               onClick={() => setStep(2)} 
-              disabled={!formData.prefixo_vtr || !formData.motorista_nome || !formData.comandante_nome} 
-              className={`btn-tatico w-full uppercase transition-all flex items-center justify-center gap-2 ${(!formData.prefixo_vtr || !formData.motorista_nome || !formData.comandante_nome) ? 'opacity-30 grayscale cursor-not-allowed' : 'opacity-100'}`}
+              disabled={!formData.prefixo_vtr || !formData.motorista_nome || !formData.comandante_nome || !formData.hodometro || !formData.videomonitoramento || kmInvalido} 
+              className={`btn-tatico w-full uppercase flex items-center justify-center gap-2 ${(!formData.prefixo_vtr || !formData.motorista_nome || !formData.comandante_nome || !formData.hodometro || !formData.videomonitoramento || kmInvalido) ? 'opacity-30 grayscale cursor-not-allowed' : 'opacity-100'}`}
             >
-              {(!formData.motorista_nome || !formData.comandante_nome) ? "Identifique a Guarnição" : "Itens de Inspeção"}
-              <ChevronRight/>
+              {kmInvalido ? "KM INVÁLIDO" : "PRÓXIMO"} <ChevronRight/>
             </button>
           </div>
         )}
 
         {step === 2 && (
           <div className="space-y-6 animate-in slide-in-from-right-4">
-            <div onClick={() => setProtegerFotos(!protegerFotos)} className={`p-5 rounded-3xl border-2 cursor-pointer transition-all flex items-center gap-4 ${protegerFotos ? 'bg-blue-600 border-blue-400 text-white shadow-lg' : 'bg-slate-100 border-slate-300 text-slate-600'}`}>
+             <div onClick={() => setProtegerFotos(!protegerFotos)} className={`p-5 rounded-3xl border-2 cursor-pointer transition-all flex items-center gap-4 ${protegerFotos ? 'bg-blue-600 border-blue-400 text-white shadow-lg' : 'bg-slate-100 border-slate-300 text-slate-600'}`}>
               {protegerFotos ? <Lock size={32} /> : <Unlock size={32} className="opacity-50" />}
               <div>
                 <h4 className="font-black text-xs uppercase">Proteção de Dados</h4>
-                <p className="text-[10px] font-medium leading-tight opacity-90">{protegerFotos ? "ESTA INSPEÇÃO NÃO SERÁ APAGADA PELO SISTEMA" : "Clique para salvar permanentemente (Ocorrências Graves)"}</p>
+                <p className="text-[10px] font-medium leading-tight opacity-90">Salvar permanentemente (Ocorrências Graves)</p>
               </div>
             </div>
 
-            <div className="grid gap-2">
+             <div className="grid gap-2">
               {itensAtuais.map(item => (
                 <div key={item} onClick={() => setChecklist(prev => ({...prev, [item]: prev[item] === 'OK' ? 'FALHA' : 'OK'}))} className={`checklist-item-ok ${checklist[item] === 'FALHA' ? '!border-red-500 !bg-red-50' : ''}`}>
                   <span className="text-sm font-bold uppercase">{item}</span>
