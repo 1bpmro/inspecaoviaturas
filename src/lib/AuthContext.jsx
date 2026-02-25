@@ -26,8 +26,7 @@ export const AuthProvider = ({ children }) => {
 
   // 3. EFEITO DE INICIALIZAÇÃO E MONITORAMENTO
   useEffect(() => {
-    // IMPORTANTE: Não buscamos nada do storage no carregamento inicial.
-    // Isso garante que o F5 deslogue você automaticamente, pois o 'user' começa como null.
+    // Mantemos sua regra: F5 desloga (user começa null)
     setLoading(false);
 
     if (user) {
@@ -47,18 +46,21 @@ export const AuthProvider = ({ children }) => {
   // 4. FUNÇÃO DE LOGIN
   const login = async (re, senha) => {
     try {
+      // Passamos a senha (que pode ser "" para policiais comuns)
       const res = await gasApi.login(re, senha);
+      
       if (res.status === 'success') {
-        // Setamos o usuário apenas na memória do React
+        // O res.user deve conter { re, nome, patente, role }
         setUser(res.user);
-        // Opcional: apenas para debug se precisar, mas o app não lerá isso no refresh
+        
+        // Guardamos no sessionStorage apenas para persistência temporária se necessário
         sessionStorage.setItem('1bpm_user_session', JSON.stringify(res.user));
         return { success: true };
       } else {
-        return { success: false, message: res.message || 'Falha no login' };
+        return { success: false, message: res.message || 'Credenciais inválidas' };
       }
     } catch (error) {
-      return { success: false, message: 'Erro de conexão com a planilha' };
+      return { success: false, message: 'Erro de conexão com o servidor' };
     }
   };
 
@@ -69,8 +71,10 @@ export const AuthProvider = ({ children }) => {
       logout, 
       loading, 
       isAuthenticated: !!user,
+      // Verificações de permissão baseadas no role da Coluna D
       isAdmin: user?.role === 'ADMIN',
-      isGarageiro: user?.role === 'GARAGEIRO'
+      isGarageiro: user?.role === 'GARAGEIRO',
+      isPolicial: user?.role === 'POLICIAL' || !user?.role 
     }}>
       {!loading && children}
     </AuthContext.Provider>
