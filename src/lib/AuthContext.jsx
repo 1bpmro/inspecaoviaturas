@@ -1,4 +1,4 @@
-import React, { createContext, useState, useContext, useEffect } from 'react';
+import React, { createContext, useState, useContext, useEffect, useRef } from 'react';
 import { gasApi } from '../api/gasClient';
 
 const AuthContext = createContext();
@@ -6,23 +6,57 @@ const AuthContext = createContext();
 export const AuthProvider = ({ children }) => {
   const [user, setUser] = useState(null);
   const [loading, setLoading] = useState(true);
+  const inactivityTimer = useRef(null);
 
-  // Ao carregar o app, verifica se já existe um login salvo no navegador
+  // Função de logout original mantendo a limpeza do storage
+  const logout = () => {
+    setUser(null);
+    sessionStorage.removeItem('1bpm_user_session');
+    if (inactivityTimer.current) clearTimeout(inactivityTimer.current);
+  };
+
+  // Lógica para resetar o timer de inatividade (5 minutos)
+  const resetInactivityTimer = () => {
+    if (inactivityTimer.current) clearTimeout(inactivityTimer.current);
+    
+    inactivityTimer.current = setTimeout(() => {
+      logout();
+    }, 5 * 60 * 1000); // 5 minutos exatos
+  };
+
+  // Efeito para monitorar F5 e Inatividade
   useEffect(() => {
-    const savedUser = localStorage.getItem('1bpm_user_session');
-    if (savedUser) {
-      setUser(JSON.parse(savedUser));
-    }
+    // 1. No carregamento (se deu F5), limpa o storage e força logout
+    sessionStorage.removeItem('1bpm_user_session');
+    setUser(null);
     setLoading(false);
-  }, []);
+
+    // 2. Se o usuário estiver logado, monitora interações
+    if (user) {
+      const events = ['mousedown', 'mousemove', 'keypress', 'scroll', 'touchstart'];
+      
+      events.forEach(event => {
+        window.addEventListener(event, resetInactivityTimer);
+      });
+
+      resetInactivityTimer(); // Inicia o timer
+
+      return () => {
+        events.forEach(event => {
+          window.removeEventListener(event, resetInactivityTimer);
+        });
+        if (inactivityTimer.current) clearTimeout(inactivityTimer.current);
+      };
+    }
+  }, [user]);
 
   const login = async (re, senha) => {
     try {
       const res = await gasApi.login(re, senha);
       if (res.status === 'success') {
         setUser(res.user);
-        // Salva a sessão localmente para não precisar logar toda hora
-        localStorage.setItem('1bpm_user_session', JSON.stringify(res.user));
+        // Usando sessionStorage: os dados somem ao fechar a aba
+        sessionStorage.setItem('1bpm_user_session', JSON.stringify(res.user));
         return { success: true };
       } else {
         return { success: false, message: res.message || 'Falha no login' };
@@ -30,11 +64,6 @@ export const AuthProvider = ({ children }) => {
     } catch (error) {
       return { success: false, message: 'Erro de conexão com a planilha' };
     }
-  };
-
-  const logout = () => {
-    setUser(null);
-    localStorage.removeItem('1bpm_user_session');
   };
 
   return (
