@@ -49,7 +49,6 @@ const Vistoria = ({ onBack }) => {
   const itensAtuais = tipoVistoria === 'ENTRADA' ? ITENS_ENTRADA : ITENS_SAIDA;
   const temAvaria = Object.values(checklist).includes('FALHA');
 
-  // Helper fundamental para evitar erro de .replace() em números vindos da planilha
   const toStr = (val) => (val !== undefined && val !== null ? String(val) : '');
 
   useEffect(() => {
@@ -79,52 +78,48 @@ const Vistoria = ({ onBack }) => {
     let reString = toStr(reRaw).replace(/\D/g, '');
     if (!reString || reString.length < 4) return null;
     
-    // Regra do 1000 Universal aplicada na busca
-    if (reString.length > 0 && reString.length <= 6) reString = "1000" + reString;
+    // Tenta buscar com 1000 se for curto
+    if (reString.length > 0 && reString.length <= 6 && !reString.startsWith("1000")) {
+        const comMil = "1000" + reString;
+        const militar = efetivoLocal.find(m => toStr(m.re) === comMil);
+        if (militar) return militar;
+    }
     
     return efetivoLocal.find(m => toStr(m.re) === reString);
   };
 
+  // 1. Enquanto digita: permite apagar e só completa se achar no cache
   const handleMatriculaChange = (valor, cargo) => {
-    // 1. Apenas limpa caracteres não numéricos, permitindo apagar livremente
     let reLimpo = toStr(valor).replace(/\D/g, '');
     
-    // Atualiza o RE no estado imediatamente para o teclado não travar
     setFormData(prev => ({ ...prev, [`${cargo}_re`]: reLimpo }));
 
-    // 2. Só tentamos buscar no cache ou aplicar regra se tiver uma quantidade mínima
-    // Isso evita que o "1000" apareça logo no primeiro dígito digitado
     if (reLimpo.length >= 4) {
-      let reParaBusca = reLimpo;
-      
-      // Se for um RE curto, preparamos a busca com o prefixo 1000
-      if (reLimpo.length <= 6 && !reLimpo.startsWith("1000")) {
-        reParaBusca = "1000" + reLimpo;
-      }
-
+      let reParaBusca = (reLimpo.length <= 6 && !reLimpo.startsWith("1000")) ? "1000" + reLimpo : reLimpo;
       const militar = buscarMilitarNoCache(reParaBusca);
 
       if (militar) {
         setFormData(prev => ({
           ...prev,
-          [`${cargo}_re`]: reParaBusca, // Aqui sim injetamos o 1000
+          [`${cargo}_re`]: toStr(militar.re),
           [`${cargo}_nome`]: `${militar.patente} ${militar.nome}`,
           [`${cargo}_unidade`]: militar.unidade || '1º BPM'
         }));
       } else {
-        // Se não achou no cache, não forçamos o 1000 ainda para deixar o usuário digitar o RE externo completo
-        setFormData(prev => ({ 
-          ...prev, 
-          [`${cargo}_nome`]: '', 
-          [`${cargo}_unidade`]: '' 
-        }));
+        setFormData(prev => ({ ...prev, [`${cargo}_nome`]: '', [`${cargo}_unidade`]: '' }));
       }
     } else {
-      // Se o usuário apagou e tem menos de 4 dígitos, limpamos os campos de nome
-      setFormData(prev => ({ 
-        ...prev, 
-        [`${cargo}_nome`]: '', 
-        [`${cargo}_unidade`]: '' 
+      setFormData(prev => ({ ...prev, [`${cargo}_nome`]: '', [`${cargo}_unidade`]: '' }));
+    }
+  };
+
+  // 2. Ao sair do campo: Se for RE externo/curto, injeta o 1000 automaticamente
+  const handleMatriculaBlur = (cargo) => {
+    const reAtual = toStr(formData[`${cargo}_re`]);
+    if (reAtual.length > 0 && reAtual.length <= 6 && !reAtual.startsWith("1000")) {
+      setFormData(prev => ({
+        ...prev,
+        [`${cargo}_re`]: "1000" + reAtual
       }));
     }
   };
@@ -196,7 +191,6 @@ const Vistoria = ({ onBack }) => {
             
             <section className="bg-[var(--bg-card)] rounded-[2.5rem] p-6 shadow-sm border border-[var(--border-color)] space-y-5">
               
-              {/* CARD DA GUARNIÇÃO TÁTICO */}
               <div className="bg-slate-900 rounded-3xl p-5 mb-4 shadow-2xl border-b-4 border-blue-600">
                 <div className="flex items-center gap-2 mb-4 border-b border-white/10 pb-2">
                   <Users className="text-blue-400" size={18} />
@@ -248,8 +242,9 @@ const Vistoria = ({ onBack }) => {
               <input type="number" className="vtr-input" placeholder="Hodômetro Atual" value={formData.hodometro} onChange={(e) => setFormData({...formData, hodometro: e.target.value})} />
 
               {['motorista', 'comandante', 'patrulheiro'].map(cargo => {
-                const militar = buscarMilitarNoCache(formData[`${cargo}_re`]);
-                const digitouOito = toStr(formData[`${cargo}_re`]).length >= 8;
+                const reString = toStr(formData[`${cargo}_re`]);
+                const militar = buscarMilitarNoCache(reString);
+                const digitouSuficiente = reString.length >= 8;
 
                 return (
                   <div key={cargo} className="space-y-1 pt-2">
@@ -258,9 +253,10 @@ const Vistoria = ({ onBack }) => {
                       className="vtr-input !bg-[var(--bg-app)]" 
                       value={formData[`${cargo}_re`]}
                       onChange={(e) => handleMatriculaChange(e.target.value, cargo)}
+                      onBlur={() => handleMatriculaBlur(cargo)}
                     />
                     
-                    {!militar && digitouOito && (
+                    {!militar && digitouSuficiente && (
                       <div className="grid grid-cols-1 gap-2 p-3 bg-yellow-50 dark:bg-yellow-900/10 border border-yellow-200 rounded-2xl animate-in slide-in-from-top-2">
                         <div className="flex items-center gap-2">
                           <UserPlus size={14} className="text-yellow-600"/>
@@ -287,7 +283,6 @@ const Vistoria = ({ onBack }) => {
               })}
             </section>
             
-            {/* BOTÃO COM TRAVA DE SEGURANÇA: VTR + MOTORISTA + COMANDANTE OBRIGATÓRIOS */}
             <button 
               onClick={() => setStep(2)} 
               disabled={!formData.prefixo_vtr || !formData.motorista_nome || !formData.comandante_nome} 
