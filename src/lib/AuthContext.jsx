@@ -8,63 +8,50 @@ export const AuthProvider = ({ children }) => {
   const [loading, setLoading] = useState(true);
   const inactivityTimer = useRef(null);
 
-  // Função de logout original mantendo a limpeza do storage
+  // 1. LOGOUT: Limpa tudo e para o cronômetro
   const logout = () => {
     setUser(null);
     sessionStorage.removeItem('1bpm_user_session');
     if (inactivityTimer.current) clearTimeout(inactivityTimer.current);
   };
 
-  // Lógica para resetar o timer de inatividade (5 minutos)
+  // 2. TIMER DE INATIVIDADE (5 MINUTOS)
   const resetInactivityTimer = () => {
     if (inactivityTimer.current) clearTimeout(inactivityTimer.current);
     
     inactivityTimer.current = setTimeout(() => {
       logout();
-    }, 5 * 60 * 1000); // 5 minutos exatos
+    }, 5 * 60 * 1000); 
   };
 
-  // Efeito para monitorar F5 e Inatividade
+  // 3. EFEITO DE INICIALIZAÇÃO E MONITORAMENTO
   useEffect(() => {
-    // Detecta se a página foi recarregada (F5)
-    // Se o tipo de navegação for 'reload', nós matamos a sessão
-    const perfEntries = window.performance.getEntriesByType("navigation");
-    const isReload = perfEntries.length > 0 && perfEntries[0].type === "reload";
-
-    if (isReload) {
-      sessionStorage.removeItem('1bpm_user_session');
-      setUser(null);
-    }
-
+    // IMPORTANTE: Não buscamos nada do storage no carregamento inicial.
+    // Isso garante que o F5 deslogue você automaticamente, pois o 'user' começa como null.
     setLoading(false);
 
-    // Monitor de interações - só ativa se houver usuário logado
     if (user) {
       const events = ['mousedown', 'mousemove', 'keypress', 'scroll', 'touchstart'];
-      
       const handleInteraction = () => resetInactivityTimer();
 
-      events.forEach(event => {
-        window.addEventListener(event, handleInteraction);
-      });
-
-      resetInactivityTimer(); // Inicia o timer
+      events.forEach(event => window.addEventListener(event, handleInteraction));
+      resetInactivityTimer();
 
       return () => {
-        events.forEach(event => {
-          window.removeEventListener(event, handleInteraction);
-        });
+        events.forEach(event => window.removeEventListener(event, handleInteraction));
         if (inactivityTimer.current) clearTimeout(inactivityTimer.current);
       };
     }
   }, [user]);
 
+  // 4. FUNÇÃO DE LOGIN
   const login = async (re, senha) => {
     try {
       const res = await gasApi.login(re, senha);
       if (res.status === 'success') {
+        // Setamos o usuário apenas na memória do React
         setUser(res.user);
-        // sessionStorage ajuda no isolamento da aba
+        // Opcional: apenas para debug se precisar, mas o app não lerá isso no refresh
         sessionStorage.setItem('1bpm_user_session', JSON.stringify(res.user));
         return { success: true };
       } else {
