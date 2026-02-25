@@ -86,26 +86,43 @@ const Vistoria = ({ onBack }) => {
   };
 
   const handleMatriculaChange = (valor, cargo) => {
+    // 1. Apenas limpa caracteres não numéricos, permitindo apagar livremente
     let reLimpo = toStr(valor).replace(/\D/g, '');
     
-    // REGRA DO 1000 UNIVERSAL: Se o RE for curto, injeta o 1000 na frente na hora de salvar no estado
-    if (reLimpo.length > 0 && reLimpo.length <= 6) {
-      reLimpo = "1000" + reLimpo;
-    }
+    // Atualiza o RE no estado imediatamente para o teclado não travar
+    setFormData(prev => ({ ...prev, [`${cargo}_re`]: reLimpo }));
 
-    const militar = buscarMilitarNoCache(reLimpo);
-    
-    if (militar) {
-      setFormData(prev => ({
-        ...prev,
-        [`${cargo}_re`]: reLimpo,
-        [`${cargo}_nome`]: `${militar.patente} ${militar.nome}`,
-        [`${cargo}_unidade`]: militar.unidade || '1º BPM'
-      }));
+    // 2. Só tentamos buscar no cache ou aplicar regra se tiver uma quantidade mínima
+    // Isso evita que o "1000" apareça logo no primeiro dígito digitado
+    if (reLimpo.length >= 4) {
+      let reParaBusca = reLimpo;
+      
+      // Se for um RE curto, preparamos a busca com o prefixo 1000
+      if (reLimpo.length <= 6 && !reLimpo.startsWith("1000")) {
+        reParaBusca = "1000" + reLimpo;
+      }
+
+      const militar = buscarMilitarNoCache(reParaBusca);
+
+      if (militar) {
+        setFormData(prev => ({
+          ...prev,
+          [`${cargo}_re`]: reParaBusca, // Aqui sim injetamos o 1000
+          [`${cargo}_nome`]: `${militar.patente} ${militar.nome}`,
+          [`${cargo}_unidade`]: militar.unidade || '1º BPM'
+        }));
+      } else {
+        // Se não achou no cache, não forçamos o 1000 ainda para deixar o usuário digitar o RE externo completo
+        setFormData(prev => ({ 
+          ...prev, 
+          [`${cargo}_nome`]: '', 
+          [`${cargo}_unidade`]: '' 
+        }));
+      }
     } else {
+      // Se o usuário apagou e tem menos de 4 dígitos, limpamos os campos de nome
       setFormData(prev => ({ 
         ...prev, 
-        [`${cargo}_re`]: reLimpo, 
         [`${cargo}_nome`]: '', 
         [`${cargo}_unidade`]: '' 
       }));
