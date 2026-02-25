@@ -25,11 +25,14 @@ const ConsultarFrota = ({ onBack }) => {
     carregar();
   }, []);
 
-  // Filtro inteligente (busca em tempo real)
-  const frotaFiltrada = viaturas.filter(vtr => 
-    (vtr.Prefixo && vtr.Prefixo.toString().toLowerCase().includes(busca.toLowerCase())) || 
-    (vtr.Placa && vtr.Placa.toString().toLowerCase().includes(busca.toLowerCase()))
-  );
+  // Filtro inteligente (busca em tempo real) - Ajustado para ser insensível a maiúsculas na planilha
+  const frotaFiltrada = viaturas.filter(vtr => {
+    const prefixo = (vtr.Prefixo || vtr.prefixo || "").toString().toLowerCase();
+    const placa = (vtr.Placa || vtr.placa || "").toString().toLowerCase();
+    const termoBusca = busca.toLowerCase();
+    
+    return prefixo.includes(termoBusca) || placa.includes(termoBusca);
+  });
 
   return (
     <div className="min-h-screen bg-slate-50 pb-10 transition-all">
@@ -69,37 +72,44 @@ const ConsultarFrota = ({ onBack }) => {
           </div>
         ) : (
           <div className="grid gap-4 animate-in fade-in slide-in-from-bottom-4 duration-500">
-            {frotaFiltrada.map((vtr) => (
-              <div key={vtr.Placa} className="bg-white p-5 rounded-3xl flex items-center justify-between shadow-sm border border-slate-100 group active:scale-[0.98] transition-all">
-                <div className="flex items-center gap-4">
-                  <div className="p-3 bg-slate-100 rounded-2xl text-slate-600 group-hover:bg-blue-50 group-hover:text-blue-600 transition-colors">
-                    <Car size={24} />
-                  </div>
-                  <div>
-                    <h3 className="font-black text-lg text-slate-800 tracking-tight leading-none">{vtr.Prefixo}</h3>
-                    <p className="text-[10px] font-bold text-slate-400 uppercase tracking-tighter mt-1">Placa: {vtr.Placa}</p>
-                  </div>
-                </div>
+            {frotaFiltrada.map((vtr, index) => {
+              // Normalização dos dados para evitar erro de Case Sensitivity
+              const prefixo = vtr.Prefixo || vtr.prefixo || "S/ PREFIXO";
+              const placa = vtr.Placa || vtr.placa || "S/ PLACA";
+              const statusRaw = (vtr.Status || vtr.status || "").toString().toUpperCase();
+              const isDisponivel = statusRaw.includes("DISPON") || statusRaw === "OK";
 
-                <div className="text-right">
-                  {vtr.Status === 'EM SERVIÇO' ? (
-                    <div className="flex items-center justify-end gap-1.5 text-orange-600">
-                      <span className="text-[10px] font-black uppercase tracking-tighter">Em Serviço</span>
-                      <AlertCircle size={16} />
+              return (
+                <div key={placa + index} className="bg-white p-5 rounded-3xl flex items-center justify-between shadow-sm border border-slate-100 group active:scale-[0.98] transition-all">
+                  <div className="flex items-center gap-4">
+                    <div className="p-3 bg-slate-100 rounded-2xl text-slate-600 group-hover:bg-blue-50 group-hover:text-blue-600 transition-colors">
+                      <Car size={24} />
                     </div>
-                  ) : (
-                    <div className="flex items-center justify-end gap-1.5 text-green-600">
-                      <span className="text-[10px] font-black uppercase tracking-tighter">Disponível</span>
-                      <CheckCircle2 size={16} />
+                    <div>
+                      <h3 className="font-black text-lg text-slate-800 tracking-tight leading-none">{prefixo}</h3>
+                      <p className="text-[10px] font-bold text-slate-400 uppercase tracking-tighter mt-1">Placa: {placa}</p>
                     </div>
-                  )}
-                  {/* Campo de data vindo da planilha de Patrimônio */}
-                  <p className="text-[9px] font-medium text-slate-400 mt-1 italic">
-                    Visto em: {vtr.UltimaVistoria || 'N/A'}
-                  </p>
+                  </div>
+
+                  <div className="text-right">
+                    {!isDisponivel ? (
+                      <div className="flex items-center justify-end gap-1.5 text-orange-600">
+                        <span className="text-[10px] font-black uppercase tracking-tighter">Em Serviço</span>
+                        <AlertCircle size={16} />
+                      </div>
+                    ) : (
+                      <div className="flex items-center justify-end gap-1.5 text-green-600">
+                        <span className="text-[10px] font-black uppercase tracking-tighter">Disponível</span>
+                        <CheckCircle2 size={16} />
+                      </div>
+                    )}
+                    <p className="text-[9px] font-medium text-slate-400 mt-1 italic">
+                      Visto em: {vtr.UltimaVistoria || vtr.ultimaVistoria || 'N/A'}
+                    </p>
+                  </div>
                 </div>
-              </div>
-            ))}
+              );
+            })}
 
             {frotaFiltrada.length === 0 && (
               <div className="text-center py-20 opacity-40">
