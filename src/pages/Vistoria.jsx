@@ -125,7 +125,7 @@ const Vistoria = ({ onBack }) => {
     }
   };
 
-  const handleVtrChange = (prefixo) => {
+ const handleVtrChange = (prefixo) => {
     const vtr = viaturas.find(v => toStr(v.Prefixo) === toStr(prefixo));
     if (!vtr) return;
 
@@ -133,12 +133,13 @@ const Vistoria = ({ onBack }) => {
     setKmReferencia(kmAnterior);
 
     if (tipoVistoria === 'SAÍDA') {
-      // INJEÇÃO COMPLETA: Garante que os dados da guarnição e KM sejam salvos no formData
-      setFormData({
+      // FORÇANDO a atualização de todos os campos de uma vez
+      const novosDados = {
         ...formData,
         prefixo_vtr: toStr(vtr.Prefixo),
         placa_vtr: toStr(vtr.Placa),
-        tipo_servico: toStr(vtr.UltimoTipoServico),
+        tipo_servico: toStr(vtr.UltimoTipoServico) || '',
+        // Dados da Guarnição vindo do Banco
         motorista_re: toStr(vtr.UltimoMotoristaRE),
         motorista_nome: toStr(vtr.UltimoMotoristaNome),
         motorista_unidade: toStr(vtr.UltimoMotoristaUnidade) || '1º BPM',
@@ -148,11 +149,18 @@ const Vistoria = ({ onBack }) => {
         patrulheiro_re: toStr(vtr.UltimoPatrulheiroRE),
         patrulheiro_nome: toStr(vtr.UltimoPatrulheiroNome),
         patrulheiro_unidade: toStr(vtr.UltimoPatrulheiroUnidade) || '1º BPM',
+        // Hodômetro inicia com o valor de referência para o usuário editar
         hodometro: toStr(vtr.UltimoKM),
         videomonitoramento: toStr(vtr.UltimoVideoMonitoramento || '')
-      });
+      };
+      
+      setFormData(novosDados);
     } else {
-      setFormData(prev => ({ ...prev, prefixo_vtr: toStr(vtr.Prefixo), placa_vtr: toStr(vtr.Placa) }));
+      setFormData(prev => ({ 
+        ...prev, 
+        prefixo_vtr: toStr(vtr.Prefixo), 
+        placa_vtr: toStr(vtr.Placa) 
+      }));
     }
   };
 
