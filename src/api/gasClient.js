@@ -1,6 +1,6 @@
 import axios from 'axios';
 
-const GAS_URL = 'https://script.google.com/macros/s/AKfycbwd_L2FCqk9nfQxeraTwljyjLNjp-8IxLOifGXVOxUfoSKWnmABx_QobNcu4hnshrSx9Q/exec';
+const GAS_URL = 'https://script.google.com/macros/s/AKfycbyr6vl2xtjD_XXpQRyRbOp2ZMRzscw6FQxCMxqCPYWpyyjaSreO6EYdImSdw46W4nX3SQ/exec';
 
 export const gasApi = {
   // Ajustado para garantir que a estrutura action/payload chegue correta ao GAS
