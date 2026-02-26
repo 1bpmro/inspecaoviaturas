@@ -97,8 +97,9 @@ const AdminDashboard = ({ onBack }) => {
         </header>
 
         <section className="p-8 overflow-y-auto">
-          {activeTab === 'frota' ? (
-            <div className="space-y-6">
+          {/* CONTEÚDO DA ABA: GESTÃO DE FROTA */}
+          {activeTab === 'frota' && (
+            <div className="space-y-6 animate-in fade-in duration-500">
               <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
                 <StatCard label="Total Frota" value={viaturas.length} color="blue" />
                 <StatCard label="Em Serviço" value={viaturas.filter(v => v.Status === 'EM SERVIÇO').length} color="emerald" />
@@ -155,10 +156,73 @@ const AdminDashboard = ({ onBack }) => {
                 </table>
               </div>
             </div>
-          ) : (
-            <div className="flex flex-col items-center justify-center h-64 text-slate-400 opacity-50">
-              <Settings size={48} className="animate-spin duration-[10000ms]" />
-              <p className="mt-4 font-black uppercase text-xs tracking-widest">Módulo em Desenvolvimento</p>
+          )}
+
+          {/* CONTEÚDO DA ABA: MANUTENÇÃO / ÓLEO */}
+          {activeTab === 'manutencao' && (
+            <div className="space-y-6 animate-in slide-in-from-bottom-4 duration-500">
+              <div className="flex items-center justify-between">
+                <h2 className="text-xl font-black text-slate-800 uppercase italic">Críticos para Troca de Óleo</h2>
+              </div>
+              <div className="bg-white rounded-3xl shadow-sm border border-slate-200 overflow-hidden">
+                <table className="w-full text-left">
+                  <thead className="bg-slate-50 border-b border-slate-200 text-[10px] font-black uppercase text-slate-400">
+                    <tr>
+                      <th className="p-4">Viatura</th>
+                      <th className="p-4">KM Rodado Pós-Troca</th>
+                      <th className="p-4">Alerta</th>
+                      <th className="p-4 text-right">Ação</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-100">
+                    {viaturas.filter(v => checkOil(v).level > 0).map((v, i) => {
+                      const oil = checkOil(v);
+                      const kmRodado = (parseInt(v.UltimoKM) || 0) - (parseInt(v.KM_UltimaTroca) || 0);
+                      return (
+                        <tr key={i} className="hover:bg-slate-50 transition-all">
+                          <td className="p-4 flex items-center gap-3">
+                            <div className={`w-10 h-10 rounded-lg flex items-center justify-center font-black text-white ${oil.bg}`}>{v.Prefixo?.slice(-2)}</div>
+                            <span className="font-black text-slate-800">{v.Prefixo}</span>
+                          </td>
+                          <td className="p-4 font-mono font-bold text-slate-600">{kmRodado} KM</td>
+                          <td className="p-4">
+                            <span className={`text-[10px] font-black px-3 py-1 rounded-full border-2 ${oil.color} border-current uppercase`}>{oil.msg}</span>
+                          </td>
+                          <td className="p-4 text-right">
+                            <button onClick={() => setSelectedVtr(v)} className="text-[10px] font-black uppercase bg-slate-900 text-white px-4 py-2 rounded-xl">Detalhes</button>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          )}
+
+          {/* CONTEÚDO DA ABA: INDISPONIBILIDADE */}
+          {activeTab === 'stats' && (
+            <div className="space-y-6 animate-in slide-in-from-bottom-4 duration-500">
+              <div className="bg-red-50 p-6 rounded-3xl border border-red-100 flex items-center justify-between">
+                <h2 className="text-xl font-black text-red-900 uppercase">Viaturas Fora de Combate (Manutenção)</h2>
+                <AlertTriangle className="text-red-400" size={32} />
+              </div>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                {viaturas.filter(v => v.Status === 'MANUTENÇÃO').map((v, i) => (
+                  <div key={i} className="bg-white p-6 rounded-3xl border border-slate-200 flex justify-between items-center shadow-sm">
+                    <div className="flex items-center gap-4">
+                      <div className="w-12 h-12 bg-red-600 text-white rounded-2xl flex items-center justify-center font-black text-xl">{v.Prefixo?.slice(-2)}</div>
+                      <div>
+                        <p className="font-black text-slate-800 text-lg">{v.Prefixo}</p>
+                        <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">{v.Placa}</p>
+                      </div>
+                    </div>
+                    <button onClick={() => setSelectedVtr(v)} className="p-3 bg-slate-50 text-slate-400 hover:text-slate-900 rounded-2xl transition-all">
+                      <History size={20} />
+                    </button>
+                  </div>
+                ))}
+              </div>
             </div>
           )}
         </section>
@@ -171,6 +235,7 @@ const AdminDashboard = ({ onBack }) => {
   );
 };
 
+// Componentes Auxiliares (Mantidos conforme original)
 const VtrDetailsModal = ({ vtr, onClose, checkOil, onAction }) => {
   const oilInfo = checkOil(vtr);
   const kmRodado = vtr.UltimoKM - (vtr.KM_UltimaTroca || 0);
