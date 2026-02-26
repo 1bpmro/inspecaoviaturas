@@ -3,7 +3,7 @@ import { gasApi } from '../api/gasClient';
 import { useAuth } from '../lib/AuthContext';
 import { 
   Car, CheckCircle2, AlertTriangle, Clock, 
-  Search, ShieldCheck, Lock, Unlock, History, Camera, User, X
+  Search, ShieldCheck, Lock, Unlock, History, Camera, User, X, AlertCircle
 } from 'lucide-react';
 
 const GarageiroDashboard = ({ onBack }) => {
@@ -19,6 +19,15 @@ const GarageiroDashboard = ({ onBack }) => {
   
   const [fotoAvaria, setFotoAvaria] = useState(null);
   const [uploading, setUploading] = useState(false);
+
+  // NOVOS ESTADOS PARA BLOQUEIO (CADEADO)
+  const [showLockModal, setShowLockModal] = useState(false);
+  const [lockData, setLockData] = useState({ 
+    prefixo: '', 
+    motivo: 'manutencao', 
+    detalhes: '', 
+    re_responsavel: '' 
+  });
 
   const fetchData = async () => {
     setLoading(true);
@@ -74,6 +83,37 @@ const GarageiroDashboard = ({ onBack }) => {
       setFotoAvaria(null);
       setConf({ limpa: false, motoristaOk: false, avaria: false, obs: '' });
       fetchData();
+    }
+  };
+
+  // FUNÇÃO PARA ABRIR MODAL DE BLOQUEIO/CADEADO
+  const abrirModalBloqueio = (v) => {
+    const statusAtual = (v.Status || v.status || "").toUpperCase();
+    const isDisponivel = statusAtual.includes("DISPON") || statusAtual === "OK";
+    
+    setLockData({
+      prefixo: v.Prefixo || v.prefixo,
+      motivo: isDisponivel ? 'manutencao' : 'disponivel', // Sugere o inverso
+      detalhes: '',
+      re_responsavel: ''
+    });
+    setShowLockModal(true);
+  };
+
+  const confirmarAlteracaoStatus = async () => {
+    // Define o status final baseado no motivo selecionado
+    let statusFinal = "DISPONÍVEL";
+    if (lockData.motivo === 'cautela') statusFinal = "EM SERVIÇO";
+    if (lockData.motivo === 'manutencao') statusFinal = "MANUTENÇÃO";
+    if (lockData.motivo === 'incidente') statusFinal = "BAIXADA (INCIDENTE)";
+    if (lockData.motivo === 'pendencia_garageiro') statusFinal = "PENDÊNCIA PÁTIO";
+
+    const res = await gasApi.alterarStatusViatura(lockData.prefixo, statusFinal, lockData);
+    if (res.status === 'success') {
+      setShowLockModal(false);
+      fetchData();
+    } else {
+      alert("Erro ao atualizar status.");
     }
   };
 
@@ -158,7 +198,6 @@ const GarageiroDashboard = ({ onBack }) => {
                   </thead>
                   <tbody className="divide-y divide-slate-100 font-bold uppercase">
                     {viaturas.map((v, i) => {
-                      // Normalização para aceitar "Status" ou "status" e "EM SERVIÇO" ou "disponivel"
                       const s = (v.Status || v.status || "").toString().toUpperCase();
                       const prefixo = v.Prefixo || v.prefixo;
                       const placa = v.Placa || v.placa;
@@ -172,12 +211,15 @@ const GarageiroDashboard = ({ onBack }) => {
                           </td>
                           <td className="p-4">
                             <span className={`text-[9px] font-black px-2 py-1 rounded-md ${isDisponivel ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'}`}>
-                              {s || "S/ INF"}
+                               {s || "S/ INF"}
                             </span>
                           </td>
                           <td className="p-4 text-right">
-                            <button className="text-slate-400 hover:text-amber-600 transition-colors p-2">
-                               {isDisponivel ? <Lock size={18} /> : <Unlock size={18} />}
+                            <button 
+                              onClick={() => abrirModalBloqueio(v)}
+                              className={`transition-colors p-2 rounded-lg ${isDisponivel ? 'text-slate-400 hover:text-red-600' : 'text-amber-600 hover:text-green-600'}`}
+                            >
+                               {isDisponivel ? <Unlock size={18} /> : <Lock size={18} />}
                             </button>
                           </td>
                         </tr>
@@ -191,6 +233,7 @@ const GarageiroDashboard = ({ onBack }) => {
         )}
       </main>
 
+      {/* MODAL DE CONFERÊNCIA (MANTIDO ORIGINAL) */}
       {showModal && selectedVtr && (
         <div className="fixed inset-0 bg-slate-900/80 backdrop-blur-sm z-50 flex items-center justify-center p-4">
           <div className="bg-white w-full max-w-lg rounded-[2.5rem] shadow-2xl overflow-hidden animate-in fade-in zoom-in duration-300">
@@ -257,6 +300,71 @@ const GarageiroDashboard = ({ onBack }) => {
                 className={`w-full py-5 rounded-[1.5rem] font-black uppercase tracking-widest text-xs shadow-lg transition-all active:scale-95 ${uploading ? 'bg-slate-300' : 'bg-emerald-600 text-white shadow-emerald-900/20'}`}
               >
                 {uploading ? 'Aguarde o Upload...' : 'Concluir Fiscalização'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* NOVO MODAL DE GESTÃO DE STATUS (BLOQUEIO/CADEADO) */}
+      {showLockModal && (
+        <div className="fixed inset-0 bg-slate-900/90 backdrop-blur-sm z-[60] flex items-center justify-center p-4">
+          <div className="bg-white w-full max-w-md rounded-[2.5rem] overflow-hidden shadow-2xl border-2 border-slate-800 animate-in fade-in slide-in-from-bottom-4">
+            <div className="bg-slate-900 p-6 text-white flex justify-between items-center">
+              <div>
+                <h2 className="font-black uppercase tracking-tighter">Alterar Status: {lockData.prefixo}</h2>
+                <p className="text-[10px] text-amber-500 font-bold uppercase tracking-widest">Controle de Disponibilidade</p>
+              </div>
+              <button onClick={() => setShowLockModal(false)} className="hover:rotate-90 transition-transform"><X /></button>
+            </div>
+            
+            <div className="p-8 space-y-6">
+              <div>
+                <label className="text-[10px] font-black uppercase text-slate-400 tracking-widest">Motivo da Alteração</label>
+                <select 
+                  className="w-full p-4 bg-slate-100 rounded-2xl font-bold mt-1 outline-none focus:ring-2 focus:ring-amber-500 text-sm"
+                  value={lockData.motivo}
+                  onChange={(e) => setLockData({...lockData, motivo: e.target.value})}
+                >
+                  <option value="disponivel">🔓 LIBERAR PARA SERVIÇO (DISPONÍVEL)</option>
+                  <option value="cautela">👤 CAUTELA (DESTINAR À GUARNIÇÃO)</option>
+                  <option value="manutencao">🛠️ MANUTENÇÃO (OFICINA/SETOR)</option>
+                  <option value="incidente">⚠️ INCIDENTE / AVARIA GRAVE</option>
+                  <option value="pendencia_garageiro">📋 PENDÊNCIA DE ENTREGA (LIMPEZA/ITENS)</option>
+                </select>
+              </div>
+
+              {(lockData.motivo === 'cautela' || lockData.motivo === 'manutencao') && (
+                <div className="animate-in fade-in slide-in-from-top-2">
+                  <label className="text-[10px] font-black uppercase text-slate-400 tracking-widest">
+                    {lockData.motivo === 'cautela' ? 'RE do Responsável / Guarnição' : 'Setor de Destino (Ex: CSM)'}
+                  </label>
+                  <input 
+                    type="text" 
+                    placeholder="Identificação..."
+                    className="w-full p-4 bg-slate-50 border-2 border-slate-200 rounded-2xl text-sm font-bold mt-1"
+                    value={lockData.re_responsavel}
+                    onChange={(e) => setLockData({...lockData, re_responsavel: e.target.value})}
+                  />
+                </div>
+              )}
+
+              <div>
+                <label className="text-[10px] font-black uppercase text-slate-400 tracking-widest">Observações Detalhadas</label>
+                <textarea 
+                  placeholder="Descreva o que houve ou por que está liberando..."
+                  className="w-full p-4 bg-slate-50 border-2 border-slate-200 rounded-2xl text-sm h-24 mt-1 outline-none focus:border-amber-500"
+                  value={lockData.detalhes}
+                  onChange={(e) => setLockData({...lockData, detalhes: e.target.value})}
+                />
+              </div>
+
+              <button 
+                onClick={confirmarAlteracaoStatus}
+                className="w-full py-5 bg-slate-900 text-white rounded-[1.8rem] font-black uppercase tracking-widest text-xs hover:bg-amber-600 transition-all flex items-center justify-center gap-2"
+              >
+                {lockData.motivo === 'disponivel' ? <Unlock size={16}/> : <Lock size={16}/>}
+                Confirmar Alteração
               </button>
             </div>
           </div>
