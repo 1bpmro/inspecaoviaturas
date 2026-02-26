@@ -4,6 +4,7 @@ import Login from './pages/Login';
 import Vistoria from './pages/Vistoria';
 import ConsultarFrota from './pages/ConsultarFrota';
 import Garageiro from './pages/GarageiroDashboard'; 
+import AdminDashboard from './pages/AdminDashboard';
 import { ClipboardCheck, LogOut, Car, Shield, ShieldCheck } from 'lucide-react';
 
 const Dashboard = ({ onNavigate }) => {
@@ -111,16 +112,18 @@ function App() {
 const renderView = () => {
   switch(view) {
     case 'vistoria': 
-      // TRAVA DE SEGURANÇA: Garageiro não faz vistoria de motorista
       if (isGarageiro && !isAdmin) {
-        alert("Acesso negado: Garageiros devem usar o 'Controle de Pátio'.");
+        alert("Acesso negado: Use o 'Controle de Pátio'.");
         setView('dashboard');
         return null;
       }
       return <Vistoria onBack={() => setView('dashboard')} />;
     
     case 'frota': 
-      return <ConsultarFrota onBack={() => setView('dashboard')} />;
+      // Se for ADMIN, ele vai para o Painel de Controle, se for POLICIAL, para consulta simples
+      return isAdmin ? 
+        <AdminDashboard onBack={() => setView('dashboard')} /> : 
+        <ConsultarFrota onBack={() => setView('dashboard')} />;
     
     case 'garageiro': 
       if (isGarageiro || isAdmin) {
@@ -128,6 +131,7 @@ const renderView = () => {
       }
       setView('dashboard');
       return null;
+
     default: 
       return <Dashboard onNavigate={(target) => setView(target)} />;
   }
