@@ -2,15 +2,16 @@ import React, { useState, useEffect } from 'react';
 import { gasApi } from '../api/gasClient';
 import { 
   Settings, Car, Tool, Fuel, BarChart3, Plus, 
-  AlertTriangle, Search, Filter, ArrowRight, Droplets, History, X, AlertCircle
+  AlertTriangle, Search, Filter, ArrowRight, Droplets, 
+  History, X, AlertCircle, ArrowLeft 
 } from 'lucide-react';
 
-const AdminDashboard = () => {
+const AdminDashboard = ({ onBack }) => {
   const [activeTab, setActiveTab] = useState('frota');
   const [viaturas, setViaturas] = useState([]);
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
-  const [selectedVtr, setSelectedVtr] = useState(null); // Estado para o Modal
+  const [selectedVtr, setSelectedVtr] = useState(null);
 
   useEffect(() => {
     loadData();
@@ -18,12 +19,17 @@ const AdminDashboard = () => {
 
   const loadData = async () => {
     setLoading(true);
-    const res = await gasApi.getViaturas();
-    if (res.status === 'success') {
-      // Filtra para não mostrar viaturas que já foram baixadas permanentemente
-      setViaturas(res.data.filter(v => v.Status !== "FORA DE SERVIÇO (BAIXA)"));
+    try {
+      const res = await gasApi.getViaturas();
+      if (res.status === 'success') {
+        // Filtra viaturas baixadas
+        setViaturas(res.data.filter(v => v.Status !== "FORA DE SERVIÇO (BAIXA)"));
+      }
+    } catch (error) {
+      console.error("Erro ao carregar frota:", error);
+    } finally {
+      setLoading(false);
     }
-    setLoading(false);
   };
 
   const checkOil = (vtr) => {
@@ -35,41 +41,49 @@ const AdminDashboard = () => {
     return { color: 'text-emerald-500', bg: 'bg-emerald-500', msg: 'OK', level: 0 };
   };
 
- const handleAction = async (action, payload) => {
-  if (!window.confirm(`Confirma esta operação?`)) return;
-  
-  setLoading(true);
-  try {
-    // Envia o objeto formatado exatamente como o switch/case do GAS espera
-    const res = await gasApi.execute({ action, payload }); 
-    // ^ Verifique se seu gasClient usa .execute ou .doPost
+  const handleAction = async (action, payload) => {
+    if (!window.confirm(`Confirma esta operação?`)) return;
     
-    if (res.status === 'success') {
-      alert("Operação realizada com sucesso!");
-      setSelectedVtr(null);
-      loadData();
-    } else {
-      alert("Erro: " + res.message);
+    setLoading(true);
+    try {
+      // Usando doPost conforme configurado no seu gasClient revisado
+      const res = await gasApi.doPost({ action, payload }); 
+      
+      if (res.status === 'success') {
+        alert("Operação realizada com sucesso!");
+        setSelectedVtr(null);
+        loadData();
+      } else {
+        alert("Erro: " + res.message);
+      }
+    } catch (err) {
+      alert("Erro de comunicação com o servidor.");
+    } finally {
+      setLoading(false);
     }
-  } catch (err) {
-    alert("Erro de conexão com o servidor.");
-  }
-  setLoading(false);
-};
+  };
 
   return (
     <div className="min-h-screen bg-slate-50 flex font-sans">
       {/* Sidebar Lateral */}
       <aside className="w-64 bg-slate-900 text-white flex flex-col shadow-2xl shrink-0">
         <div className="p-6 border-b border-slate-800 text-center">
-          <h1 className="font-black text-xl tracking-tighter uppercase">Painel <span className="text-amber-500">CMDO</span></h1>
+          <h1 className="font-black text-xl tracking-tighter uppercase italic">Painel <span className="text-amber-500">CMDO</span></h1>
           <p className="text-[9px] font-bold text-slate-500 tracking-widest uppercase">1º BPM - Porto Velho</p>
         </div>
 
         <nav className="flex-1 p-4 space-y-2">
+          {/* Botão para voltar ao dashboard principal */}
+          <button 
+            onClick={onBack}
+            className="w-full flex items-center gap-3 p-3 rounded-xl text-[11px] font-black uppercase transition-all text-blue-400 hover:bg-slate-800 mb-6 border border-blue-900/30"
+          >
+            <ArrowLeft size={18}/> Início (Sair do Painel)
+          </button>
+
           <MenuBtn active={activeTab==='frota'} onClick={()=>setActiveTab('frota')} icon={<Car size={18}/>} label="Gestão de Frota" />
           <MenuBtn active={activeTab==='manutencao'} onClick={()=>setActiveTab('manutencao')} icon={<Tool size={18}/>} label="Manutenção / Óleo" />
-          <MenuBtn active={activeTab==='stats'} icon={<BarChart3 size={18}/>} label="Indisponibilidade" />
+          <MenuBtn active={activeTab==='stats'} onClick={()=>setActiveTab('stats')} icon={<BarChart3 size={18}/>} label="Indisponibilidade" />
         </nav>
       </aside>
 
@@ -84,12 +98,13 @@ const AdminDashboard = () => {
               onChange={(e) => setSearchTerm(e.target.value)}
             />
           </div>
+          {loading && <div className="text-[10px] font-black text-amber-600 animate-pulse">ATUALIZANDO DADOS...</div>}
         </header>
 
         <section className="p-8 overflow-y-auto">
           {activeTab === 'frota' && (
-            <div className="space-y-6">
-              <div className="grid grid-cols-4 gap-6">
+            <div className="space-y-6 animate-in fade-in duration-500">
+              <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
                 <StatCard label="Total Frota" value={viaturas.length} color="blue" />
                 <StatCard label="Em Serviço" value={viaturas.filter(v => v.Status === 'EM SERVIÇO').length} color="emerald" />
                 <StatCard label="Manutenção" value={viaturas.filter(v => v.Status === 'MANUTENÇÃO').length} color="red" />
@@ -154,6 +169,13 @@ const AdminDashboard = () => {
               </div>
             </div>
           )}
+          
+          {activeTab !== 'frota' && (
+            <div className="flex flex-col items-center justify-center h-64 text-slate-400 opacity-50">
+              <Settings size={48} className="animate-spin duration-10000" />
+              <p className="mt-4 font-black uppercase text-xs tracking-widest">Módulo em Desenvolvimento</p>
+            </div>
+          )}
         </section>
       </main>
 
@@ -170,6 +192,7 @@ const AdminDashboard = () => {
   );
 };
 
+// COMPONENTES AUXILIARES
 const VtrDetailsModal = ({ vtr, onClose, checkOil, onAction }) => {
   const oilInfo = checkOil(vtr);
   const kmRodadoPosTroca = vtr.UltimoKM - (vtr.KM_UltimaTroca || 0);
@@ -177,12 +200,15 @@ const VtrDetailsModal = ({ vtr, onClose, checkOil, onAction }) => {
 
   return (
     <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-[100] flex justify-end">
-      <div className="w-full max-w-xl bg-white h-full shadow-2xl p-8 overflow-y-auto animate-in slide-in-from-right">
+      <div className="w-full max-w-xl bg-white h-full shadow-2xl p-8 overflow-y-auto animate-in slide-in-from-right duration-300">
         <div className="flex justify-between items-center mb-10">
-          <h2 className="text-3xl font-black text-slate-900 tracking-tighter uppercase italic">
-            {vtr.Prefixo}
-          </h2>
-          <button onClick={onClose} className="p-2 hover:bg-slate-100 rounded-full"><X/></button>
+          <div>
+            <h2 className="text-3xl font-black text-slate-900 tracking-tighter uppercase italic">
+              {vtr.Prefixo}
+            </h2>
+            <p className="text-xs font-bold text-slate-400 uppercase tracking-widest">Dossiê de Manutenção</p>
+          </div>
+          <button onClick={onClose} className="p-2 hover:bg-slate-100 rounded-full transition-colors"><X/></button>
         </div>
 
         <div className="grid grid-cols-2 gap-4 mb-10">
@@ -190,9 +216,9 @@ const VtrDetailsModal = ({ vtr, onClose, checkOil, onAction }) => {
             <p className="text-[10px] font-black text-slate-400 uppercase mb-4 flex items-center gap-2">
               <Droplets size={14}/> Vida Útil do Óleo
             </p>
-            <p className="text-2xl font-black text-slate-800">{10000 - kmRodadoPosTroca} <span className="text-xs">KM</span></p>
-            <div className="w-full bg-slate-200 h-2 rounded-full mt-3">
-              <div className={`h-full rounded-full ${oilInfo.bg}`} style={{ width: `${percentualOleo}%` }} />
+            <p className="text-2xl font-black text-slate-800">{Math.max(0, 10000 - kmRodadoPosTroca)} <span className="text-xs">KM RESTANTES</span></p>
+            <div className="w-full bg-slate-200 h-2 rounded-full mt-3 overflow-hidden">
+              <div className={`h-full rounded-full transition-all duration-1000 ${oilInfo.bg}`} style={{ width: `${percentualOleo}%` }} />
             </div>
           </div>
           
@@ -200,8 +226,8 @@ const VtrDetailsModal = ({ vtr, onClose, checkOil, onAction }) => {
             <p className="text-[10px] font-black text-slate-400 uppercase mb-4 flex items-center gap-2">
               <AlertCircle size={14}/> Status Patrimonial
             </p>
-            <p className="text-lg font-black text-slate-800 uppercase">{vtr.Status}</p>
-            <p className="text-[10px] text-slate-400 font-bold mt-1">ÚLTIMO KM: {vtr.UltimoKM}</p>
+            <p className="text-lg font-black text-slate-800 uppercase leading-none">{vtr.Status}</p>
+            <p className="text-[10px] text-slate-400 font-bold mt-2">ÚLTIMO KM REGISTRADO: {vtr.UltimoKM}</p>
           </div>
         </div>
 
@@ -211,25 +237,29 @@ const VtrDetailsModal = ({ vtr, onClose, checkOil, onAction }) => {
           <div className="grid grid-cols-1 gap-3">
             <button 
               onClick={() => onAction('registrarManutencao', { prefixo: vtr.Prefixo, tipo: 'TROCA_OLEO', km: vtr.UltimoKM, responsavel_re: 'ADMIN' })}
-              className="w-full py-4 bg-amber-500 text-slate-900 rounded-2xl font-black uppercase text-xs hover:bg-amber-600 transition-all flex items-center justify-center gap-2"
+              className="w-full py-5 bg-amber-500 text-slate-900 rounded-2xl font-black uppercase text-xs hover:bg-amber-600 transition-all flex items-center justify-center gap-2 active:scale-95"
             >
-              <Droplets size={16}/> Confirmar Troca de Óleo
+              <Droplets size={16}/> Confirmar Troca de Óleo (Resetar KM)
             </button>
             
             <button 
               onClick={() => onAction('baixarViatura', { prefixo: vtr.Prefixo, motivo: 'Baixa solicitada via Painel Administrativo' })}
-              className="w-full py-4 bg-slate-100 text-red-600 rounded-2xl font-black uppercase text-xs hover:bg-red-50 transition-all flex items-center justify-center gap-2"
+              className="w-full py-5 bg-slate-100 text-red-600 rounded-2xl font-black uppercase text-xs hover:bg-red-50 transition-all flex items-center justify-center gap-2 active:scale-95"
             >
-              <AlertTriangle size={16}/> Retirar Frota (Baixa Definitiva)
+              <AlertTriangle size={16}/> Retirar da Frota (Baixa Definitiva)
             </button>
           </div>
+        </div>
+        
+        <div className="mt-12 p-6 bg-blue-50 rounded-2xl border border-blue-100">
+           <p className="text-[10px] font-bold text-blue-800 uppercase mb-2">Histórico Rápido</p>
+           <p className="text-xs text-blue-600 italic">As vistorias detalhadas podem ser consultadas na aba de Relatórios do Google Sheets.</p>
         </div>
       </div>
     </div>
   );
 };
 
-// Sub-componentes
 const MenuBtn = ({ active, onClick, icon, label }) => (
   <button 
     onClick={onClick}
@@ -240,7 +270,12 @@ const MenuBtn = ({ active, onClick, icon, label }) => (
 );
 
 const StatCard = ({ label, value, color }) => {
-  const borderColors = { blue: 'border-l-blue-500', emerald: 'border-l-emerald-500', red: 'border-l-red-500', amber: 'border-l-amber-500' };
+  const borderColors = { 
+    blue: 'border-l-blue-500', 
+    emerald: 'border-l-emerald-500', 
+    red: 'border-l-red-500', 
+    amber: 'border-l-amber-500' 
+  };
   return (
     <div className={`bg-white p-6 rounded-3xl border-l-4 ${borderColors[color]} shadow-sm`}>
       <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">{label}</p>
