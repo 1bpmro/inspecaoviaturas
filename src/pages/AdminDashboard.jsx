@@ -35,11 +35,15 @@ const AdminDashboard = () => {
     return { color: 'text-emerald-500', bg: 'bg-emerald-500', msg: 'OK', level: 0 };
   };
 
-  const handleAction = async (action, payload) => {
-    if (!window.confirm(`Confirma esta operação de ${action}?`)) return;
+ const handleAction = async (action, payload) => {
+  if (!window.confirm(`Confirma esta operação?`)) return;
+  
+  setLoading(true);
+  try {
+    // Envia o objeto formatado exatamente como o switch/case do GAS espera
+    const res = await gasApi.execute({ action, payload }); 
+    // ^ Verifique se seu gasClient usa .execute ou .doPost
     
-    setLoading(true);
-    const res = await gasApi.doPost({ action, payload });
     if (res.status === 'success') {
       alert("Operação realizada com sucesso!");
       setSelectedVtr(null);
@@ -47,8 +51,11 @@ const AdminDashboard = () => {
     } else {
       alert("Erro: " + res.message);
     }
-    setLoading(false);
-  };
+  } catch (err) {
+    alert("Erro de conexão com o servidor.");
+  }
+  setLoading(false);
+};
 
   return (
     <div className="min-h-screen bg-slate-50 flex font-sans">
