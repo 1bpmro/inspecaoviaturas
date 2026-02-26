@@ -3,34 +3,34 @@ import axios from 'axios';
 const GAS_URL = 'https://script.google.com/macros/s/AKfycbxIDeHKsca9XSU7LFLKIrqawh6bFXxF7WmNETtGZZaWvSEDCy45p6-LyTqd6-Yn0H_RBQ/exec';
 
 export const gasApi = {
-  // Ajustado para garantir que a estrutura action/payload chegue correta ao GAS
+  // Função mestre de envio
   post: async (action, payload = {}) => {
     try {
-      const response = await axios.post(GAS_URL, {
+      const response = await axios.post(GAS_URL, JSON.stringify({
         action,
         payload
-      }, { headers: { 'Content-Type': 'text/plain' } });
+      }), { headers: { 'Content-Type': 'text/plain' } });
       return response.data;
     } catch (error) {
-      return { status: "error", message: "Erro de conexão" };
+      console.error("Erro na chamada GAS:", error);
+      return { status: "error", message: "Erro de conexão com o servidor PM" };
     }
   },
 
+  // Alias para compatibilidade com chamadas que passam objeto único (usado no AdminDashboard)
+  doPost: ({ action, payload }) => gasApi.post(action, payload),
+
+  // --- ROTAS GERAIS ---
   login: (re, senha) => gasApi.post('login', { re, senha }),
   checkProfile: (re) => gasApi.post('checkProfile', { re }),
   saveVistoria: (dados) => gasApi.post('saveVistoria', dados),
-  getViaturas: (apenasEmServico) => gasApi.post('getViaturas', { apenasEmServico }),
+  getViaturas: () => gasApi.post('getViaturas'),
   buscarMilitar: (re) => gasApi.post('buscarMilitar', { re }),
   getEfetivoCompleto: () => gasApi.post('getEfetivoCompleto'),
   
-  // Rotas do Garageiro
+  // --- ROTAS DO GARAGEIRO ---
   getVistoriasPendentes: () => gasApi.post('getVistoriasPendentes'),
   confirmarVistoriaGarageiro: (dados) => gasApi.post('confirmarVistoriaGarageiro', dados),
-  alterarStatusViatura: (prefixo, novoStatus) => gasApi.post('alterarStatusViatura', { prefixo, novoStatus }),
-
-  /**
-   * NOVA: Faz o upload da foto de avaria tirada pelo garageiro
-   */
   uploadFoto: async (file) => {
     const reader = new FileReader();
     const base64Promise = new Promise((resolve) => {
@@ -39,5 +39,16 @@ export const gasApi = {
     });
     const base64 = await base64Promise;
     return gasApi.post('uploadFotoGarageiro', { base64, name: file.name });
-  }
+  },
+
+  // --- ROTAS ADMINISTRATIVAS (NOVO) ---
+  // Esta função agora aceita o objeto 'info' que contém motivo e re_responsavel
+  alterarStatusViatura: (prefixo, novoStatus, info = {}) => 
+    gasApi.post('alterarStatusViatura', { prefixo, novoStatus, ...info }),
+
+  registrarManutencao: (dados) => gasApi.post('registrarManutencao', dados),
+  
+  baixarViatura: (prefixo, motivo) => gasApi.post('baixarViatura', { prefixo, motivo }),
+  
+  limparCache: () => gasApi.post('limparCache')
 };
