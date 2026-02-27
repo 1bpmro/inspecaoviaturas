@@ -6,7 +6,7 @@ import ConsultarFrota from './pages/ConsultarFrota';
 import Garageiro from './pages/GarageiroDashboard'; 
 import AdminDashboard from './pages/AdminDashboard';
 import HistoricoPessoal from './pages/HistoricoPessoal';
-import { ClipboardCheck, LogOut, Car, Shield, ShieldCheck, Settings, History } from 'lucide-react';
+import { ClipboardCheck, LogOut, Shield, ShieldCheck, Settings, History } from 'lucide-react';
 
 const Dashboard = ({ onNavigate }) => {
   const { user, logout, isAdmin, isGarageiro } = useAuth();
@@ -47,7 +47,7 @@ const Dashboard = ({ onNavigate }) => {
 
         <div className="grid grid-cols-1 gap-4 animate-in fade-in zoom-in duration-500">
           
-          {/* BOTÃO PRINCIPAL: NOVA VISTORIA (Aumentado para o Operacional) */}
+          {/* BOTÃO PRINCIPAL: NOVA VISTORIA */}
           {(!isGarageiro || isAdmin) && (
             <button 
               onClick={() => onNavigate('vistoria')}
@@ -69,17 +69,17 @@ const Dashboard = ({ onNavigate }) => {
             </button>
           )}
 
-          {/* BOTÃO SECUNDÁRIO OPERACIONAL: MEU HISTÓRICO (Simples, sem firula) */}
+          {/* BOTÃO OPERACIONAL: MEU HISTÓRICO */}
           {isOperacionalOnly && (
             <button 
-              className="w-full bg-white border-2 border-slate-200 text-slate-400 p-5 rounded-[2rem] flex items-center justify-between px-8 transition-all active:scale-95 grayscale opacity-60"
-              onClick={() => alert('Histórico pessoal em breve nas próximas atualizações.')}
+              onClick={() => onNavigate('historico_pessoal')}
+              className="w-full bg-white border-2 border-slate-200 text-slate-600 p-6 rounded-[2rem] flex items-center justify-between px-8 transition-all hover:border-blue-400 active:scale-95 shadow-sm"
             >
-              <div className="flex flex-col items-start">
-                <span className="font-black uppercase text-xs">Meu Histórico</span>
-                <span className="text-[8px] font-bold uppercase">Minhas vistorias recentes</span>
+              <div className="flex flex-col items-start text-left">
+                <span className="font-black uppercase text-sm italic">Meu Histórico</span>
+                <span className="text-[9px] font-bold uppercase text-slate-400">Minhas vistorias recentes</span>
               </div>
-              <History size={20} />
+              <History size={24} className="text-blue-500" />
             </button>
           )}
 
@@ -142,18 +142,15 @@ function App() {
         return <Vistoria onBack={() => setView('dashboard')} />;
       
       case 'frota': 
-        // Apenas Admin entra no Dashboard completo.
-        if (isAdmin) {
-          return <AdminDashboard onBack={() => setView('dashboard')} />;
-        }
-        // Se um policial comum tentar acessar por URL ou erro, volta pro dashboard
+        if (isAdmin) return <AdminDashboard onBack={() => setView('dashboard')} />;
         setView('dashboard');
         return null;
+
+      case 'historico_pessoal':
+        return <HistoricoPessoal onBack={() => setView('dashboard')} />;
       
       case 'garageiro': 
-        if (isGarageiro || isAdmin) {
-          return <Garageiro onBack={() => setView('dashboard')} />;
-        }
+        if (isGarageiro || isAdmin) return <Garageiro onBack={() => setView('dashboard')} />;
         setView('dashboard');
         return null;
 
