@@ -16,30 +16,36 @@ const AdminDashboard = ({ onBack }) => {
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedVtr, setSelectedVtr] = useState(null);
-
+  const [vistoriasPendentes, setVistoriasPendentes] = useState([]); 
+  
   useEffect(() => { loadData(); }, []);
 
-  const loadData = async () => {
-    setLoading(true);
-    try {
-      // Simulação de chamadas paralelas para performance
-      const [resVtr, resAuditoria] = await Promise.all([
-        gasApi.getViaturas(),
-        gasApi.getRelatorioGarageiros ? gasApi.getRelatorioGarageiros() : { status: 'success', data: [] }
-      ]);
+ const loadData = async () => {
+  setLoading(true);
+  try {
+    // Adicionado resPendentes na desestruturação do Promise.all
+    const [resVtr, resAuditoria, resPendentes] = await Promise.all([
+      gasApi.getViaturas(),
+      gasApi.getRelatorioGarageiros ? gasApi.getRelatorioGarageiros() : { status: 'success', data: [] },
+      gasApi.doPost({ action: 'getVistoriasPendentes' }) // Busca as fotos pendentes
+    ]);
 
-      if (resVtr.status === 'success') {
-        setViaturas(resVtr.data.filter(v => v.Status !== "FORA DE SERVIÇO (BAIXA)"));
-      }
-      if (resAuditoria.status === 'success') {
-        setAuditoria(resAuditoria.data);
-      }
-    } catch (error) { 
-      console.error("Erro na carga de dados:", error); 
-    } finally { 
-      setLoading(false); 
+    if (resVtr.status === 'success') {
+      setViaturas(resVtr.data.filter(v => v.Status !== "FORA DE SERVIÇO (BAIXA)"));
     }
-  };
+    if (resAuditoria.status === 'success') {
+      setAuditoria(resAuditoria.data);
+    }
+    // Salva as vistorias pendentes no estado
+    if (resPendentes.status === 'success') {
+      setVistoriasPendentes(resPendentes.data);
+    }
+  } catch (error) { 
+    console.error("Erro na carga de dados:", error); 
+  } finally { 
+    setLoading(false); 
+  }
+};
 
   const checkOil = (vtr) => {
     const kmAtual = parseInt(vtr.UltimoKM || 0);
