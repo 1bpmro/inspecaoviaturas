@@ -11,17 +11,16 @@ const GarageiroDashboard = ({ onBack }) => {
   const [tab, setTab] = useState('pendentes'); 
   const [vistorias, setVistorias] = useState([]);
   const [viaturas, setViaturas] = useState([]);
-  const [motoristas, setMotoristas] = useState([]); // Para o dropdown
+  const [motoristas, setMotoristas] = useState([]); 
   const [loading, setLoading] = useState(true);
-  const [isSubmitting, setIsSubmitting] = useState(false); // Trava de envio
+  const [isSubmitting, setIsSubmitting] = useState(false); 
   
   const [showModal, setShowModal] = useState(false);
   const [selectedVtr, setSelectedVtr] = useState(null);
   
-  // Estado de conferência atualizado
   const [conf, setConf] = useState({ 
     limpa: false, 
-    motoristaConfirmado: true, // Começa como Sim
+    motoristaConfirmado: true, 
     novoMotoristaRE: '',
     avaria: false, 
     obs: '' 
@@ -29,7 +28,6 @@ const GarageiroDashboard = ({ onBack }) => {
   
   const [fotoAvaria, setFotoAvaria] = useState(null);
   const [uploading, setUploading] = useState(false);
-  const [searchTerm, setSearchTerm] = useState('');
 
   const [showLockModal, setShowLockModal] = useState(false);
   const [lockData, setLockData] = useState({ 
@@ -42,7 +40,7 @@ const GarageiroDashboard = ({ onBack }) => {
       const [resVtr, resPend, resMot] = await Promise.all([
         gasApi.getViaturas(), 
         gasApi.getVistoriasPendentes(),
-        gasApi.getMotoristas() // Certifique-se que essa função existe no seu gasClient
+        gasApi.getMotoristas()
       ]);
       if (resVtr.status === 'success') setViaturas(resVtr.data);
       if (resPend.status === 'success') setVistorias(resPend.data);
@@ -75,9 +73,8 @@ const GarageiroDashboard = ({ onBack }) => {
   };
 
   const finalizarConferencia = async () => {
-    if (isSubmitting) return; // Bloqueia clique duplo
+    if (isSubmitting) return;
     
-    // Validações
     if (!conf.motoristaConfirmado && !conf.novoMotoristaRE) {
       return alert("Por favor, selecione quem está entregando a viatura.");
     }
@@ -95,7 +92,7 @@ const GarageiroDashboard = ({ onBack }) => {
         garageiro_re: user.re,
         foto_avaria: fotoAvaria,
         motorista_confirmado: conf.motoristaConfirmado,
-        novo_motorista_re: conf.novoMotoristaRE // RE do motorista selecionado se for "Não"
+        novo_motorista_re: conf.novoMotoristaRE
       });
 
       if (res.status === 'success') {
@@ -113,7 +110,6 @@ const GarageiroDashboard = ({ onBack }) => {
     }
   };
 
-  // Funções de Bloqueio/Cadeado mantidas conforme sua lógica
   const abrirModalBloqueio = (v) => {
     const s = (v.Status || v.status || "").toUpperCase();
     const isDisp = s.includes("DISPON") || s === "OK";
@@ -121,28 +117,35 @@ const GarageiroDashboard = ({ onBack }) => {
       prefixo: v.Prefixo || v.prefixo,
       motivo: isDisp ? 'manutencao' : 'disponivel',
       detalhes: '',
-      re_responsavel: ''
+      re_responsavel: user.re
     });
     setShowLockModal(true);
   };
 
   const confirmarAlteracaoStatus = async () => {
-    let statusFinal = "DISPONÍVEL";
-    if (lockData.motivo === 'cautela') statusFinal = "EM SERVIÇO";
-    if (lockData.motivo === 'manutencao') statusFinal = "MANUTENÇÃO";
-    if (lockData.motivo === 'incidente') statusFinal = "BAIXADA (INCIDENTE)";
-    if (lockData.motivo === 'pendencia_garageiro') statusFinal = "PENDÊNCIA PÁTIO";
+    setIsSubmitting(true);
+    try {
+      let statusFinal = "DISPONÍVEL";
+      if (lockData.motivo === 'manutencao') statusFinal = "MANUTENÇÃO";
+      if (lockData.motivo === 'incidente') statusFinal = "BAIXADA (INCIDENTE)";
+      if (lockData.motivo === 'pendencia_garageiro') statusFinal = "PENDÊNCIA PÁTIO";
 
-    const res = await gasApi.alterarStatusViatura(lockData.prefixo, statusFinal, lockData);
-    if (res.status === 'success') {
-      setShowLockModal(false);
-      fetchData();
+      const res = await gasApi.alterarStatusViatura(lockData.prefixo, statusFinal, lockData);
+      if (res.status === 'success') {
+        setShowLockModal(false);
+        fetchData();
+      } else {
+        alert("Erro ao alterar status.");
+      }
+    } catch (e) {
+      alert("Erro de comunicação com o servidor.");
+    } finally {
+      setIsSubmitting(false);
     }
   };
 
   return (
     <div className="min-h-screen bg-slate-100 flex flex-col">
-      {/* HEADER MANTIDO */}
       <header className="bg-slate-900 text-white p-4 shadow-xl border-b-4 border-amber-500">
         <div className="max-w-6xl mx-auto flex justify-between items-center">
           <div className="flex items-center gap-3">
@@ -164,7 +167,6 @@ const GarageiroDashboard = ({ onBack }) => {
         </div>
       </header>
 
-      {/* NAV TABS MANTIDO */}
       <nav className="bg-white border-b border-slate-200 sticky top-0 z-10">
         <div className="max-w-6xl mx-auto flex">
           <button onClick={() => setTab('pendentes')} className={`flex-1 p-4 text-xs font-black uppercase transition-all border-b-2 ${tab === 'pendentes' ? 'border-amber-500 text-amber-600 bg-amber-50/50' : 'border-transparent text-slate-400'}`}>
@@ -252,7 +254,7 @@ const GarageiroDashboard = ({ onBack }) => {
         )}
       </main>
 
-      {/* MODAL DE CONFERÊNCIA ATUALIZADO (SIM/NÃO + DROPDOWN) */}
+      {/* MODAL DE CONFERÊNCIA */}
       {showModal && selectedVtr && (
         <div className="fixed inset-0 bg-slate-900/80 backdrop-blur-sm z-50 flex items-center justify-center p-4">
           <div className="bg-white w-full max-w-lg rounded-[2.5rem] shadow-2xl overflow-hidden animate-in fade-in zoom-in duration-300">
@@ -265,8 +267,6 @@ const GarageiroDashboard = ({ onBack }) => {
             </div>
 
             <div className="p-8 space-y-5 overflow-y-auto max-h-[70vh]">
-              
-              {/* LOGICA SIM/NÃO MOTORISTA */}
               <div className="bg-slate-50 p-4 rounded-3xl border-2 border-slate-100">
                 <p className="text-[10px] font-black text-slate-400 uppercase mb-3 tracking-widest text-center">Confirmação de Identidade</p>
                 <div className="flex gap-2">
@@ -284,7 +284,6 @@ const GarageiroDashboard = ({ onBack }) => {
                   </button>
                 </div>
 
-                {/* DROPDOWN SE FOR NÃO */}
                 {!conf.motoristaConfirmado && (
                   <div className="mt-4 animate-in slide-in-from-top-2">
                     <label className="text-[9px] font-black text-red-600 uppercase mb-1 block">Quem está entregando?</label>
@@ -305,7 +304,6 @@ const GarageiroDashboard = ({ onBack }) => {
                 )}
               </div>
 
-              {/* OUTRAS CONFERÊNCIAS */}
               <div className="grid grid-cols-2 gap-3">
                 <button 
                   onClick={() => setConf({...conf, limpa: !conf.limpa})}
@@ -323,7 +321,6 @@ const GarageiroDashboard = ({ onBack }) => {
                 </button>
               </div>
 
-              {/* FOTO E OBS MANTIDOS */}
               {conf.avaria && (
                 <div className="p-4 bg-red-50 border-2 border-dashed border-red-200 rounded-2xl">
                   <label className="flex flex-col items-center justify-center gap-2 cursor-pointer py-4 bg-white rounded-xl min-h-[100px]">
@@ -360,9 +357,53 @@ const GarageiroDashboard = ({ onBack }) => {
         </div>
       )}
 
-      {/* MODAL DE STATUS MANTIDO */}
+      {/* MODAL DE STATUS (CORRIGIDO PARA O BUILD) */}
       {showLockModal && (
-        // ... (Mantive o seu código do modal de bloqueio aqui, ele está funcional)
+        <div className="fixed inset-0 bg-slate-900/90 backdrop-blur-md z-[60] flex items-center justify-center p-4">
+          <div className="bg-white w-full max-w-sm rounded-[2.5rem] p-8 shadow-2xl animate-in zoom-in duration-300">
+            <div className="flex flex-col items-center text-center space-y-4">
+              <div className={`p-4 rounded-full ${lockData.motivo === 'disponivel' ? 'bg-green-100 text-green-600' : 'bg-red-100 text-red-600'}`}>
+                {lockData.motivo === 'disponivel' ? <Unlock size={40} /> : <Lock size={40} />}
+              </div>
+              
+              <h3 className="text-2xl font-black text-slate-800 uppercase tracking-tighter">
+                {lockData.motivo === 'disponivel' ? "Liberar VTR" : "Bloquear VTR"}
+              </h3>
+              <p className="text-xs font-bold text-slate-400 uppercase">{lockData.prefixo}</p>
+
+              {lockData.motivo !== 'disponivel' && (
+                <div className="w-full space-y-2 mt-4 text-left">
+                  <label className="text-[9px] font-black text-slate-400 uppercase px-1">Motivo do Bloqueio</label>
+                  <select 
+                    className="w-full p-4 bg-slate-50 border-2 border-slate-100 rounded-2xl font-bold text-xs uppercase"
+                    value={lockData.motivo}
+                    onChange={(e) => setLockData({...lockData, motivo: e.target.value})}
+                  >
+                    <option value="manutencao">Manutenção</option>
+                    <option value="incidente">Incidente/Avaria</option>
+                    <option value="pendencia_garageiro">Pendência de Limpeza</option>
+                  </select>
+                </div>
+              )}
+
+              <div className="flex flex-col w-full gap-3 mt-6">
+                <button 
+                  onClick={confirmarAlteracaoStatus}
+                  disabled={isSubmitting}
+                  className={`w-full py-4 rounded-2xl font-black uppercase text-xs tracking-widest transition-all ${lockData.motivo === 'disponivel' ? 'bg-green-600 text-white' : 'bg-red-600 text-white'}`}
+                >
+                  {isSubmitting ? 'Salvando...' : 'Confirmar Alteração'}
+                </button>
+                <button 
+                  onClick={() => setShowLockModal(false)}
+                  className="w-full py-4 bg-slate-100 text-slate-400 rounded-2xl font-black uppercase text-xs tracking-widest"
+                >
+                  Voltar
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );
