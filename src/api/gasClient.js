@@ -1,6 +1,6 @@
 import axios from 'axios';
 
-const GAS_URL = 'https://script.google.com/macros/s/AKfycbwwRnkQ8_2t-5svozWtTOkxJrJGu-dOdz_0WQhe4gre_vJ2DMuzryXqFNeYDEC_a3am5g/exec';
+const GAS_URL = 'https://script.google.com/macros/s/AKfycbwONhV1ZfidviBzc50Jjb-ddzAj0knbRM_JiQECMwBk45D9TPt1vq9BWx6fhdLgIuK8-Q/exec';
 
 export const gasApi = {
   // Função mestre de envio
