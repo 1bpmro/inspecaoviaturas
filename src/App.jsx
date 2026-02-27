@@ -5,6 +5,7 @@ import Vistoria from './pages/Vistoria';
 import ConsultarFrota from './pages/ConsultarFrota';
 import Garageiro from './pages/GarageiroDashboard'; 
 import AdminDashboard from './pages/AdminDashboard';
+import HistoricoPessoal from './pages/HistoricoPessoal';
 import { ClipboardCheck, LogOut, Car, Shield, ShieldCheck, Settings, History } from 'lucide-react';
 
 const Dashboard = ({ onNavigate }) => {
