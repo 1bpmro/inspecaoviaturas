@@ -5,10 +5,13 @@ import Vistoria from './pages/Vistoria';
 import ConsultarFrota from './pages/ConsultarFrota';
 import Garageiro from './pages/GarageiroDashboard'; 
 import AdminDashboard from './pages/AdminDashboard';
-import { ClipboardCheck, LogOut, Car, Shield, ShieldCheck, Settings } from 'lucide-react';
+import { ClipboardCheck, LogOut, Car, Shield, ShieldCheck, Settings, History } from 'lucide-react';
 
 const Dashboard = ({ onNavigate }) => {
   const { user, logout, isAdmin, isGarageiro } = useAuth();
+
+  // Define se é o perfil operacional (policial comum)
+  const isOperacionalOnly = !isAdmin && !isGarageiro;
 
   return (
     <div className="min-h-screen bg-slate-50">
@@ -25,26 +28,62 @@ const Dashboard = ({ onNavigate }) => {
           onClick={logout} 
           className="p-2 bg-slate-800 hover:bg-red-600 rounded-xl transition-all active:scale-90 flex items-center gap-2 group"
         >
-          <span className="hidden group-hover:block text-[10px] font-black uppercase pr-1">Sair</span>
+          <span className="text-[10px] font-black uppercase pr-1">Sair</span>
           <LogOut size={20} />
         </button>
       </nav>
 
-      {/* CONTEÚDO */}
+      {/* CONTEÚDO PRINCIPAL */}
       <main className="p-6 max-w-xl mx-auto space-y-6">
-        <header className="animate-in fade-in slide-in-from-left duration-500">
+        <header className="animate-in fade-in slide-in-from-left duration-500 text-center mb-8">
           <h2 className="text-2xl font-black text-slate-800 tracking-tight leading-tight">
             Olá, <span className="text-blue-700">{user?.patente} {user?.nome}</span>
           </h2>
-          <p className="text-xs font-bold text-slate-500 uppercase tracking-widest mt-1">
-            {isAdmin ? "⚠️ MODO ADMINISTRADOR ATIVO" : "Selecione uma operação de serviço"}
+          <p className="text-[10px] font-bold text-slate-500 uppercase tracking-[0.2em] mt-2">
+            {isAdmin ? "⚠️ ACESSO ADMINISTRATIVO" : "SISTEMA DE VISTORIAS"}
           </p>
         </header>
 
-        <div className="grid grid-cols-1 gap-4 animate-in fade-in zoom-in duration-500 delay-150">
+        <div className="grid grid-cols-1 gap-4 animate-in fade-in zoom-in duration-500">
           
-          {/* BOTÃO EXCLUSIVO ADMIN: PAINEL DE COMANDO (Substitui o Consultar Frota para o Admin) */}
-          {isAdmin ? (
+          {/* BOTÃO PRINCIPAL: NOVA VISTORIA (Aumentado para o Operacional) */}
+          {(!isGarageiro || isAdmin) && (
+            <button 
+              onClick={() => onNavigate('vistoria')}
+              className={`vtr-card flex flex-col items-center justify-center gap-4 transition-all hover:shadow-2xl active:scale-[0.97] bg-blue-600 text-white rounded-[2.5rem] shadow-xl shadow-blue-100 border-b-8 border-blue-800 ${
+                isOperacionalOnly ? 'p-10' : 'p-6 flex-row text-left'
+              }`}
+            >
+              <div className={`p-4 bg-white/20 rounded-2xl ${isOperacionalOnly ? 'mb-2' : ''}`}>
+                <ClipboardCheck size={isOperacionalOnly ? 48 : 32} />
+              </div>
+              <div>
+                <h3 className={`font-black uppercase leading-none ${isOperacionalOnly ? 'text-xl' : 'text-lg'}`}>
+                  Nova Vistoria
+                </h3>
+                <p className="text-[10px] font-bold mt-2 uppercase opacity-80 tracking-tighter italic">
+                  Iniciar Checklist de Viatura
+                </p>
+              </div>
+            </button>
+          )}
+
+          {/* BOTÃO SECUNDÁRIO OPERACIONAL: MEU HISTÓRICO (Simples, sem firula) */}
+          {isOperacionalOnly && (
+            <button 
+              className="w-full bg-white border-2 border-slate-200 text-slate-400 p-5 rounded-[2rem] flex items-center justify-between px-8 transition-all active:scale-95 grayscale opacity-60"
+              onClick={() => alert('Histórico pessoal em breve nas próximas atualizações.')}
+            >
+              <div className="flex flex-col items-start">
+                <span className="font-black uppercase text-xs">Meu Histórico</span>
+                <span className="text-[8px] font-bold uppercase">Minhas vistorias recentes</span>
+              </div>
+              <History size={20} />
+            </button>
+          )}
+
+          {/* ÁREA DE COMANDO: APENAS ADMIN */}
+          {isAdmin && (
             <button 
               onClick={() => onNavigate('frota')}
               className="vtr-card p-6 flex items-center gap-5 border-l-8 border-indigo-600 transition-all hover:shadow-xl active:scale-[0.98] bg-white rounded-[2rem] shadow-md"
@@ -54,58 +93,37 @@ const Dashboard = ({ onNavigate }) => {
               </div>
               <div className="text-left">
                 <h3 className="font-black text-lg text-slate-800 uppercase leading-none">Painel de Comando</h3>
-                <p className="text-xs text-slate-500 font-bold mt-1 uppercase tracking-tighter">Gestão de Óleo, Baixas e Frota</p>
-              </div>
-            </button>
-          ) : (
-            /* Botão Consultar Frota para Policiais Comuns */
-            <button 
-              onClick={() => onNavigate('frota')}
-              className="vtr-card p-6 flex items-center gap-5 group text-left transition-all hover:shadow-xl active:scale-[0.98] bg-white rounded-[2rem] border-l-8 border-slate-800"
-            >
-              <div className="p-4 bg-slate-800 text-white rounded-2xl shadow-lg shadow-slate-200">
-                <Car size={32} />
-              </div>
-              <div>
-                <h3 className="font-black text-lg text-slate-800 uppercase leading-none">Consultar Frota</h3>
-                <p className="text-xs text-slate-500 font-bold mt-1 uppercase tracking-tighter">Status e Localização das VTRs</p>
+                <p className="text-xs text-slate-500 font-bold mt-1 uppercase tracking-tighter">Gestão de Óleo e Frota</p>
               </div>
             </button>
           )}
 
-          {/* Botão Nova Vistoria (Sempre visível para Policial e Admin) */}
-          {(!isGarageiro || isAdmin) && (
-            <button 
-              onClick={() => onNavigate('vistoria')}
-              className="vtr-card p-6 flex items-center gap-5 group text-left transition-all hover:shadow-xl active:scale-[0.98] bg-white rounded-[2rem] border-l-8 border-blue-600"
-            >
-              <div className="p-4 bg-blue-600 text-white rounded-2xl shadow-lg shadow-blue-200">
-                <ClipboardCheck size={32} />
-              </div>
-              <div>
-                <h3 className="font-black text-lg text-slate-800 uppercase leading-none">Nova Vistoria</h3>
-                <p className="text-xs text-slate-500 font-bold mt-1 uppercase tracking-tighter">Checklist de Entrada / Saída</p>
-              </div>
-            </button>
-          )}
-
-          {/* BOTÃO GARAGEIRO (Aparece para Garageiro e também para Admin caso ele precise validar algo) */}
+          {/* ÁREA GARAGEIRO: GARAGEIRO E ADMIN */}
           {(isAdmin || isGarageiro) && (
             <button 
               onClick={() => onNavigate('garageiro')}
-              className="vtr-card p-6 flex items-center gap-5 border-l-8 border-amber-500 transition-all hover:shadow-xl active:scale-[0.98] bg-white rounded-[2rem] opacity-90"
+              className="vtr-card p-6 flex items-center gap-5 border-l-8 border-amber-500 transition-all hover:shadow-xl active:scale-[0.98] bg-white rounded-[2rem] opacity-90 shadow-md"
             >
-              <div className="p-4 bg-amber-600 text-white rounded-2xl shadow-lg shadow-amber-200">
+              <div className="p-4 bg-amber-600 text-white rounded-2xl shadow-lg">
                 <ShieldCheck size={32} />
               </div>
               <div className="text-left">
                 <h3 className="font-black text-lg text-slate-800 uppercase leading-none italic">Controle de Pátio</h3>
-                <p className="text-xs text-slate-500 font-bold mt-1 uppercase tracking-tighter">Validação (Garageiro)</p>
+                <p className="text-xs text-slate-500 font-bold mt-1 uppercase tracking-tighter">Validação de Garageiro</p>
               </div>
             </button>
           )}
 
         </div>
+
+        {/* NOTA DE RODAPÉ OPERACIONAL */}
+        {isOperacionalOnly && (
+          <div className="mt-10 p-4 bg-slate-100 rounded-2xl border border-dashed border-slate-300 text-center">
+            <p className="text-[9px] font-black text-slate-400 uppercase leading-tight tracking-widest">
+              A conferência do nível de óleo é <br/>obrigatória em todas as saídas.
+            </p>
+          </div>
+        )}
       </main>
     </div>
   );
@@ -123,10 +141,13 @@ function App() {
         return <Vistoria onBack={() => setView('dashboard')} />;
       
       case 'frota': 
-        // Lógica de bifurcação:
-        return isAdmin ? 
-          <AdminDashboard onBack={() => setView('dashboard')} /> : 
-          <ConsultarFrota onBack={() => setView('dashboard')} />;
+        // Apenas Admin entra no Dashboard completo.
+        if (isAdmin) {
+          return <AdminDashboard onBack={() => setView('dashboard')} />;
+        }
+        // Se um policial comum tentar acessar por URL ou erro, volta pro dashboard
+        setView('dashboard');
+        return null;
       
       case 'garageiro': 
         if (isGarageiro || isAdmin) {
