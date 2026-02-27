@@ -20,38 +20,36 @@ const AdminDashboard = ({ onBack }) => {
   
   useEffect(() => { loadData(); }, []);
 
- const loadData = async () => {
-  setLoading(true);
-  try {
-    // Adicionado resPendentes na desestruturação do Promise.all
-    const [resVtr, resAuditoria, resPendentes] = await Promise.all([
-      gasApi.getViaturas(),
-      gasApi.getRelatorioGarageiros ? gasApi.getRelatorioGarageiros() : { status: 'success', data: [] },
-      gasApi.doPost({ action: 'getVistoriasPendentes' }) // Busca as fotos pendentes
-    ]);
+  const loadData = async () => {
+    setLoading(true);
+    try {
+      const [resVtr, resAuditoria, resPendentes] = await Promise.all([
+        gasApi.getViaturas(),
+        gasApi.getRelatorioGarageiros ? gasApi.getRelatorioGarageiros() : { status: 'success', data: [] },
+        gasApi.doPost({ action: 'getVistoriasPendentes' })
+      ]);
 
-    if (resVtr.status === 'success') {
-      setViaturas(resVtr.data.filter(v => v.Status !== "FORA DE SERVIÇO (BAIXA)"));
+      if (resVtr.status === 'success') {
+        setViaturas(resVtr.data.filter(v => v.Status !== "FORA DE SERVIÇO (BAIXA)"));
+      }
+      if (resAuditoria.status === 'success') {
+        setAuditoria(resAuditoria.data);
+      }
+      if (resPendentes.status === 'success') {
+        setVistoriasPendentes(resPendentes.data);
+      }
+    } catch (error) { 
+      console.error("Erro na carga de dados:", error); 
+    } finally { 
+      setLoading(false); 
     }
-    if (resAuditoria.status === 'success') {
-      setAuditoria(resAuditoria.data);
-    }
-    // Salva as vistorias pendentes no estado
-    if (resPendentes.status === 'success') {
-      setVistoriasPendentes(resPendentes.data);
-    }
-  } catch (error) { 
-    console.error("Erro na carga de dados:", error); 
-  } finally { 
-    setLoading(false); 
-  }
-};
+  };
 
   const checkOil = (vtr) => {
     const kmAtual = parseInt(vtr.UltimoKM || 0);
     const kmTroca = parseInt(vtr.KM_UltimaTroca || 0);
     const rodado = kmAtual - kmTroca;
-    const mediaDiaria = 150; // Média estimada PMRO
+    const mediaDiaria = 150; 
     const kmRestante = 10000 - rodado;
     const diasRestantes = Math.max(0, Math.floor(kmRestante / mediaDiaria));
 
@@ -196,152 +194,100 @@ const AdminDashboard = ({ onBack }) => {
             </div>
           )}
 
-          {/* ABA: AUDITORIA DE PÁTIO */}
-        
-{activeTab === 'auditoria' && (
-  <div className="space-y-6 animate-in slide-in-from-right duration-500">
-    {/* HEADER DA ABA */}
-    <div className="bg-slate-900 p-8 rounded-[2.5rem] text-white flex justify-between items-center shadow-2xl border-b-4 border-blue-500">
-      <div>
-        <h2 className="text-2xl font-black uppercase italic leading-none">Controle de Garageiros</h2>
-        <p className="text-sm font-bold uppercase mt-2 text-slate-400">Fiscalização de conferência e integridade de pátio</p>
-      </div>
-      <ShieldCheck size={40} className="text-blue-500" />
-    </div>
+          {/* ABA: AUDITORIA */}
+          {activeTab === 'auditoria' && (
+            <div className="space-y-6 animate-in slide-in-from-right duration-500">
+              <div className="bg-slate-900 p-8 rounded-[2.5rem] text-white flex justify-between items-center shadow-2xl border-b-4 border-blue-500">
+                <div>
+                  <h2 className="text-2xl font-black uppercase italic leading-none">Controle de Garageiros</h2>
+                  <p className="text-sm font-bold uppercase mt-2 text-slate-400">Fiscalização de conferência e integridade de pátio</p>
+                </div>
+                <ShieldCheck size={40} className="text-blue-500" />
+              </div>
 
-    <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-      
-      {/* COLUNA ESQUERDA: VALIDAÇÃO DE MANUTENÇÃO (TROCA DE ÓLEO) */}
-      <div className="bg-white rounded-[2.5rem] border border-slate-200 shadow-sm overflow-hidden flex flex-col">
-        <div className="p-6 border-b border-slate-100 bg-slate-50/50 flex justify-between items-center">
-          <div>
-            <h3 className="text-[10px] font-black uppercase text-slate-400 tracking-widest">Inbox de Manutenção</h3>
-            <p className="text-xs font-bold text-slate-800 italic">Validar Comprovantes de Óleo</p>
-          </div>
-          <Droplets className="text-blue-500" size={20} />
-        </div>
-
-        <div className="p-4 space-y-3 max-h-[500px] overflow-y-auto">
-          {/* Filtra vistorias pendentes que possuam link de foto (indicando envio de comprovante) */}
-          {vistoriasPendentes.filter(p => p.Links_Fotos).length > 0 ? (
-            vistoriasPendentes.filter(p => p.Links_Fotos).map((item, i) => (
-              <div key={i} className="p-4 bg-slate-50 rounded-2xl border border-slate-100 flex justify-between items-center group hover:border-blue-200 transition-all shadow-sm">
-                <div className="flex items-center gap-3">
-                  <div className="w-10 h-10 bg-blue-600 text-white rounded-xl flex items-center justify-center font-black">
-                    {item.prefixo_vtr?.slice(-2)}
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <div className="bg-white rounded-[2.5rem] border border-slate-200 shadow-sm overflow-hidden flex flex-col">
+                  <div className="p-6 border-b border-slate-100 bg-slate-50/50 flex justify-between items-center">
+                    <div>
+                      <h3 className="text-[10px] font-black uppercase text-slate-400 tracking-widest">Inbox de Manutenção</h3>
+                      <p className="text-xs font-bold text-slate-800 italic">Validar Comprovantes de Óleo</p>
+                    </div>
+                    <Droplets className="text-blue-500" size={20} />
                   </div>
-                  <div>
-                    <p className="text-sm font-black text-slate-800">{item.prefixo_vtr}</p>
-                    <p className="text-[9px] font-bold text-slate-400 uppercase">KM: {item.hodometro} • RE: {item.motorista_matricula}</p>
+                  <div className="p-4 space-y-3 max-h-[500px] overflow-y-auto">
+                    {vistoriasPendentes.filter(p => p.Links_Fotos).length > 0 ? (
+                      vistoriasPendentes.filter(p => p.Links_Fotos).map((item, i) => (
+                        <div key={i} className="p-4 bg-slate-50 rounded-2xl border border-slate-100 flex justify-between items-center group hover:border-blue-200 transition-all shadow-sm">
+                          <div className="flex items-center gap-3">
+                            <div className="w-10 h-10 bg-blue-600 text-white rounded-xl flex items-center justify-center font-black">{item.prefixo_vtr?.slice(-2)}</div>
+                            <div>
+                              <p className="text-sm font-black text-slate-800">{item.prefixo_vtr}</p>
+                              <p className="text-[9px] font-bold text-slate-400 uppercase">KM: {item.hodometro} • RE: {item.motorista_matricula}</p>
+                            </div>
+                          </div>
+                          <div className="flex gap-2">
+                            <a href={item.Links_Fotos?.split(' | ')[0]} target="_blank" rel="noreferrer" className="p-2 bg-white text-slate-400 hover:text-blue-600 rounded-lg border border-slate-200 transition-all"><ExternalLink size={16} /></a>
+                            <button onClick={() => handleAction('registrarManutencao', { prefixo: item.prefixo_vtr, tipo: 'TROCA_OLEO', km: item.hodometro, responsavel_re: 'ADMIN' })} className="p-2 bg-emerald-500 text-white rounded-lg hover:bg-emerald-600 shadow-lg shadow-emerald-100 transition-all"><CheckCircle2 size={16} /></button>
+                          </div>
+                        </div>
+                      ))
+                    ) : (
+                      <div className="py-20 text-center">
+                        <Clock className="mx-auto text-slate-200 mb-2" size={32} />
+                        <p className="text-[10px] font-bold text-slate-400 uppercase italic">Nenhum comprovante pendente</p>
+                      </div>
+                    )}
                   </div>
                 </div>
-                <div className="flex gap-2">
-                  <a 
-                    href={item.Links_Fotos?.split(' | ')[0]} 
-                    target="_blank" 
-                    rel="noreferrer" 
-                    className="p-2 bg-white text-slate-400 hover:text-blue-600 rounded-lg border border-slate-200 transition-all"
-                    title="Ver Comprovante"
-                  >
-                    <ExternalLink size={16} />
-                  </a>
-                  <button 
-                    onClick={() => handleAction('registrarManutencao', { 
-                      prefixo: item.prefixo_vtr, 
-                      tipo: 'TROCA_OLEO', 
-                      km: item.hodometro,
-                      descricao: 'Validado via Auditoria de Pátio',
-                      responsavel_re: 'ADMIN' 
-                    })}
-                    className="p-2 bg-emerald-500 text-white rounded-lg hover:bg-emerald-600 shadow-lg shadow-emerald-100 transition-all"
-                  >
-                    <CheckCircle2 size={16} />
-                  </button>
+
+                <div className="space-y-6">
+                  <div className="bg-white rounded-[2.5rem] border border-red-100 shadow-sm p-6">
+                    <div className="flex items-center gap-2 mb-6">
+                      <div className="p-2 bg-red-100 text-red-600 rounded-lg"><AlertTriangle size={18} /></div>
+                      <div>
+                        <p className="text-[10px] font-black uppercase text-red-500 tracking-widest leading-none">Alerta de Inatividade</p>
+                        <p className="text-[9px] font-bold text-slate-400 uppercase">Viaturas entregues sem conferência</p>
+                      </div>
+                    </div>
+                    <div className="space-y-3">
+                      {viaturas.filter(v => v.Status === 'AGUARDANDO').map((v, i) => (
+                        <div key={i} className="flex justify-between items-center p-3 bg-red-50/50 rounded-xl border border-red-50">
+                          <span className="font-black text-slate-800 italic text-sm">{v.Prefixo}</span>
+                          <span className="text-[9px] font-bold bg-white px-2 py-1 rounded border border-red-100 text-red-600 uppercase">Aguardando Pátio</span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                  
+                  {/* Atividade por Graduado */}
+                  <div className="bg-white rounded-[2.5rem] border border-slate-200 shadow-sm overflow-hidden">
+                    <div className="p-6 border-b border-slate-100 bg-slate-50/50 flex justify-between items-center">
+                      <p className="text-[10px] font-black uppercase text-slate-400 tracking-widest">Atividade por Graduado</p>
+                      <Users size={16} className="text-slate-400" />
+                    </div>
+                    <div className="divide-y divide-slate-100 max-h-[300px] overflow-y-auto">
+                      {auditoria.map((rel, i) => (
+                        <div key={i} className="p-4 flex justify-between items-center hover:bg-slate-50 transition-colors">
+                          <div className="flex items-center gap-3">
+                            <div className="w-8 h-8 bg-blue-100 text-blue-600 rounded-lg flex items-center justify-center font-black text-[10px]">{rel.re?.slice(-2)}</div>
+                            <div>
+                              <p className="text-xs font-black text-slate-800 uppercase">{rel.nome || 'Sentinela RE ' + rel.re}</p>
+                              <p className="text-[9px] font-bold text-slate-400 uppercase">Total Conferido: {rel.total_conferencias}</p>
+                            </div>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
                 </div>
               </div>
-            ))
-          ) : (
-            <div className="py-20 text-center">
-              <Clock className="mx-auto text-slate-200 mb-2" size={32} />
-              <p className="text-[10px] font-bold text-slate-400 uppercase italic">Nenhum comprovante pendente</p>
             </div>
           )}
-        </div>
-      </div>
-
-      {/* COLUNA DIREITA: ALERTAS E RANKING */}
-      <div className="space-y-6">
-        
-        {/* CARD: ALERTAS DE PÁTIO (VTRS AGUARDANDO) */}
-        <div className="bg-white rounded-[2.5rem] border border-red-100 shadow-sm p-6">
-          <div className="flex items-center gap-2 mb-6">
-            <div className="p-2 bg-red-100 text-red-600 rounded-lg">
-              <AlertTriangle size={18} />
-            </div>
-            <div>
-              <p className="text-[10px] font-black uppercase text-red-500 tracking-widest leading-none">Alerta de Inatividade</p>
-              <p className="text-[9px] font-bold text-slate-400 uppercase">Viaturas entregues sem conferência</p>
-            </div>
-          </div>
-          <div className="space-y-3">
-            {viaturas.filter(v => v.Status === 'AGUARDANDO').length > 0 ? (
-              viaturas.filter(v => v.Status === 'AGUARDANDO').map((v, i) => (
-                <div key={i} className="flex justify-between items-center p-3 bg-red-50/50 rounded-xl border border-red-50">
-                  <span className="font-black text-slate-800 italic text-sm">{v.Prefixo}</span>
-                  <div className="flex items-center gap-2">
-                    <span className="text-[9px] font-bold bg-white px-2 py-1 rounded border border-red-100 text-red-600 uppercase">Aguardando Pátio</span>
-                    <Timer size={14} className="text-red-300 animate-pulse" />
-                  </div>
-                </div>
-              ))
-            ) : (
-              <p className="text-[10px] text-slate-400 font-bold text-center italic py-4">Pátio operando em tempo real</p>
-            )}
-          </div>
-        </div>
-
-        {/* CARD: ATIVIDADE POR GRADUADO (RANKING) */}
-        <div className="bg-white rounded-[2.5rem] border border-slate-200 shadow-sm overflow-hidden">
-          <div className="p-6 border-b border-slate-100 bg-slate-50/50 flex justify-between items-center">
-            <p className="text-[10px] font-black uppercase text-slate-400 tracking-widest">Atividade por Graduado</p>
-            <Users size={16} className="text-slate-400" />
-          </div>
-          <div className="divide-y divide-slate-100 max-h-[300px] overflow-y-auto">
-            {auditoria.length > 0 ? auditoria.map((rel, i) => (
-              <div key={i} className="p-4 flex justify-between items-center hover:bg-slate-50 transition-colors">
-                <div className="flex items-center gap-3">
-                  <div className="w-8 h-8 bg-blue-100 text-blue-600 rounded-lg flex items-center justify-center font-black text-[10px]">
-                    {rel.re?.slice(-2) || '??'}
-                  </div>
-                  <div>
-                    <p className="text-xs font-black text-slate-800 uppercase">{rel.nome || 'Sentinela RE ' + rel.re}</p>
-                    <p className="text-[9px] font-bold text-slate-400 uppercase">Total Conferido: {rel.total_conferencias}</p>
-                  </div>
-                </div>
-                {rel.vistorias_com_avaria > 0 && (
-                  <span className="text-[8px] bg-orange-100 text-orange-600 px-2 py-1 rounded-full font-black">
-                    {rel.vistorias_com_avaria} AVARIAS
-                  </span>
-                )}
-              </div>
-            )) : (
-              <div className="p-10 text-center text-slate-400 font-bold uppercase text-[10px]">
-                Nenhuma atividade registrada no turno
-              </div>
-            )}
-          </div>
-        </div>
-      </div>
-    </div>
-  </div>
-)}
 
           {/* ABA: ANALYTICS */}
           {activeTab === 'analytics' && (
             <div className="space-y-8 animate-in slide-in-from-right duration-500">
               <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                
-                {/* Gráfico Circular de Prontidão */}
                 <div className="bg-white p-8 rounded-[2.5rem] shadow-sm border border-slate-200 flex flex-col items-center">
                   <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-6">Disponibilidade Operacional</p>
                   <div className="relative flex items-center justify-center">
@@ -353,67 +299,38 @@ const AdminDashboard = ({ onBack }) => {
                         className="text-blue-600 transition-all duration-1000" strokeLinecap="round" />
                     </svg>
                     <div className="absolute text-center">
-                      <span className="text-4xl font-black text-slate-800 tracking-tighter">
+                      <span className="text-4xl font-black text-slate-800">
                         {Math.round((viaturas.filter(v => v.Status === 'EM SERVIÇO').length / (viaturas.length || 1)) * 100)}%
                       </span>
                     </div>
                   </div>
-                  <div className="grid grid-cols-2 gap-4 mt-8 w-full">
-                    <div className="text-center bg-slate-50 p-3 rounded-2xl">
-                      <p className="text-[8px] font-bold text-slate-400 uppercase">Aptas</p>
-                      <p className="font-black text-emerald-600">{viaturas.filter(v => v.Status === 'EM SERVIÇO').length}</p>
-                    </div>
-                    <div className="text-center bg-slate-50 p-3 rounded-2xl">
-                      <p className="text-[8px] font-bold text-slate-400 uppercase">Oficina</p>
-                      <p className="font-black text-red-600">{viaturas.filter(v => v.Status !== 'EM SERVIÇO').length}</p>
-                    </div>
-                  </div>
                 </div>
 
-                {/* Top 5 Trocas Próximas */}
                 <div className="bg-white p-8 rounded-[2.5rem] shadow-sm border border-slate-200 md:col-span-2">
-                   <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-6">Projeção Logística - Troca de Óleo</p>
-                   <div className="space-y-5">
-                      {viaturas.sort((a,b) => (b.UltimoKM - b.KM_UltimaTroca) - (a.UltimoKM - a.KM_UltimaTroca)).slice(0, 5).map((v, i) => {
-                         const rodado = (v.UltimoKM - (v.KM_UltimaTroca || 0));
-                         const perc = Math.min(100, (rodado / 10000) * 100);
-                         return (
-                           <div key={i}>
-                              <div className="flex justify-between mb-1">
-                                <span className="text-xs font-black text-slate-800">{v.Prefixo}</span>
-                                <span className="text-[10px] font-bold text-slate-400">{rodado} / 10.000 KM</span>
-                              </div>
-                              <div className="w-full bg-slate-100 h-2 rounded-full overflow-hidden">
-                                <div className={`h-full ${perc > 90 ? 'bg-red-600' : 'bg-blue-600'}`} style={{width: `${perc}%`}}></div>
-                              </div>
-                           </div>
-                         )
-                      })}
-                   </div>
-                </div>
-
-                {/* Banner de Resumo */}
-                <div className="bg-slate-900 text-white p-8 rounded-[3rem] md:col-span-3 flex justify-between items-center border-t-8 border-amber-500 shadow-2xl">
-                   <div className="space-y-1">
-                     <p className="text-[10px] font-bold text-amber-500 uppercase tracking-widest">Estado de Alerta 1º BPM</p>
-                     <h3 className="text-2xl font-black italic">PRONTIDÃO OPERACIONAL: <span className="text-emerald-400 underline decoration-2">ALTA</span></h3>
-                   </div>
-                   <div className="flex gap-10">
-                      <div className="text-center border-r border-slate-800 pr-10">
-                         <p className="text-[8px] font-bold text-slate-500 uppercase">Disponibilidade</p>
-                         <p className="text-2xl font-black">94%</p>
-                      </div>
-                      <div className="text-center">
-                         <p className="text-[8px] font-bold text-slate-500 uppercase">Tempo Médio Oficina</p>
-                         <p className="text-2xl font-black">4.2 <span className="text-[10px]">DIAS</span></p>
-                      </div>
-                   </div>
+                    <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-6">Projeção Logística - Troca de Óleo</p>
+                    <div className="space-y-5">
+                       {viaturas.sort((a,b) => (b.UltimoKM - (b.KM_UltimaTroca||0)) - (a.UltimoKM - (a.KM_UltimaTroca||0))).slice(0, 5).map((v, i) => {
+                          const rodado = (v.UltimoKM - (v.KM_UltimaTroca || 0));
+                          const perc = Math.min(100, (rodado / 10000) * 100);
+                          return (
+                            <div key={i}>
+                               <div className="flex justify-between mb-1">
+                                 <span className="text-xs font-black text-slate-800">{v.Prefixo}</span>
+                                 <span className="text-[10px] font-bold text-slate-400">{rodado} / 10.000 KM</span>
+                               </div>
+                               <div className="w-full bg-slate-100 h-2 rounded-full overflow-hidden">
+                                 <div className={`h-full ${perc > 90 ? 'bg-red-600' : 'bg-blue-600'}`} style={{width: `${perc}%`}}></div>
+                               </div>
+                            </div>
+                          )
+                       })}
+                    </div>
                 </div>
               </div>
             </div>
           )}
 
-          {/* MANUTENÇÃO E INDISPONIBILIDADE (COMPACTAS) */}
+          {/* MANUTENÇÃO E INDISPONIBILIDADE */}
           {(activeTab === 'manutencao' || activeTab === 'stats') && (
             <div className="grid grid-cols-1 gap-6 animate-in slide-in-from-bottom-4 duration-500">
                <div className={`${activeTab === 'manutencao' ? 'bg-amber-500 text-slate-900' : 'bg-red-600 text-white'} p-8 rounded-[2rem] flex justify-between items-center`}>
@@ -472,7 +389,6 @@ const VtrDetailsModal = ({ vtr, onClose, checkOil, onAction }) => {
         </div>
 
         <div className="space-y-8">
-           {/* Card de Saúde */}
            <div className="bg-slate-50 p-6 rounded-[2rem] border border-slate-100 shadow-inner">
               <div className="flex justify-between items-end mb-4">
                   <p className="text-[10px] font-black text-slate-400 uppercase flex items-center gap-2"><Droplets size={16}/> Nível de Lubrificante</p>
@@ -481,19 +397,8 @@ const VtrDetailsModal = ({ vtr, onClose, checkOil, onAction }) => {
               <div className="w-full bg-slate-200 h-4 rounded-full overflow-hidden">
                 <div className={`h-full transition-all duration-1000 ${oilInfo.bg}`} style={{ width: `${percentual}%` }} />
               </div>
-              <div className="mt-4 flex gap-4">
-                 <div className="flex-1 bg-white p-3 rounded-2xl border border-slate-100">
-                    <p className="text-[8px] font-bold text-slate-400 uppercase">KM Última Troca</p>
-                    <p className="font-black text-slate-700">{vtr.KM_UltimaTroca || '0'}</p>
-                 </div>
-                 <div className="flex-1 bg-white p-3 rounded-2xl border border-slate-100">
-                    <p className="text-[8px] font-bold text-slate-400 uppercase">KM Atual</p>
-                    <p className="font-black text-slate-700">{vtr.UltimoKM}</p>
-                 </div>
-              </div>
            </div>
 
-           {/* Ações de Comando */}
            <div className="space-y-3">
               <p className="text-[10px] font-black uppercase text-slate-400 ml-2">Ordens de Serviço</p>
               <button onClick={() => onAction('registrarManutencao', { prefixo: vtr.Prefixo, tipo: 'TROCA_OLEO', km: vtr.UltimoKM })} className="w-full py-5 bg-emerald-500 text-white rounded-3xl font-black uppercase text-xs hover:bg-emerald-600 transition-all flex items-center justify-center gap-2 shadow-lg shadow-emerald-100">
@@ -504,7 +409,6 @@ const VtrDetailsModal = ({ vtr, onClose, checkOil, onAction }) => {
               </button>
            </div>
 
-           {/* Detalhes Técnicos */}
            <div className="grid grid-cols-2 gap-4">
               <div className="p-4 bg-slate-50 rounded-2xl">
                  <p className="text-[8px] font-black text-slate-400 uppercase">Placa Policial</p>
