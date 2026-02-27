@@ -11,10 +11,8 @@ const HistoricoPessoal = ({ onBack }) => {
   useEffect(() => {
     const carregarMeuHistorico = async () => {
       try {
-        // Buscamos todas as vistorias (o filtro de segurança é feito aqui ou no GAS)
         const res = await gasApi.getVistorias();
         if (res.status === 'success') {
-          // Filtra vistorias onde o RE do usuário logado participou
           const minhas = res.data.filter(v => 
             String(v.motorista_re) === String(user.re) || 
             String(v.comandante_re) === String(user.re) || 
@@ -33,7 +31,7 @@ const HistoricoPessoal = ({ onBack }) => {
 
   return (
     <div className="min-h-screen bg-slate-50 pb-10">
-      <header className="bg-slate-900 text-white p-5 sticky top-0 z-50 flex items-center gap-4">
+      <header className="bg-slate-900 text-white p-5 sticky top-0 z-50 flex items-center gap-4 shadow-lg border-b-4 border-blue-600">
         <button onClick={onBack} className="p-2 hover:bg-white/10 rounded-full transition-colors">
           <ArrowLeft size={24} />
         </button>
@@ -51,11 +49,11 @@ const HistoricoPessoal = ({ onBack }) => {
           </div>
         ) : vistorias.length === 0 ? (
           <div className="text-center py-20 bg-white rounded-[2rem] border-2 border-dashed border-slate-200">
-            <p className="text-slate-400 font-bold text-sm uppercase">Nenhum registro encontrado.</p>
+            <p className="text-slate-400 font-bold text-sm uppercase px-10">Nenhum registro encontrado no seu RE.</p>
           </div>
         ) : (
           vistorias.map((v, i) => (
-            <div key={i} className="bg-white rounded-3xl p-5 shadow-sm border border-slate-200 flex flex-col gap-3">
+            <div key={i} className="bg-white rounded-[2rem] p-5 shadow-sm border border-slate-200 flex flex-col gap-3">
               <div className="flex justify-between items-start">
                 <div className="flex items-center gap-3">
                   <div className={`p-3 rounded-2xl ${v.tipo_vistoria === 'ENTRADA' ? 'bg-green-100 text-green-700' : 'bg-orange-100 text-orange-700'}`}>
@@ -76,25 +74,26 @@ const HistoricoPessoal = ({ onBack }) => {
                 </div>
               </div>
 
-              <div className="bg-slate-50 rounded-2xl p-3 border border-slate-100">
+              <div className="bg-slate-50 rounded-2xl p-4 border border-slate-100">
                 <div className="flex items-center gap-2 mb-1">
                   {v.checklist_resumo === "SEM ALTERAÇÕES" ? (
                     <CheckCircle2 size={14} className="text-green-600" />
                   ) : (
                     <AlertCircle size={14} className="text-red-600" />
                   )}
-                  <span className="text-[10px] font-black uppercase text-slate-700">Status do Checklist</span>
+                  <span className="text-[10px] font-black uppercase text-slate-700">Relatório de Checklist</span>
                 </div>
-                <p className="text-[10px] font-medium text-slate-500 leading-tight uppercase">
-                  {v.checklist_resumo}
+                <p className="text-[10px] font-medium text-slate-500 leading-tight uppercase italic">
+                  {v.checklist_resumo || "Não informado"}
                 </p>
               </div>
 
-              <div className="flex justify-between items-center text-[9px] font-black text-slate-400 uppercase tracking-widest">
+              <div className="flex justify-between items-center text-[9px] font-black text-slate-400 uppercase tracking-widest pt-1">
                 <span>KM: {v.hodometro}</span>
+                {/* O ERRO FOI CORRIGIDO AQUI ABAIXO: span fechando com span */}
                 <span className="bg-slate-200 px-2 py-1 rounded-md text-slate-600">
                   {v.tipo_servico}
-                </p>
+                </span>
               </div>
             </div>
           ))
