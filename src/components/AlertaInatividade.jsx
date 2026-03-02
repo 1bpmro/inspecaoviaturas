@@ -2,7 +2,7 @@ import React from 'react';
 import { AlertTriangle, Timer } from 'lucide-react';
 
 const AlertaInatividade = ({ viaturas }) => {
-  const paradas = viaturas.filter(v => v.Status === 'AGUARDANDO');
+  const paradas = viaturas.filter(v => v.Status === 'AGUARDANDO'); 
 
   return (
     <div className="bg-white rounded-[2.5rem] border border-red-100 shadow-sm p-6">
