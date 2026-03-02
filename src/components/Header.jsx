@@ -3,7 +3,7 @@ import { useAuth } from '../lib/AuthContext';
 import { User, LogOut, ShieldCheck, Key } from 'lucide-react';
 import ModalTrocaSenha from './ModalTrocaSenha'; // O modal que criamos antes
 import brasaoBpm from '../assets/icon-512.png';
-
+ 
 const Header = () => {
   const { user, logout } = useAuth();
   const [showModal, setShowModal] = useState(false);
