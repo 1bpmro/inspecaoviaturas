@@ -17,7 +17,7 @@ export const gasApi = {
     }
   },
 
-  // Alias para compatibilidade com chamadas que passam objeto único (usado no AdminDashboard)
+  // Alias para compatibilidade com chamadas que passam objeto único
   doPost: ({ action, payload }) => gasApi.post(action, payload),
 
   // --- ROTAS GERAIS ---
@@ -41,8 +41,10 @@ export const gasApi = {
     return gasApi.post('uploadFotoGarageiro', { base64, name: file.name });
   },
 
-  // --- ROTAS ADMINISTRATIVAS (NOVO) ---
-  // Esta função agora aceita o objeto 'info' que contém motivo e re_responsavel
+  // --- ROTAS ADMINISTRATIVAS ---
+  // Função para salvar nova viatura na planilha PATRIMONIO
+  addViatura: (dados) => gasApi.post('addViatura', dados),
+
   alterarStatusViatura: (prefixo, novoStatus, info = {}) => 
     gasApi.post('alterarStatusViatura', { prefixo, novoStatus, ...info }),
 
