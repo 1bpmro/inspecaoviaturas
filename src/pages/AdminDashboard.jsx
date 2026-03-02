@@ -5,7 +5,7 @@ import {
   Settings, Car, Wrench, Fuel, BarChart3, Plus, 
   AlertTriangle, Search, Filter, ArrowRight, Droplets, 
   History, X, AlertCircle, ArrowLeft, TrendingUp, PieChart, ExternalLink, Timer, 
-  Activity, Users, Printer, Clock, ShieldCheck, Map, CheckCircle2, Save, FileText
+  Activity, Users, Printer, Clock, ShieldCheck, Map, CheckCircle2, Save, FileText, Tool
 } from 'lucide-react';
 
 const AdminDashboard = ({ onBack }) => {
@@ -16,11 +16,10 @@ const AdminDashboard = ({ onBack }) => {
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedVtr, setSelectedVtr] = useState(null);
   const [vistoriasPendentes, setVistoriasPendentes] = useState([]); 
-  const [isManutencaoOpen, setIsManutencaoOpen] = useState(false);
-  const [vtrParaBaixa, setVtrParaBaixa] = useState(null);
   
   // Estados para Gestão Administrativa
   const [isAddingVtr, setIsAddingVtr] = useState(false);
+  const [isManutencaoOpen, setIsManutencaoOpen] = useState(false); // Novo Estado
   const [formData, setFormData] = useState({
     prefixo: '', placa: '', modelo: '', ano: '', cor: '', dataEntrada: '', chassi: '', observacoes: ''
   });
@@ -37,6 +36,7 @@ const AdminDashboard = ({ onBack }) => {
       ]);
 
       if (resVtr.status === 'success') {
+        // Filtra apenas as que não estão baixadas
         setViaturas(resVtr.data.filter(v => v.Status !== "FORA DE SERVIÇO (BAIXA)"));
       }
       if (resAuditoria.status === 'success') {
@@ -85,14 +85,29 @@ const AdminDashboard = ({ onBack }) => {
 
   const handlePrint = () => { window.print(); };
 
+  // FUNÇÃO DE AÇÃO MELHORADA PARA TRATAR BAIXA E MANUTENÇÃO
   const handleAction = async (action, payload) => {
-    if (!window.confirm(`Confirma operação militar de ${action}?`)) return;
+    let motivoFinal = payload.motivo || "";
+
+    if (action === 'baixarViatura') {
+        const confirmacao = window.prompt(`Deseja realmente BAIXAR a viatura ${payload.prefixo}? Digite o MOTIVO da baixa:`);
+        if (!confirmacao) return;
+        motivoFinal = confirmacao;
+        payload.motivo = motivoFinal;
+    }
+
+    if (action !== 'baixarViatura' && !window.confirm(`Confirma operação de ${action} para ${payload.prefixo}?`)) return;
+    
     setLoading(true);
     try {
       const res = await gasApi.doPost({ action, payload }); 
       if (res.status === 'success') { 
+        alert(res.message || "Operação realizada!");
         loadData(); 
-        setSelectedVtr(null); 
+        setSelectedVtr(null);
+        setIsManutencaoOpen(false);
+      } else {
+        alert("Erro: " + res.message);
       }
     } catch (err) { 
       alert("Erro na rede."); 
@@ -158,7 +173,7 @@ const AdminDashboard = ({ onBack }) => {
             <h2 className="text-lg font-bold uppercase text-slate-700">Relatório Estratégico - {new Date().toLocaleDateString()}</h2>
           </div>
 
-          {/* ABA: PRONTIDÃO (Tabela Rápida) */}
+          {/* ABA: PRONTIDÃO */}
           {activeTab === 'frota' && (
             <div className="space-y-6 animate-in fade-in duration-500">
                <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
@@ -193,12 +208,12 @@ const AdminDashboard = ({ onBack }) => {
             </div>
           )}
 
-          {/* NOVA ABA: GESTÃO DE FROTA (PLANILHA ADMINISTRATIVA) */}
+          {/* ABA: GESTÃO DE FROTA (COM BOTÕES ATIVADOS) */}
           {activeTab === 'admin' && (
             <div className="space-y-6 animate-in slide-in-from-right duration-500">
               <div className="flex justify-between items-center">
                 <div>
-                  <h2 className="text-2xl font-black uppercase italic italic">Controle de Ativos</h2>
+                  <h2 className="text-2xl font-black uppercase italic">Controle de Ativos</h2>
                   <p className="text-xs font-bold text-slate-400 uppercase">Planilha Geral de Cadastro e Chassi</p>
                 </div>
                 <button 
@@ -234,8 +249,20 @@ const AdminDashboard = ({ onBack }) => {
                           <td className="p-5">{v.Data_Entrada || '---'}</td>
                           <td className="p-5">
                             <div className="flex justify-center gap-2">
-                              <button className="p-2 hover:bg-blue-100 text-blue-600 rounded-lg transition-colors"><FileText size={14}/></button>
-                              <button className="p-2 hover:bg-red-100 text-red-600 rounded-lg transition-colors"><X size={14}/></button>
+                              {/* BOTÃO MANUTENÇÃO (PÁGINA) */}
+                              <button 
+                                onClick={() => { setSelectedVtr(v); setIsManutencaoOpen(true); }}
+                                className="p-2 hover:bg-blue-100 text-blue-600 rounded-lg transition-colors"
+                              >
+                                <FileText size={16}/>
+                              </button>
+                              {/* BOTÃO BAIXA (X) */}
+                              <button 
+                                onClick={() => handleAction('baixarViatura', { prefixo: v.Prefixo })}
+                                className="p-2 hover:bg-red-100 text-red-600 rounded-lg transition-colors"
+                              >
+                                <X size={16}/>
+                              </button>
                             </div>
                           </td>
                         </tr>
@@ -247,11 +274,10 @@ const AdminDashboard = ({ onBack }) => {
             </div>
           )}
 
-          {/* ABA AUDITORIA E OUTRAS (Mantidas do original mas integradas) */}
+          {/* ABA AUDITORIA */}
           {activeTab === 'auditoria' && (
              <div className="bg-white p-8 rounded-[2rem] border border-slate-200">
                 <h3 className="font-black uppercase mb-4 italic">Inbox de Manutenção</h3>
-                {/* Lógica de vistorias pendentes aqui */}
                 <div className="grid gap-4">
                    {vistoriasPendentes.length > 0 ? vistoriasPendentes.map((item, i) => (
                      <div key={i} className="p-4 bg-slate-50 rounded-xl flex justify-between">
@@ -266,18 +292,17 @@ const AdminDashboard = ({ onBack }) => {
         </section>
       </main>
 
-      {/* MODAL DE CADASTRO (FORMULÁRIO) */}
+      {/* MODAL DE CADASTRO */}
       {isAddingVtr && (
         <div className="fixed inset-0 bg-slate-900/90 backdrop-blur-sm z-[150] flex items-center justify-center p-4">
           <div className="bg-white w-full max-w-2xl rounded-[3rem] shadow-2xl overflow-hidden animate-in zoom-in-95 duration-200">
             <div className="p-8 bg-slate-900 text-white flex justify-between items-center">
               <div>
-                <h2 className="text-2xl font-black italic uppercase italic">Cadastrar Nova Viatura</h2>
+                <h2 className="text-2xl font-black italic uppercase">Cadastrar Nova Viatura</h2>
                 <p className="text-[10px] font-bold text-blue-400 uppercase tracking-widest">Inclusão de Ativo no Patrimônio do 1º BPM</p>
               </div>
               <button onClick={() => setIsAddingVtr(false)} className="p-3 hover:bg-slate-800 rounded-full transition-all text-slate-400"><X size={24}/></button>
             </div>
-
             <form onSubmit={handleSaveViatura} className="p-10 grid grid-cols-2 gap-6">
               <Input label="Prefixo" value={formData.prefixo} onChange={e => setFormData({...formData, prefixo: e.target.value.toUpperCase()})} placeholder="Ex: VTR-1001" required />
               <Input label="Placa" value={formData.placa} onChange={e => setFormData({...formData, placa: e.target.value.toUpperCase()})} placeholder="ABC-1234" />
@@ -285,41 +310,62 @@ const AdminDashboard = ({ onBack }) => {
               <Input label="Ano de Fabricação" type="number" value={formData.ano} onChange={e => setFormData({...formData, ano: e.target.value})} placeholder="2024" />
               <Input label="Cor" value={formData.cor} onChange={e => setFormData({...formData, cor: e.target.value})} placeholder="Branca/Preta" />
               <Input label="Data de Entrada" type="date" value={formData.dataEntrada} onChange={e => setFormData({...formData, dataEntrada: e.target.value})} />
-              <div className="col-span-2">
-                <Input label="Número do Chassi" value={formData.chassi} onChange={e => setFormData({...formData, chassi: e.target.value.toUpperCase()})} placeholder="Digite o Chassi completo" />
-              </div>
+              <div className="col-span-2"><Input label="Número do Chassi" value={formData.chassi} onChange={e => setFormData({...formData, chassi: e.target.value.toUpperCase()})} placeholder="Digite o Chassi completo" /></div>
               <div className="col-span-2">
                 <label className="text-[10px] font-black uppercase text-slate-400 mb-2 block ml-1">Observações Gerais</label>
-                <textarea 
-                  className="w-full bg-slate-50 border border-slate-200 rounded-2xl p-4 text-sm font-bold min-h-[100px] outline-none focus:border-blue-500 transition-all"
-                  value={formData.observacoes}
-                  onChange={e => setFormData({...formData, observacoes: e.target.value})}
-                  placeholder="Ex: Viatura cedida pelo DETRAN, rádio instalado..."
-                />
+                <textarea className="w-full bg-slate-50 border border-slate-200 rounded-2xl p-4 text-sm font-bold min-h-[100px] outline-none focus:border-blue-500 transition-all" value={formData.observacoes} onChange={e => setFormData({...formData, observacoes: e.target.value})} placeholder="Ex: Viatura cedida pelo DETRAN..." />
               </div>
-              <button type="submit" className="col-span-2 py-5 bg-blue-600 text-white rounded-[2rem] font-black uppercase text-xs shadow-xl shadow-blue-100 hover:bg-blue-700 transition-all flex items-center justify-center gap-3">
-                <Save size={18}/> Salvar Viatura no Sistema
-              </button>
+              <button type="submit" className="col-span-2 py-5 bg-blue-600 text-white rounded-[2rem] font-black uppercase text-xs shadow-xl shadow-blue-100 hover:bg-blue-700 transition-all flex items-center justify-center gap-3"><Save size={18}/> Salvar Viatura</button>
             </form>
           </div>
         </div>
       )}
 
-      {/* MODAL DETALHES (Original) */}
-      {selectedVtr && <VtrDetailsModal vtr={selectedVtr} onClose={() => setSelectedVtr(null)} checkOil={checkOil} onAction={handleAction} />}
+      {/* MODAL DE REGISTRO DE MANUTENÇÃO (NOVO) */}
+      {isManutencaoOpen && selectedVtr && (
+        <div className="fixed inset-0 bg-slate-900/90 backdrop-blur-sm z-[150] flex items-center justify-center p-4">
+           <div className="bg-white w-full max-w-md rounded-[3rem] shadow-2xl overflow-hidden animate-in zoom-in-95 duration-200">
+              <div className="p-6 bg-blue-600 text-white flex justify-between items-center">
+                 <h2 className="text-xl font-black uppercase italic">Manutenção: {selectedVtr.Prefixo}</h2>
+                 <button onClick={() => setIsManutencaoOpen(false)}><X/></button>
+              </div>
+              <div className="p-8 space-y-4">
+                 <button 
+                    onClick={() => handleAction('registrarManutencao', { prefixo: selectedVtr.Prefixo, tipo: 'ÓLEO', km: selectedVtr.UltimoKM })}
+                    className="w-full p-4 bg-slate-100 rounded-2xl font-black uppercase text-[10px] flex items-center gap-3 hover:bg-blue-50 transition-all"
+                 >
+                    <Droplets className="text-blue-500"/> Troca de Óleo e Filtro
+                 </button>
+                 <button 
+                    onClick={() => handleAction('registrarManutencao', { prefixo: selectedVtr.Prefixo, tipo: 'FREIOS', km: selectedVtr.UltimoKM })}
+                    className="w-full p-4 bg-slate-100 rounded-2xl font-black uppercase text-[10px] flex items-center gap-3 hover:bg-blue-50 transition-all"
+                 >
+                    <Wrench className="text-amber-500"/> Revisão de Freios/Suspensão
+                 </button>
+                 <button 
+                    onClick={() => handleAction('registrarManutencao', { prefixo: selectedVtr.Prefixo, tipo: 'PNEUS', km: selectedVtr.UltimoKM })}
+                    className="w-full p-4 bg-slate-100 rounded-2xl font-black uppercase text-[10px] flex items-center gap-3 hover:bg-blue-50 transition-all"
+                 >
+                    <Tool className="text-slate-500"/> Troca de Pneus
+                 </button>
+              </div>
+           </div>
+        </div>
+      )}
+
+      {/* MODAL DETALHES (TELA DA DIREITA) */}
+      {selectedVtr && !isManutencaoOpen && (
+        <VtrDetailsModal vtr={selectedVtr} onClose={() => setSelectedVtr(null)} checkOil={checkOil} onAction={handleAction} />
+      )}
     </div>
   );
 };
 
-// COMPONENTES AUXILIARES INTERNOS
+// COMPONENTES AUXILIARES
 const Input = ({ label, type = "text", ...props }) => (
   <div>
     <label className="text-[10px] font-black uppercase text-slate-400 mb-2 block ml-1">{label}</label>
-    <input 
-      type={type} 
-      {...props} 
-      className="w-full bg-slate-50 border border-slate-200 rounded-xl p-3 text-sm font-bold focus:border-blue-500 outline-none transition-all"
-    />
+    <input type={type} {...props} className="w-full bg-slate-50 border border-slate-200 rounded-xl p-3 text-sm font-bold focus:border-blue-500 outline-none transition-all" />
   </div>
 );
 
@@ -337,7 +383,13 @@ const VtrDetailsModal = ({ vtr, onClose, checkOil, onAction }) => {
             <p className="text-[10px] font-black text-slate-400 uppercase mb-2">Status do Óleo</p>
             <div className={`text-xl font-black ${oilInfo.color}`}>{oilInfo.msg}</div>
           </div>
-          <button onClick={() => onAction('baixarViatura', { prefixo: vtr.Prefixo })} className="w-full py-5 bg-red-600 text-white rounded-[2rem] font-black uppercase text-xs">Baixar Viatura</button>
+          {/* BOTÃO DE BAIXA NA LATERAL TAMBÉM ATIVADO */}
+          <button 
+            onClick={() => onAction('baixarViatura', { prefixo: vtr.Prefixo })} 
+            className="w-full py-5 bg-red-600 text-white rounded-[2rem] font-black uppercase text-xs hover:bg-red-700 transition-all"
+          >
+            Baixar Viatura (Fora de Serviço)
+          </button>
         </div>
       </div>
     </div>
