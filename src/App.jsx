@@ -6,7 +6,7 @@ import ConsultarFrota from './pages/ConsultarFrota';
 import Garageiro from './pages/GarageiroDashboard'; 
 import AdminDashboard from './pages/AdminDashboard';
 import HistoricoPessoal from './pages/HistoricoPessoal';
-import ModalTrocaSenha from './components/ModalTrocaSenha'; // Certifique-se de que o arquivo existe nesta pasta
+import ModalTrocaSenha from './components/ModalTrocaSenha'; 
 import { 
   ClipboardCheck, 
   LogOut, 
