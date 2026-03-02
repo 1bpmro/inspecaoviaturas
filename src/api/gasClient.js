@@ -23,6 +23,11 @@ export const gasApi = {
   // --- ROTAS GERAIS ---
   login: (re, senha) => gasApi.post('login', { re, senha }),
   checkProfile: (re) => gasApi.post('checkProfile', { re }),
+  
+  // NOVA ROTA: Alteração de Senha (usada pelo ModalTrocaSenha)
+  changePassword: (re, senhaAtual, novaSenha) => 
+    gasApi.post('changePassword', { re, senhaAtual, novaSenha }),
+
   saveVistoria: (dados) => gasApi.post('saveVistoria', dados),
   getViaturas: () => gasApi.post('getViaturas'),
   buscarMilitar: (re) => gasApi.post('buscarMilitar', { re }),
@@ -42,7 +47,6 @@ export const gasApi = {
   },
 
   // --- ROTAS ADMINISTRATIVAS ---
-  // Função para salvar nova viatura na planilha PATRIMONIO
   addViatura: (dados) => gasApi.post('addViatura', dados),
 
   alterarStatusViatura: (prefixo, novoStatus, info = {}) => 
