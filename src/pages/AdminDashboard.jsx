@@ -1,7 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { gasApi } from '../api/gasClient';
-import ManutencaoInbox from '../components/ManutencaoInbox';
-import AlertaInatividade from './AlertaInatividade';
+
 import { 
   Settings, Car, Wrench, Fuel, BarChart3, Plus, 
   AlertTriangle, Search, Filter, ArrowRight, Droplets, 
