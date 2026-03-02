@@ -16,6 +16,8 @@ const AdminDashboard = ({ onBack }) => {
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedVtr, setSelectedVtr] = useState(null);
   const [vistoriasPendentes, setVistoriasPendentes] = useState([]); 
+  const [isManutencaoOpen, setIsManutencaoOpen] = useState(false);
+  const [vtrParaBaixa, setVtrParaBaixa] = useState(null);
   
   // Estados para Gestão Administrativa
   const [isAddingVtr, setIsAddingVtr] = useState(false);
