@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { Key, X, Loader2, ShieldAlert, CheckCircle2 } from 'lucide-react';
-import { gasApi } from '../api/gasClient'; // Ajuste o caminho se necessário
+import { gasApi } from '../api/gasClient'; 
 
 const ModalTrocaSenha = ({ user, aoFechar }) => {
   const [dados, setDados] = useState({ atual: '', nova: '', confirma: '' });
@@ -11,7 +11,6 @@ const ModalTrocaSenha = ({ user, aoFechar }) => {
     e.preventDefault();
     setStatus({ tipo: '', msg: '' });
 
-    // Validações Básicas no Front-end
     if (dados.nova !== dados.confirma) {
       return setStatus({ tipo: 'erro', msg: 'AS SENHAS NOVAS NÃO COINCIDEM.' });
     }
@@ -25,9 +24,7 @@ const ModalTrocaSenha = ({ user, aoFechar }) => {
     setIsSubmitting(true);
 
     try {
-      // Chame a sua API do Google Apps Script
       const res = await gasApi.changePassword(user.re, dados.atual, dados.nova);
-
       if (res.status === 'success') {
         setStatus({ tipo: 'sucesso', msg: 'SENHA ALTERADA COM SUCESSO!' });
         setTimeout(aoFechar, 2000);
@@ -56,22 +53,66 @@ const ModalTrocaSenha = ({ user, aoFechar }) => {
               <p className="text-[10px] text-blue-400 font-bold uppercase tracking-widest">Alterar Senha de Acesso</p>
             </div>
           </div>
-          <button 
-            onClick={aoFechar}
-            className="text-slate-400 hover:text-white transition-colors p-1"
-          >
+          <button onClick={aoFechar} className="text-slate-400 hover:text-white p-1">
             <X size={24} />
           </button>
         </div>
 
         <form onSubmit={handleTrocar} className="p-8 space-y-5">
-          
           {/* MENSAGENS DE STATUS */}
-{status.msg && (
-  <div className={`flex items-center gap-3 p-4 rounded-xl text-[11px] font-black uppercase tracking-tight animate-in fade-in slide-in-from-top-2 ${
-    status.tipo === 'erro' ? 'bg-red-50 text-red-700 border border-red-200' : 'bg-green-50 text-green-700 border border-green-200'
-  }`}>
-    {status.tipo === 'erro' ? <ShieldAlert size={18} /> : <CheckCircle2 size={18} />}
-    {status.msg}
-  </div>
-)}
+          {status.msg && (
+            <div className={`flex items-center gap-3 p-4 rounded-xl text-[11px] font-black uppercase tracking-tight ${
+              status.tipo === 'erro' ? 'bg-red-50 text-red-700 border border-red-200' : 'bg-green-50 text-green-700 border border-green-200'
+            }`}>
+              {status.tipo === 'erro' ? <ShieldAlert size={18} /> : <CheckCircle2 size={18} />}
+              {status.msg}
+            </div>
+          )}
+
+          {/* INPUTS */}
+          <div className="space-y-4">
+            <div className="relative">
+              <label className="text-[10px] font-black text-slate-400 uppercase absolute left-3 top-2">Senha Atual</label>
+              <input 
+                type="password" 
+                required
+                className="w-full bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 pt-7 pb-3 px-3 rounded-xl focus:ring-2 focus:ring-blue-600 outline-none transition-all text-slate-800 dark:text-white"
+                onChange={(e) => setDados({...dados, atual: e.target.value})}
+              />
+            </div>
+
+            <div className="relative">
+              <label className="text-[10px] font-black text-blue-600 uppercase absolute left-3 top-2">Nova Senha</label>
+              <input 
+                type="password" 
+                required
+                className="w-full bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 pt-7 pb-3 px-3 rounded-xl focus:ring-2 focus:ring-blue-600 outline-none transition-all text-slate-800 dark:text-white"
+                onChange={(e) => setDados({...dados, nova: e.target.value})}
+              />
+            </div>
+
+            <div className="relative">
+              <label className="text-[10px] font-black text-blue-600 uppercase absolute left-3 top-2">Confirmar Nova Senha</label>
+              <input 
+                type="password" 
+                required
+                className="w-full bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 pt-7 pb-3 px-3 rounded-xl focus:ring-2 focus:ring-blue-600 outline-none transition-all text-slate-800 dark:text-white"
+                onChange={(e) => setDados({...dados, confirma: e.target.value})}
+              />
+            </div>
+          </div>
+
+          <button 
+            type="submit"
+            disabled={isSubmitting}
+            className="w-full bg-blue-700 hover:bg-blue-800 disabled:opacity-50 text-white font-black py-4 rounded-2xl shadow-lg flex items-center justify-center gap-2 transition-all active:scale-95 uppercase text-sm"
+          >
+            {isSubmitting ? <Loader2 className="animate-spin" size={20} /> : 'Atualizar Senha'}
+          </button>
+        </form>
+      </div>
+    </div>
+  );
+};
+
+export default ModalTrocaSenha;
