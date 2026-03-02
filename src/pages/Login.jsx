@@ -73,8 +73,16 @@ const Login = () => {
     try {
       const reFinal = formatarRE(re);
       const result = await login(reFinal, precisaSenha ? senha : "");
+      
       if (!result.success) {
         setError(result.message);
+      } else {
+        // --- ADICIONE ESTA LÓGICA AQUI ---
+        if (precisaSenha && senha === "123456") {
+          // Se o login deu certo mas a senha é a padrão, 
+          // você pode disparar um alerta ou abrir o modal.
+          alert("Atenção: Sua senha é o padrão (123456). Por segurança, altere-a no menu de perfil após entrar.");
+        }
       }
     } catch (err) {
       setError('ERRO DE COMUNICAÇÃO COM O SERVIDOR');
