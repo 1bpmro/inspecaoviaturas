@@ -67,5 +67,11 @@ const ModalTrocaSenha = ({ user, aoFechar }) => {
         <form onSubmit={handleTrocar} className="p-8 space-y-5">
           
           {/* MENSAGENS DE STATUS */}
-          {status.msg && (
-            <div className={`flex items-center gap-3 p-4 rounded-xl text-[11px] font-
+{status.msg && (
+  <div className={`flex items-center gap-3 p-4 rounded-xl text-[11px] font-black uppercase tracking-tight animate-in fade-in slide-in-from-top-2 ${
+    status.tipo === 'erro' ? 'bg-red-50 text-red-700 border border-red-200' : 'bg-green-50 text-green-700 border border-green-200'
+  }`}>
+    {status.tipo === 'erro' ? <ShieldAlert size={18} /> : <CheckCircle2 size={18} />}
+    {status.msg}
+  </div>
+)}
