@@ -6,10 +6,21 @@ import ConsultarFrota from './pages/ConsultarFrota';
 import Garageiro from './pages/GarageiroDashboard'; 
 import AdminDashboard from './pages/AdminDashboard';
 import HistoricoPessoal from './pages/HistoricoPessoal';
-import { ClipboardCheck, LogOut, Shield, ShieldCheck, Settings, History } from 'lucide-react';
+import ModalTrocaSenha from './components/ModalTrocaSenha'; // Certifique-se de que o arquivo existe nesta pasta
+import { 
+  ClipboardCheck, 
+  LogOut, 
+  Shield, 
+  ShieldCheck, 
+  Settings, 
+  History, 
+  Key 
+} from 'lucide-react';
 
+// --- COMPONENTE DASHBOARD (TELA INICIAL) ---
 const Dashboard = ({ onNavigate }) => {
   const { user, logout, isAdmin, isGarageiro } = useAuth();
+  const [showModalSenha, setShowModalSenha] = useState(false);
 
   // Define se é o perfil operacional (policial comum)
   const isOperacionalOnly = !isAdmin && !isGarageiro;
@@ -25,14 +36,32 @@ const Dashboard = ({ onNavigate }) => {
             <span className="text-[9px] text-blue-400 font-bold uppercase tracking-tighter">PMRO - Porto Velho</span>
           </div>
         </div>
-        <button 
-          onClick={logout} 
-          className="p-2 bg-slate-800 hover:bg-red-600 rounded-xl transition-all active:scale-90 flex items-center gap-2 group"
-        >
-          <span className="text-[10px] font-black uppercase pr-1">Sair</span>
-          <LogOut size={20} />
-        </button>
+
+        <div className="flex items-center gap-2">
+          {/* BOTÃO TROCAR SENHA */}
+          <button 
+            onClick={() => setShowModalSenha(true)}
+            className="p-2 bg-slate-800 hover:bg-blue-600 rounded-xl transition-all active:scale-90 flex items-center gap-2 group"
+            title="Alterar Senha"
+          >
+            <Key size={20} className="text-blue-400 group-hover:text-white" />
+          </button>
+
+          {/* BOTÃO SAIR */}
+          <button 
+            onClick={logout} 
+            className="p-2 bg-slate-800 hover:bg-red-600 rounded-xl transition-all active:scale-90 flex items-center gap-2 group"
+          >
+            <span className="hidden sm:block text-[10px] font-black uppercase pr-1">Sair</span>
+            <LogOut size={20} />
+          </button>
+        </div>
       </nav>
+
+      {/* MODAL DE TROCA DE SENHA */}
+      {showModalSenha && (
+        <ModalTrocaSenha user={user} aoFechar={() => setShowModalSenha(false)} />
+      )}
 
       {/* CONTEÚDO PRINCIPAL */}
       <main className="p-6 max-w-xl mx-auto space-y-6">
@@ -43,6 +72,15 @@ const Dashboard = ({ onNavigate }) => {
           <p className="text-[10px] font-bold text-slate-500 uppercase tracking-[0.2em] mt-2">
             {isAdmin ? "⚠️ ACESSO ADMINISTRATIVO" : "SISTEMA DE VISTORIAS"}
           </p>
+
+          {/* ALERTA DE SEGURANÇA SE A SENHA FOR PADRÃO */}
+          {user?.senha === "123456" && (
+            <div className="mt-4 p-3 bg-red-100 border border-red-200 text-red-700 rounded-2xl animate-pulse">
+              <p className="text-[10px] font-black uppercase">
+                Sua senha é o padrão (123456). <br/> Clique na chave acima para alterar!
+              </p>
+            </div>
+          )}
         </header>
 
         <div className="grid grid-cols-1 gap-4 animate-in fade-in zoom-in duration-500">
@@ -130,6 +168,7 @@ const Dashboard = ({ onNavigate }) => {
   );
 };
 
+// --- COMPONENTE PRINCIPAL APP ---
 function App() {
   const { isAuthenticated, isGarageiro, isAdmin } = useAuth();
   const [view, setView] = useState('dashboard');
