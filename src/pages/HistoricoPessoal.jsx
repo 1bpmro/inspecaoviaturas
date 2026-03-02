@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useAuth } from '../lib/AuthContext';
 import { gasApi } from '../api/gasClient';
-import { ArrowLeft, Clock, Calendar, Car, AlertCircle, CheckCircle2 } from 'lucide-react';
+import { ArrowLeft, Clock, Calendar, Car, AlertCircle, CheckCircle2 } from 'lucide-react'; 
 
 const HistoricoPessoal = ({ onBack }) => {
   const { user } = useAuth();
