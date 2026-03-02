@@ -5,7 +5,7 @@ import {
   Settings, Car, Wrench, Fuel, BarChart3, Plus, 
   AlertTriangle, Search, Filter, ArrowRight, Droplets, 
   History, X, AlertCircle, ArrowLeft, TrendingUp, PieChart, ExternalLink, Timer, 
-  Activity, Users, Printer, Clock, ShieldCheck, Map, CheckCircle2, Save, FileText, Tool
+  Activity, Users, Printer, Clock, ShieldCheck, Map, CheckCircle2, Save, FileText 
 } from 'lucide-react';
 
 const AdminDashboard = ({ onBack }) => {
@@ -346,7 +346,7 @@ const AdminDashboard = ({ onBack }) => {
                     onClick={() => handleAction('registrarManutencao', { prefixo: selectedVtr.Prefixo, tipo: 'PNEUS', km: selectedVtr.UltimoKM })}
                     className="w-full p-4 bg-slate-100 rounded-2xl font-black uppercase text-[10px] flex items-center gap-3 hover:bg-blue-50 transition-all"
                  >
-                    <Tool className="text-slate-500"/> Troca de Pneus
+                    <Wrench className="text-slate-500"/> Troca de Pneus
                  </button>
               </div>
            </div>
