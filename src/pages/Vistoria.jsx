@@ -133,25 +133,54 @@ const Vistoria = ({ onBack, frotaInicial = [] }) => {
     }
   };
 
-  const handleVtrChange = (prefixo) => {
-    const vtr = viaturas.find(v => toStr(v.Prefixo) === toStr(prefixo));
-    if (!vtr) return;
-    setKmReferencia(Number(vtr.UltimoKM) || 0);
-    
-    if (tipoVistoria === 'SAÍDA') {
-      setFormData(prev => ({
-        ...prev,
-        prefixo_vtr: toStr(vtr.Prefixo), placa_vtr: toStr(vtr.Placa),
-        tipo_servico: toStr(vtr.UltimoTipoServico) || '',
-        motorista_re: toStr(vtr.UltimoMotoristaRE), motorista_nome: toStr(vtr.UltimoMotoristaNome), motorista_unidade: toStr(vtr.UltimoMotoristaUnidade) || '1º BPM',
-        comandante_re: toStr(vtr.UltimoComandanteRE), comandante_nome: toStr(vtr.UltimoComandanteNome), comandante_unidade: toStr(vtr.UltimoComandanteUnidade) || '1º BPM',
-        patrulheiro_re: toStr(vtr.UltimoPatrulheiroRE), patrulheiro_nome: toStr(vtr.UltimoPatrulheiroNome), patrulheiro_unidade: toStr(vtr.UltimoPatrulheiroUnidade) || '1º BPM',
-        hodometro: toStr(vtr.UltimoKM), videomonitoramento: toStr(vtr.UltimoVideoMonitoramento || '')
-      }));
-    } else {
-      setFormData(prev => ({ ...prev, prefixo_vtr: toStr(vtr.Prefixo), placa_vtr: toStr(vtr.Placa) }));
-    }
-  };
+const handleVtrChange = (prefixo) => {
+    const vtr = viaturas.find(v => toStr(v.Prefixo) === toStr(prefixo));
+    if (!vtr) return;
+
+    const kmAnterior = Number(vtr.UltimoKM) || 0;
+    setKmReferencia(kmAnterior);
+
+    if (tipoVistoria === 'SAÍDA') {
+      // Mapeamento robusto dos dados da última guarnição
+      const novosDados = {
+        ...formData,
+        prefixo_vtr: toStr(vtr.Prefixo),
+        placa_vtr: toStr(vtr.Placa),
+        tipo_servico: toStr(vtr.UltimoTipoServico || vtr.TipoServico || ''),
+        hodometro: toStr(vtr.UltimoKM || vtr.KM || ''),
+        videomonitoramento: toStr(vtr.UltimoVideoMonitoramento || vtr.VideoMonitoramento || ''),
+        
+        // MOTORISTA
+        motorista_re: toStr(vtr.UltimoMotoristaRE || vtr.MotoristaRE || ''),
+        motorista_nome: toStr(vtr.UltimoMotoristaNome || vtr.MotoristaNome || vtr.Motorista || ''),
+        motorista_unidade: toStr(vtr.UltimoMotoristaUnidade || vtr.MotoristaUnidade || '1º BPM'),
+
+        // COMANDANTE
+        comandante_re: toStr(vtr.UltimoComandanteRE || vtr.ComandanteRE || ''),
+        comandante_nome: toStr(vtr.UltimoComandanteNome || vtr.ComandanteNome || vtr.Comandante || ''),
+        comandante_unidade: toStr(vtr.UltimoComandanteUnidade || vtr.ComandanteUnidade || '1º BPM'),
+
+        // PATRULHEIRO
+        patrulheiro_re: toStr(vtr.UltimoPatrulheiroRE || vtr.PatrulheiroRE || ''),
+        patrulheiro_nome: toStr(vtr.UltimoPatrulheiroNome || vtr.PatrulheiroNome || vtr.Patrulheiro || ''),
+        patrulheiro_unidade: toStr(vtr.UltimoPatrulheiroUnidade || vtr.PatrulheiroUnidade || '1º BPM'),
+      };
+
+      setFormData(novosDados);
+
+      // Sincroniza os nomes caso o RE venha mas o nome esteja desatualizado
+      ['motorista', 'comandante', 'patrulheiro'].forEach(cargo => {
+        const re = novosDados[`${cargo}_re`];
+        if (re && !novosDados[`${cargo}_nome`]) {
+          handleMatriculaChange(re, cargo);
+        }
+      });
+
+    } else {
+      // Na ENTRADA, apenas prefixo e placa
+      setFormData(prev => ({ ...prev, prefixo_vtr: toStr(vtr.Prefixo), placa_vtr: toStr(vtr.Placa) }));
+    }
+  };
 
   const kmInvalido = tipoVistoria === 'SAÍDA' && Number(formData.hodometro) <= kmReferencia;
 
