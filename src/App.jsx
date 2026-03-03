@@ -1,6 +1,6 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { useAuth } from './lib/AuthContext';
-import { gasApi } from './api/gasClient'; // Importamos sua API
+import { gasApi } from './api/gasClient';
 import Login from './pages/Login';
 import Vistoria from './pages/Vistoria';
 import Garageiro from './pages/GarageiroDashboard'; 
@@ -15,18 +15,17 @@ import {
   Settings, 
   History, 
   Key,
-  Loader2 // Ícone de carregamento
+  Loader2 
 } from 'lucide-react';
 
-// --- COMPONENTE DASHBOARD (Mantido, mas com prop de loading) ---
-const Dashboard = ({ onNavigate, frotaCarregada }) => {
+// --- COMPONENTE DASHBOARD COM REFRESH ---
+const Dashboard = ({ onNavigate, frotaCarregada, onRefresh }) => {
   const { user, logout, isAdmin, isGarageiro } = useAuth();
   const [showModalSenha, setShowModalSenha] = useState(false);
   const isOperacionalOnly = !isAdmin && !isGarageiro;
 
   return (
     <div className="min-h-screen bg-slate-50">
-      {/* NAV BAR */}
       <nav className="bg-slate-900 text-white p-5 shadow-2xl flex justify-between items-center border-b-4 border-blue-900 sticky top-0 z-50">
         <div className="flex items-center gap-3">
           <Shield className="text-blue-400" size={24} />
@@ -54,13 +53,28 @@ const Dashboard = ({ onNavigate, frotaCarregada }) => {
           <h2 className="text-2xl font-black text-slate-800 tracking-tight">
             Olá, <span className="text-blue-700">{user?.patente} {user?.nome}</span>
           </h2>
-          {/* INDICADOR DE CARREGAMENTO SILENCIOSO */}
-          {!frotaCarregada && (
-            <div className="flex items-center justify-center gap-2 mt-2">
-              <Loader2 size={12} className="animate-spin text-blue-500" />
-              <span className="text-[8px] font-bold text-slate-400 uppercase tracking-widest">Sincronizando Frota...</span>
-            </div>
-          )}
+          
+          {/* INDICADOR DE STATUS E BOTÃO REFRESH */}
+          <div className="flex items-center justify-center mt-3">
+            <button 
+              onClick={onRefresh}
+              disabled={!frotaCarregada}
+              className="flex items-center gap-2 px-3 py-1.5 bg-white border border-slate-200 rounded-full shadow-sm hover:border-blue-300 transition-all active:scale-95 disabled:opacity-70"
+            >
+              {frotaCarregada ? (
+                <>
+                  <div className="w-2 h-2 bg-green-500 rounded-full animate-pulse" />
+                  <span className="text-[9px] font-black text-slate-500 uppercase tracking-widest">Frota Atualizada</span>
+                  <History size={12} className="text-slate-400" />
+                </>
+              ) : (
+                <>
+                  <Loader2 size={12} className="animate-spin text-blue-500" />
+                  <span className="text-[9px] font-bold text-slate-400 uppercase tracking-widest">Sincronizando...</span>
+                </>
+              )}
+            </button>
+          </div>
         </header>
 
         <div className="grid grid-cols-1 gap-4">
@@ -71,7 +85,7 @@ const Dashboard = ({ onNavigate, frotaCarregada }) => {
                 isOperacionalOnly ? 'p-10' : 'p-6 flex-row text-left'
               }`}
             >
-              <div className={`p-4 bg-white/20 rounded-2xl`}>
+              <div className="p-4 bg-white/20 rounded-2xl">
                 <ClipboardCheck size={isOperacionalOnly ? 48 : 32} />
               </div>
               <div>
@@ -82,16 +96,15 @@ const Dashboard = ({ onNavigate, frotaCarregada }) => {
             </button>
           )}
 
-          {/* ... Outros botões (Painel de Comando, Controle de Pátio) permanecem iguais ... */}
           {isAdmin && (
-            <button onClick={() => onNavigate('frota')} className="vtr-card p-6 flex items-center gap-5 border-l-8 border-indigo-600 bg-white rounded-[2rem] shadow-md">
+            <button onClick={() => onNavigate('frota')} className="vtr-card p-6 flex items-center gap-5 border-l-8 border-indigo-600 bg-white rounded-[2rem] shadow-md transition-all active:scale-[0.98]">
               <div className="p-4 bg-indigo-600 text-white rounded-2xl"><Settings size={32} /></div>
               <div className="text-left"><h3 className="font-black text-lg text-slate-800 uppercase">Painel de Comando</h3></div>
             </button>
           )}
 
           {(isAdmin || isGarageiro) && (
-            <button onClick={() => onNavigate('garageiro')} className="vtr-card p-6 flex items-center gap-5 border-l-8 border-amber-500 bg-white rounded-[2rem] shadow-md">
+            <button onClick={() => onNavigate('garageiro')} className="vtr-card p-6 flex items-center gap-5 border-l-8 border-amber-500 bg-white rounded-[2rem] shadow-md transition-all active:scale-[0.98]">
               <div className="p-4 bg-amber-600 text-white rounded-2xl"><ShieldCheck size={32} /></div>
               <div className="text-left"><h3 className="font-black text-lg text-slate-800 uppercase italic">Controle de Pátio</h3></div>
             </button>
@@ -102,38 +115,40 @@ const Dashboard = ({ onNavigate, frotaCarregada }) => {
   );
 };
 
-// --- COMPONENTE PRINCIPAL APP COM PRE-FETCH ---
+// --- COMPONENTE PRINCIPAL APP ---
 function App() {
   const { isAuthenticated, isGarageiro, isAdmin } = useAuth();
   const [view, setView] = useState('dashboard');
-  const [dadosFrota, setDadosFrota] = useState([]); // Memória da frota
+  const [dadosFrota, setDadosFrota] = useState([]);
   const [carregado, setCarregado] = useState(false);
 
-  // EFEITO DE PRÉ-CARREGAMENTO
-  useEffect(() => {
-    if (isAuthenticated) {
-      const prefetch = async () => {
-        try {
-          const res = await gasApi.getViaturas();
-          if (res.status === 'success') {
-            setDadosFrota(res.data);
-            setCarregado(true);
-            console.log("Frota sincronizada em segundo plano.");
-          }
-        } catch (error) {
-          console.error("Falha ao antecipar frota:", error);
-        }
-      };
-      prefetch();
+  // FUNÇÃO ÚNICA DE CARREGAMENTO (PODE SER CHAMADA NO REFRESH OU NO USEEFFECT)
+  const sincronizarFrota = useCallback(async () => {
+    setCarregado(false);
+    try {
+      const res = await gasApi.getViaturas();
+      if (res.status === 'success') {
+        setDadosFrota(res.data);
+        console.log("Frota atualizada com sucesso.");
+      }
+    } catch (error) {
+      console.error("Erro na sincronização:", error);
+    } finally {
+      setCarregado(true);
     }
-  }, [isAuthenticated]);
+  }, []);
+
+  useEffect(() => {
+    if (isAuthenticated && dadosFrota.length === 0) {
+      sincronizarFrota();
+    }
+  }, [isAuthenticated, sincronizarFrota, dadosFrota.length]);
 
   if (!isAuthenticated) return <Login />;
 
   const renderView = () => {
     switch(view) {
       case 'vistoria': 
-        // Passamos a frota já carregada para a página de Vistoria
         return <Vistoria onBack={() => setView('dashboard')} frotaInicial={dadosFrota} />;
       
       case 'frota': 
@@ -148,7 +163,13 @@ function App() {
         setView('dashboard'); return null;
 
       default: 
-        return <Dashboard onNavigate={(target) => setView(target)} frotaCarregada={carregado} />;
+        return (
+          <Dashboard 
+            onNavigate={(target) => setView(target)} 
+            frotaCarregada={carregado} 
+            onRefresh={sincronizarFrota} 
+          />
+        );
     }
   };
 
