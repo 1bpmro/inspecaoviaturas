@@ -1,19 +1,34 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { useAuth } from '../lib/AuthContext';
 import { gasApi } from '../api/gasClient';
 import imageCompression from 'browser-image-compression';
 import { 
   ArrowLeft, ChevronRight, Loader2, X, Plus, 
-  Users, AlertTriangle, Lock, Unlock
+  Users, AlertTriangle, Lock, Unlock, Car, Shield, Tool
 } from 'lucide-react';
 
-const ITENS_ENTRADA = [
-  "Documento da Viatura", "Estepe", "Chave de Roda", "Macaco", "Triângulo", "Extintor",
-  "Nível de Água", "Porta Traseira", "Porta Dianteira", "Pneus", "Capô", "Cinto",
-  "Paralama Dianteiro", "Paralama Traseiro", "Parachoque Dianteiro", "Parachoque Traseiro",
-  "Lanternas", "Caçamba", "Vidros e Portas", "Retrovisor Externo", "Retrovisor Interno",
-  "Maçanetas", "Para-brisas", "Sirene", "Giroscópio", "Rádio", "Painel de Instrumentos",
-  "Bancos", "Forro Interno", "Tapetes", "Protetor Dianteiro", "Regulador dos Bancos"
+// --- CONFIGURAÇÃO DE GRUPOS ---
+const GRUPOS_ENTRADA = [
+  {
+    nome: "Documentação e Equipamentos",
+    icon: <Shield size={16} />,
+    itens: ["Documento da Viatura", "Estepe", "Chave de Roda", "Macaco", "Triângulo", "Extintor", "Giroscópio", "Sirene", "Rádio"]
+  },
+  {
+    nome: "Estado Externo",
+    icon: <Car size={16} />,
+    itens: ["Pneus", "Capô", "Paralama Dianteiro", "Paralama Traseiro", "Parachoque Dianteiro", "Parachoque Traseiro", "Lanternas", "Caçamba", "Vidros e Portas", "Retrovisor Externo", "Maçanetas", "Para-brisas", "Protetor Dianteiro"]
+  },
+  {
+    nome: "Interior e Conforto",
+    icon: <Users size={16} />,
+    itens: ["Cinto", "Retrovisor Interno", "Painel de Instrumentos", "Bancos", "Forro Interno", "Tapetes", "Regulador dos Bancos", "Porta Traseira", "Porta Dianteira"]
+  },
+  {
+    nome: "Mecânica Básica",
+    icon: <Tool size={16} />,
+    itens: ["Nível de Água"]
+  }
 ];
 
 const MAPA_FALHAS_SAIDA = {
@@ -33,11 +48,8 @@ const Vistoria = ({ onBack, frotaInicial = [] }) => {
   const [step, setStep] = useState(1);
   const [loading, setLoading] = useState(false);
   const [uploading, setUploading] = useState(false);
-  
-  // 1. PERFORMANCE: Inicia o estado com a frota que já veio do App.jsx
   const [viaturas, setViaturas] = useState(frotaInicial);
   const [efetivoLocal, setEfetivoLocal] = useState([]);
-  
   const [tipoVistoria, setTipoVistoria] = useState('ENTRADA');
   const [fotos, setFotos] = useState([]);
   const [protegerFotos, setProtegerFotos] = useState(false);
@@ -52,39 +64,18 @@ const Vistoria = ({ onBack, frotaInicial = [] }) => {
     termo_aceite: false
   });
 
-  // 2. ESTABILIDADE: Inicializa o checklist sem resetar em re-renders bobos
+  // Inicialização do Checklist
   const [checklist, setChecklist] = useState(() => {
-    const itens = tipoVistoria === 'ENTRADA' ? ITENS_ENTRADA : ITENS_SAIDA;
-    return itens.reduce((acc, item) => ({ ...acc, [item]: 'OK' }), {});
+    const todosItens = tipoVistoria === 'ENTRADA' 
+      ? GRUPOS_ENTRADA.flatMap(g => g.itens) 
+      : ITENS_SAIDA;
+    return todosItens.reduce((acc, item) => ({ ...acc, [item]: 'OK' }), {});
   });
 
-  const temAvaria = Object.values(checklist).includes('FALHA');
+  const temAvaria = useMemo(() => Object.values(checklist).includes('FALHA'), [checklist]);
   const toStr = (val) => (val !== undefined && val !== null ? String(val) : '');
 
-  const formatarResumoChecklist = () => {
-    const falhas = Object.entries(checklist).filter(([_, status]) => status === 'FALHA').map(([item]) => item);
-    if (falhas.length === 0) return "SEM ALTERAÇÕES";
-    if (tipoVistoria === 'ENTRADA') return `FALHA NOS SEGUINTES ITENS: (${falhas.join(', ')})`;
-    return falhas.map(item => MAPA_FALHAS_SAIDA[item] || item).join(', ');
-  };
-
-  const handleTrocaTipo = (novoTipo) => {
-    setTipoVistoria(novoTipo);
-    setKmReferencia(0);
-    setFormData({
-      prefixo_vtr: '', placa_vtr: '', hodometro: '', videomonitoramento: '', tipo_servico: '', unidade_externa: '',
-      motorista_re: '', motorista_nome: '', motorista_unidade: '',
-      comandante_re: '', comandante_nome: '', comandante_unidade: '',
-      patrulheiro_re: '', patrulheiro_nome: '', patrulheiro_unidade: '',
-      termo_aceite: false
-    });
-    setFotos([]);
-    setStep(1);
-    // Reseta o checklist para o novo tipo
-    const novosItens = novoTipo === 'ENTRADA' ? ITENS_ENTRADA : ITENS_SAIDA;
-    setChecklist(novosItens.reduce((acc, item) => ({ ...acc, [item]: 'OK' }), {}));
-  };
-
+  // Sincronização de Dados
   useEffect(() => {
     const sincronizarDados = async () => {
       if (viaturas.length === 0) setLoading(true); 
@@ -102,25 +93,33 @@ const Vistoria = ({ onBack, frotaInicial = [] }) => {
       }
     };
     sincronizarDados();
-  }, [frotaInicial]);
+  }, [frotaInicial, viaturas.length]);
 
-  const buscarMilitarNoCache = (reRaw) => {
-    let reString = toStr(reRaw).replace(/\D/g, '');
-    if (!reString || reString.length < 4) return null;
-    if (reString.length > 0 && reString.length <= 6 && !reString.startsWith("1000")) {
-        const comMil = "1000" + reString;
-        const militar = efetivoLocal.find(m => toStr(m.re) === comMil);
-        if (militar) return militar;
-    }
-    return efetivoLocal.find(m => toStr(m.re) === reString);
+  const handleTrocaTipo = (novoTipo) => {
+    if (formData.prefixo_vtr && !window.confirm("Mudar o tipo limpará os dados atuais. Continuar?")) return;
+    
+    setTipoVistoria(novoTipo);
+    setStep(1);
+    setFotos([]);
+    setFormData({
+      prefixo_vtr: '', placa_vtr: '', hodometro: '', videomonitoramento: '', tipo_servico: '', unidade_externa: '',
+      motorista_re: '', motorista_nome: '', motorista_unidade: '',
+      comandante_re: '', comandante_nome: '', comandante_unidade: '',
+      patrulheiro_re: '', patrulheiro_nome: '', patrulheiro_unidade: '',
+      termo_aceite: false
+    });
+    const novosItens = novoTipo === 'ENTRADA' ? GRUPOS_ENTRADA.flatMap(g => g.itens) : ITENS_SAIDA;
+    setChecklist(novosItens.reduce((acc, item) => ({ ...acc, [item]: 'OK' }), {}));
   };
 
   const handleMatriculaChange = (valor, cargo) => {
     let reLimpo = toStr(valor).replace(/\D/g, '');
     setFormData(prev => ({ ...prev, [`${cargo}_re`]: reLimpo }));
+    
     if (reLimpo.length >= 4) {
       let reParaBusca = (reLimpo.length <= 6 && !reLimpo.startsWith("1000")) ? "1000" + reLimpo : reLimpo;
-      const militar = buscarMilitarNoCache(reParaBusca);
+      const militar = efetivoLocal.find(m => toStr(m.re) === reParaBusca || toStr(m.re) === reLimpo);
+      
       if (militar) {
         setFormData(prev => ({
           ...prev,
@@ -131,23 +130,14 @@ const Vistoria = ({ onBack, frotaInicial = [] }) => {
       } else {
         setFormData(prev => ({ ...prev, [`${cargo}_nome`]: '', [`${cargo}_unidade`]: '' }));
       }
-    } else {
-      setFormData(prev => ({ ...prev, [`${cargo}_nome`]: '', [`${cargo}_unidade`]: '' }));
-    }
-  };
-
-  const handleMatriculaBlur = (cargo) => {
-    const reAtual = toStr(formData[`${cargo}_re`]);
-    if (reAtual.length > 0 && reAtual.length <= 6 && !reAtual.startsWith("1000")) {
-      setFormData(prev => ({ ...prev, [`${cargo}_re`]: "1000" + reAtual }));
     }
   };
 
   const handleVtrChange = (prefixo) => {
     const vtr = viaturas.find(v => toStr(v.Prefixo) === toStr(prefixo));
     if (!vtr) return;
-    const kmAnterior = Number(vtr.UltimoKM) || 0;
-    setKmReferencia(kmAnterior);
+    setKmReferencia(Number(vtr.UltimoKM) || 0);
+    
     if (tipoVistoria === 'SAÍDA') {
       setFormData(prev => ({
         ...prev,
@@ -166,66 +156,71 @@ const Vistoria = ({ onBack, frotaInicial = [] }) => {
   const kmInvalido = tipoVistoria === 'SAÍDA' && Number(formData.hodometro) <= kmReferencia;
 
   const handleFinalizar = async () => {
-    if (temAvaria && fotos.length === 0) return alert("Obrigatório foto para itens em FALHA.");
+    if (temAvaria && fotos.length === 0) return alert("ERRO: É obrigatório tirar fotos das avarias/falhas constatadas.");
+    if (!window.confirm("Deseja finalizar e enviar esta inspeção?")) return;
+
     setLoading(true);
     try {
+      const falhas = Object.entries(checklist).filter(([_, status]) => status === 'FALHA').map(([item]) => item);
+      let resumo = falhas.length === 0 ? "SEM ALTERAÇÕES" : 
+                   tipoVistoria === 'ENTRADA' ? `FALHA EM: ${falhas.join(', ')}` :
+                   falhas.map(item => MAPA_FALHAS_SAIDA[item] || item).join(', ');
+
       const payloadFinal = {
         ...formData,
         tipo_vistoria: tipoVistoria,
-        checklist_resumo: formatarResumoChecklist(),
+        checklist_resumo: resumo,
         fotos_vistoria: fotos,
         proteger_ocorrencia: protegerFotos,
         militar_logado: `${user.patente} ${user.nome}`,
         status_garageiro: "PENDENTE"
       };
+
       const res = await gasApi.saveVistoria(payloadFinal);
       if (res.status === 'success') { 
-        alert("Inspeção finalizada com sucesso!"); 
+        alert("Inspeção enviada com sucesso!"); 
         onBack(); 
-      } else {
-        alert("Erro no servidor: " + res.message);
-      }
-    } catch (e) { 
-      alert("Erro de conexão com o servidor."); 
-    } finally { 
-      setLoading(false); 
-    }
+      } else { alert("Erro: " + res.message); }
+    } catch (e) { alert("Erro de conexão. Verifique o sinal da internet."); }
+    finally { setLoading(false); }
   };
 
   return (
-    <div className="min-h-screen bg-[var(--bg-app)] pb-10 text-slate-900 dark:text-white">
+    <div className="min-h-screen bg-slate-50 pb-10 text-slate-900">
       <header className="bg-slate-900 text-white p-5 sticky top-0 z-50 border-b-4 border-blue-900 shadow-md">
         <div className="max-w-xl mx-auto flex items-center justify-between">
-          <button onClick={onBack} className="p-2 bg-white/10 rounded-full hover:bg-white/20 transition-colors"><ArrowLeft size={24}/></button>
+          <button onClick={onBack} className="p-2 bg-white/10 rounded-full hover:bg-white/20"><ArrowLeft size={24}/></button>
           <div className="text-center">
             <h1 className="font-black text-[10px] tracking-widest opacity-50 uppercase">1º BPM - Rondon</h1>
-            <p className="text-xs font-bold text-blue-400 uppercase">INSPEÇÃO DE VIATURA</p>
+            <p className="text-xs font-bold text-blue-400 uppercase">VISTORIA DE VIATURA</p>
           </div>
           <div className="w-10" />
         </div>
       </header>
 
       <main className="max-w-xl mx-auto p-4 space-y-6">
-        <div className="flex bg-slate-200 dark:bg-slate-800 p-1 rounded-2xl shadow-inner">
-          <button onClick={() => handleTrocaTipo('ENTRADA')} className={`flex-1 py-3 rounded-xl font-black text-[10px] transition-all ${tipoVistoria === 'ENTRADA' ? 'bg-green-600 text-white shadow-lg scale-[1.02]' : 'text-slate-500'}`}>ENTRADA</button>
-          <button onClick={() => handleTrocaTipo('SAÍDA')} className={`flex-1 py-3 rounded-xl font-black text-[10px] transition-all ${tipoVistoria === 'SAÍDA' ? 'bg-orange-500 text-white shadow-lg scale-[1.02]' : 'text-slate-500'}`}>SAÍDA</button>
+        {/* Toggle Tipo */}
+        <div className="flex bg-slate-200 p-1 rounded-2xl shadow-inner">
+          <button onClick={() => handleTrocaTipo('ENTRADA')} className={`flex-1 py-3 rounded-xl font-black text-[10px] transition-all ${tipoVistoria === 'ENTRADA' ? 'bg-green-600 text-white shadow-lg' : 'text-slate-500'}`}>ENTRADA (ASSUMIR)</button>
+          <button onClick={() => handleTrocaTipo('SAÍDA')} className={`flex-1 py-3 rounded-xl font-black text-[10px] transition-all ${tipoVistoria === 'SAÍDA' ? 'bg-orange-500 text-white shadow-lg' : 'text-slate-500'}`}>SAÍDA (ENTREGAR)</button>
         </div>
 
-        {step === 1 && (
+        {step === 1 ? (
           <div className="space-y-6 animate-in fade-in slide-in-from-bottom-4">
-            <section className="bg-[var(--bg-card)] rounded-[2.5rem] p-6 shadow-sm border border-[var(--border-color)] space-y-5">
-              <div className="bg-slate-900 rounded-3xl p-5 mb-4 shadow-2xl border-b-4 border-blue-600">
+            <section className="bg-white rounded-[2.5rem] p-6 shadow-sm border border-slate-200 space-y-5">
+              {/* Card Guarnição */}
+              <div className="bg-slate-900 rounded-3xl p-5 mb-4 border-b-4 border-blue-600">
                 <div className="flex items-center gap-2 mb-4 border-b border-white/10 pb-2">
                   <Users className="text-blue-400" size={18} />
-                  <span className="text-[10px] font-black text-white tracking-widest uppercase">Formação da Guarnição</span>
+                  <span className="text-[10px] font-black text-white tracking-widest uppercase">Guarnição</span>
                 </div>
                 <div className="space-y-3">
                   {[{ label: 'MOT', cargo: 'motorista' }, { label: 'CMD', cargo: 'comandante' }, { label: 'PTR', cargo: 'patrulheiro' }].map(m => (
-                    <div key={m.label} className="flex items-center justify-between">
+                    <div key={m.label} className="flex items-center">
                       <span className="text-[9px] font-black text-blue-500 w-8">{m.label}</span>
-                      <div className={`flex-1 ml-2 h-8 flex items-center px-3 rounded-lg border transition-colors ${formData[`${m.cargo}_nome`] ? 'bg-blue-900/30 border-blue-500/50' : 'bg-white/5 border-dashed border-white/20'}`}>
+                      <div className={`flex-1 ml-2 h-8 flex items-center px-3 rounded-lg border ${formData[`${m.cargo}_nome`] ? 'bg-blue-900/30 border-blue-500/50' : 'bg-white/5 border-dashed border-white/20'}`}>
                         <span className={`text-[10px] font-bold uppercase truncate ${formData[`${m.cargo}_nome`] ? 'text-white' : 'text-white/20 italic'}`}>
-                          {formData[`${m.cargo}_nome`] || `Aguardando ${m.cargo}...`}
+                          {formData[`${m.cargo}_nome`] || `---`}
                         </span>
                       </div>
                     </div>
@@ -233,12 +228,11 @@ const Vistoria = ({ onBack, frotaInicial = [] }) => {
                 </div>
               </div>
 
+              {/* Inputs Principais */}
               <div className="grid grid-cols-2 gap-3">
                 <select className="vtr-input !py-4" value={formData.prefixo_vtr} onChange={(e) => handleVtrChange(e.target.value)}>
                   <option value="">VTR</option>
-                  {viaturas.filter(v => tipoVistoria === 'SAÍDA' ? v.Status === 'EM SERVIÇO' : (v.Status === 'Operacional' || v.Status === 'DISPONÍVEL' || v.Status === 'MANUTENÇÃO')).map(v => (
-                    <option key={v.Prefixo} value={v.Prefixo}>{v.Prefixo}</option>
-                  ))}
+                  {viaturas.map(v => <option key={v.Prefixo} value={v.Prefixo}>{v.Prefixo}</option>)}
                 </select>
                 <select className="vtr-input !py-4" value={formData.tipo_servico} onChange={(e) => setFormData({...formData, tipo_servico: e.target.value, unidade_externa: ''})}>
                   <option value="">SERVIÇO</option>
@@ -246,98 +240,106 @@ const Vistoria = ({ onBack, frotaInicial = [] }) => {
                 </select>
               </div>
 
-              {(formData.tipo_servico === 'Operação' || formData.tipo_servico === 'Outro') && (
-                <input 
-                  placeholder={formData.tipo_servico === 'Operação' ? "NOME DA OPERAÇÃO" : "DESCREVA O SERVIÇO"} 
-                  className="vtr-input w-full !border-blue-500 !bg-blue-50/10" 
-                  value={formData.unidade_externa} 
-                  onChange={(e) => setFormData({...formData, unidade_externa: e.target.value.toUpperCase()})} 
-                />
-              )}
-
-              {formData.tipo_servico === 'Patrulha Comunitária' && (
-                <select className="vtr-input w-full !border-blue-500 !bg-blue-50/10" value={formData.unidade_externa} onChange={(e) => setFormData({...formData, unidade_externa: e.target.value})}>
-                  <option value="">MODALIDADE COMUNITÁRIA</option>
-                  <option value="Patrulha Comercial">Patrulha Comercial</option>
-                  <option value="Patrulha Escolar">Patrulha Escolar</option>
-                  <option value="Base Móvel">Base Móvel</option>
-                </select>
-              )}
-
               <div className="grid grid-cols-2 gap-3">
                 <div className="space-y-1">
                   <span className="text-[9px] font-black text-slate-400 ml-2 uppercase">Hodômetro</span>
-                  <input type="number" className={`vtr-input ${kmInvalido ? '!border-red-500 !bg-red-50 text-red-900' : ''}`} placeholder="KM ATUAL" value={formData.hodometro} onChange={(e) => setFormData({...formData, hodometro: e.target.value})} />
+                  <input type="number" className={`vtr-input ${kmInvalido ? '!border-red-500 !bg-red-50' : ''}`} placeholder="KM" value={formData.hodometro} onChange={(e) => setFormData({...formData, hodometro: e.target.value})} />
                 </div>
                 <div className="space-y-1">
-                  <span className="text-[9px] font-black text-slate-400 ml-2 uppercase">Monitoramento</span>
-                  <select className="vtr-input text-[10px]" value={formData.videomonitoramento} onChange={(e) => setFormData({...formData, videomonitoramento: e.target.value})}>
-                    <option value="">SELECIONE</option>
+                  <span className="text-[9px] font-black text-slate-400 ml-2 uppercase">Câmeras</span>
+                  <select className="vtr-input" value={formData.videomonitoramento} onChange={(e) => setFormData({...formData, videomonitoramento: e.target.value})}>
+                    <option value="">STATUS</option>
                     <option value="OPERANTE">OPERANTE</option>
                     <option value="INOPERANTE">INOPERANTE</option>
                     <option value="NÃO POSSUI">NÃO POSSUI</option>
                   </select>
                 </div>
               </div>
-              
-              {kmInvalido && <p className="text-[9px] font-black text-red-600 flex items-center gap-1 animate-pulse ml-2"><AlertTriangle size={10}/> KM DEVE SER MAIOR QUE O DE ENTRADA ({kmReferencia})</p>}
 
+              {/* Busca de Militares */}
               {['motorista', 'comandante', 'patrulheiro'].map(cargo => (
                 <div key={cargo} className="space-y-1">
-                  <input placeholder={`MATRÍCULA ${cargo.toUpperCase()}`} className="vtr-input !bg-[var(--bg-app)]" value={formData[`${cargo}_re`]} onChange={(e) => handleMatriculaChange(e.target.value, cargo)} onBlur={() => handleMatriculaBlur(cargo)} />
-                  {formData[`${cargo}_re`].length >= 4 && !buscarMilitarNoCache(formData[`${cargo}_re`]) && (
-                    <div className="grid grid-cols-1 gap-2 p-3 bg-blue-50 dark:bg-blue-900/10 border border-blue-200 rounded-2xl animate-in zoom-in-95">
-                      <p className="text-[8px] font-black text-blue-600 uppercase">Militar Externo/Novo</p>
-                      <input placeholder="PATENTE E NOME (EX: CB PM ALFA)" className="bg-transparent border-none text-[10px] font-bold w-full uppercase focus:ring-0" value={formData[`${cargo}_nome`]} onChange={(e) => setFormData({...formData, [`${cargo}_nome`]: e.target.value.toUpperCase()})} />
-                      <input placeholder="UNIDADE (EX: BPFRON)" className="bg-transparent border-none text-[10px] font-bold w-full uppercase border-t border-blue-200 pt-2 focus:ring-0" value={formData[`${cargo}_unidade`]} onChange={(e) => setFormData({...formData, [`${cargo}_unidade`]: e.target.value.toUpperCase()})} />
+                  <input 
+                    placeholder={`MATRÍCULA ${cargo.toUpperCase()}`} 
+                    className="vtr-input !bg-slate-50" 
+                    value={formData[`${cargo}_re`]} 
+                    onChange={(e) => handleMatriculaChange(e.target.value, cargo)}
+                  />
+                  {formData[`${cargo}_re`].length >= 4 && !formData[`${cargo}_nome`] && (
+                    <div className="p-3 bg-blue-50 border border-blue-200 rounded-2xl">
+                      <p className="text-[8px] font-black text-blue-600 mb-2 uppercase">Militar não encontrado (Preencha manual)</p>
+                      <input placeholder="PATENTE E NOME" className="w-full bg-transparent border-b border-blue-200 text-[10px] font-bold uppercase mb-2 outline-none" onChange={(e) => setFormData({...formData, [`${cargo}_nome`]: e.target.value.toUpperCase()})} />
+                      <input placeholder="UNIDADE" className="w-full bg-transparent text-[10px] font-bold uppercase outline-none" onChange={(e) => setFormData({...formData, [`${cargo}_unidade`]: e.target.value.toUpperCase()})} />
                     </div>
                   )}
                 </div>
               ))}
             </section>
             
-            <button onClick={() => setStep(2)} disabled={!formData.prefixo_vtr || !formData.motorista_nome || !formData.comandante_nome || !formData.hodometro || !formData.videomonitoramento || kmInvalido} className={`btn-tatico w-full uppercase flex items-center justify-center gap-2 transition-all ${(!formData.prefixo_vtr || !formData.motorista_nome || !formData.comandante_nome || !formData.hodometro || !formData.videomonitoramento || kmInvalido) ? 'opacity-30 grayscale cursor-not-allowed' : 'opacity-100'}`}>
-              PRÓXIMO <ChevronRight size={18}/>
+            <button onClick={() => setStep(2)} disabled={!formData.prefixo_vtr || !formData.motorista_nome || !formData.hodometro || kmInvalido} className="btn-tatico w-full">
+              PRÓXIMO: CHECKLIST <ChevronRight size={18}/>
             </button>
           </div>
-        )}
-
-        {step === 2 && (
+        ) : (
           <div className="space-y-6 animate-in slide-in-from-right-4">
-             <div onClick={() => setProtegerFotos(!protegerFotos)} className={`p-5 rounded-3xl border-2 cursor-pointer transition-all flex items-center gap-4 ${protegerFotos ? 'bg-blue-600 border-blue-400 text-white shadow-lg' : 'bg-slate-100 dark:bg-slate-800 border-slate-300 dark:border-slate-700 text-slate-600'}`}>
-              {protegerFotos ? <Lock size={32} /> : <Unlock size={32} className="opacity-50" />}
-              <div>
-                <h4 className={`font-black text-xs uppercase ${protegerFotos ? 'text-white' : 'text-slate-500'}`}>Proteção de Dados</h4>
-                <p className="text-[10px] font-medium leading-tight opacity-90">Impedir limpeza automática (Ocorrências Graves)</p>
+            {/* Proteção de Dados */}
+            <div onClick={() => setProtegerFotos(!protegerFotos)} className={`p-4 rounded-3xl border-2 transition-all flex items-center gap-4 ${protegerFotos ? 'bg-blue-600 border-blue-400 text-white' : 'bg-white border-slate-200'}`}>
+              {protegerFotos ? <Lock size={24} /> : <Unlock size={24} className="opacity-30" />}
+              <div className="text-left">
+                <h4 className="font-black text-[10px] uppercase">Proteção de Imagens</h4>
+                <p className="text-[9px] opacity-80">Marcar como evidência (não apagar automaticamente)</p>
               </div>
             </div>
 
-             <div className="grid gap-2">
-              {(tipoVistoria === 'ENTRADA' ? ITENS_ENTRADA : ITENS_SAIDA).map(item => (
-                <div key={item} onClick={() => setChecklist(prev => ({...prev, [item]: prev[item] === 'OK' ? 'FALHA' : 'OK'}))} className={`checklist-item-ok cursor-pointer transition-colors ${checklist[item] === 'FALHA' ? '!border-red-500 !bg-red-50 dark:!bg-red-900/20' : ''}`}>
-                  <span className="text-sm font-bold uppercase">{item}</span>
-                  <div className={`px-3 py-1 rounded-lg text-[10px] font-black transition-colors ${checklist[item] === 'OK' ? 'bg-green-100 text-green-700' : 'bg-red-600 text-white'}`}>{checklist[item]}</div>
+            {/* Checklist Agrupado */}
+            <div className="space-y-4">
+              {tipoVistoria === 'ENTRADA' ? (
+                GRUPOS_ENTRADA.map(grupo => (
+                  <div key={grupo.nome} className="bg-white rounded-3xl p-4 shadow-sm border border-slate-200">
+                    <div className="flex items-center gap-2 mb-3 text-blue-700">
+                      {grupo.icon}
+                      <span className="font-black text-[10px] uppercase tracking-wider">{grupo.nome}</span>
+                    </div>
+                    <div className="grid gap-2">
+                      {grupo.itens.map(item => (
+                        <div key={item} onClick={() => setChecklist(prev => ({...prev, [item]: prev[item] === 'OK' ? 'FALHA' : 'OK'}))} className={`flex justify-between items-center p-3 rounded-xl border transition-all ${checklist[item] === 'FALHA' ? 'border-red-500 bg-red-50' : 'border-slate-100 bg-slate-50/50'}`}>
+                          <span className="text-[11px] font-bold uppercase">{item}</span>
+                          <span className={`text-[9px] font-black px-2 py-1 rounded ${checklist[item] === 'OK' ? 'text-green-600' : 'bg-red-600 text-white'}`}>{checklist[item]}</span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                ))
+              ) : (
+                <div className="bg-white rounded-3xl p-4 border border-slate-200 grid gap-2">
+                  {ITENS_SAIDA.map(item => (
+                    <div key={item} onClick={() => setChecklist(prev => ({...prev, [item]: prev[item] === 'OK' ? 'FALHA' : 'OK'}))} className={`flex justify-between items-center p-3 rounded-xl border ${checklist[item] === 'FALHA' ? 'border-red-500 bg-red-50' : 'border-slate-100'}`}>
+                      <span className="text-[11px] font-bold uppercase">{item}</span>
+                      <span className={`text-[9px] font-black px-2 py-1 rounded ${checklist[item] === 'OK' ? 'text-green-600' : 'bg-red-600 text-white'}`}>{checklist[item]}</span>
+                    </div>
+                  ))}
                 </div>
-              ))}
+              )}
             </div>
 
-            <div className={`bg-[var(--bg-card)] rounded-[2.5rem] p-6 border-2 transition-colors ${temAvaria && fotos.length === 0 ? 'border-red-500 bg-red-50/50 animate-pulse' : 'border-[var(--border-color)]'}`}>
-              <p className="text-[10px] font-black mb-3 uppercase text-slate-400">Registros Fotográficos {temAvaria && <span className="text-red-600">(Obrigatório em Falhas)</span>}</p>
+            {/* Fotos e Envio */}
+            <div className={`p-6 rounded-[2.5rem] border-2 bg-white ${temAvaria && fotos.length === 0 ? 'border-red-500 animate-pulse' : 'border-slate-200'}`}>
+              <p className="text-[10px] font-black mb-3 uppercase text-slate-400 text-center">Fotos da Vistoria {temAvaria && <span className="text-red-600">(Obrigatório)</span>}</p>
               <div className="grid grid-cols-4 gap-2">
                 {fotos.map((f, i) => (
-                  <div key={i} className="relative aspect-square rounded-2xl overflow-hidden shadow-md">
-                    <img src={f} className="object-cover w-full h-full" alt="vistoria"/>
-                    <button onClick={() => setFotos(fotos.filter((_, idx) => idx !== i))} className="absolute top-1 right-1 bg-red-600 text-white rounded-full p-1"><X size={10}/></button>
+                  <div key={i} className="relative aspect-square rounded-2xl overflow-hidden border border-slate-200 shadow-sm">
+                    <img src={f} className="object-cover w-full h-full" alt="vtr"/>
+                    <button onClick={() => setFotos(p => p.filter((_, idx) => idx !== i))} className="absolute top-1 right-1 bg-red-600 text-white rounded-full p-1"><X size={10}/></button>
                   </div>
                 ))}
                 {fotos.length < 4 && (
-                  <label className="aspect-square rounded-2xl border-2 border-dashed border-slate-300 dark:border-slate-700 flex items-center justify-center cursor-pointer hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors">
+                  <label className="aspect-square rounded-2xl border-2 border-dashed border-slate-300 flex items-center justify-center cursor-pointer bg-slate-50">
                     {uploading ? <Loader2 className="animate-spin text-blue-600" /> : <Plus className="text-slate-400" />}
                     <input type="file" accept="image/*" capture="environment" className="hidden" onChange={async (e) => {
                       const file = e.target.files[0]; if (!file) return;
                       setUploading(true);
                       try {
-                        const compressed = await imageCompression(file, { maxSizeMB: 0.5, maxWidthOrHeight: 1280 });
+                        const compressed = await imageCompression(file, { maxSizeMB: 0.2, maxWidthOrHeight: 1000, useWebWorker: true });
                         const reader = new FileReader(); reader.readAsDataURL(compressed);
                         reader.onloadend = () => { setFotos(p => [...p, reader.result]); setUploading(false); };
                       } catch (err) { setUploading(false); }
@@ -347,21 +349,18 @@ const Vistoria = ({ onBack, frotaInicial = [] }) => {
               </div>
             </div>
 
-            <label className="flex items-start gap-4 p-5 bg-[var(--bg-card)] border-2 border-[var(--border-color)] rounded-3xl cursor-pointer hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors">
-              <input type="checkbox" className="w-6 h-6 mt-1 rounded-lg text-blue-600" checked={formData.termo_aceite} onChange={(e) => setFormData({...formData, termo_aceite: e.target.checked})} />
-              <div className="text-[10px] font-black uppercase leading-relaxed text-slate-600 dark:text-slate-400">
-                {tipoVistoria === 'ENTRADA' ? (
-                  <p><span className="text-blue-600">TERMO DE RESPONSABILIDADE:</span> EU, <span className="text-slate-900 dark:text-white underline">{formData.motorista_nome || '[NOME DO MOTORISTA]'}</span>, declaro ter recebido a viatura <span className="text-slate-900 dark:text-white underline">{formData.prefixo_vtr || '[PREFIXO]'}</span> nas condições descritas, responsabilizando-me por seu uso.</p>
-                ) : (
-                  <p><span className="text-orange-600">TERMO DE ENTREGA:</span> EU, <span className="text-slate-900 dark:text-white underline">{formData.motorista_nome || '[NOME DO MOTORISTA]'}</span>, declaro estar entregando a viatura <span className="text-slate-900 dark:text-white underline">{formData.prefixo_vtr || '[PREFIXO]'}</span> nas condições descritas acima.</p>
-                )}
-              </div>
+            {/* Termo e Botões */}
+            <label className="flex items-start gap-4 p-5 bg-white border-2 border-slate-200 rounded-3xl cursor-pointer">
+              <input type="checkbox" className="w-6 h-6 rounded text-blue-600 mt-1" checked={formData.termo_aceite} onChange={(e) => setFormData({...formData, termo_aceite: e.target.checked})} />
+              <p className="text-[9px] font-black uppercase text-slate-500 leading-tight text-left">
+                Eu, <span className="text-slate-900 underline">{formData.motorista_nome || 'MOTORISTA'}</span>, declaro que as informações acima são verdadeiras e assumo a responsabilidade pela viatura.
+              </p>
             </label>
 
             <div className="flex gap-2">
-              <button onClick={() => setStep(1)} className="flex-1 bg-[var(--bg-card)] p-5 rounded-2xl font-black border-2 border-[var(--border-color)] hover:bg-slate-100 transition-colors">VOLTAR</button>
-              <button onClick={handleFinalizar} disabled={!formData.termo_aceite || loading || (temAvaria && fotos.length === 0)} className={`btn-tatico flex-[2] ${(loading || !formData.termo_aceite || (temAvaria && fotos.length === 0)) ? 'opacity-30 cursor-not-allowed' : ''}`}>
-                {loading ? <Loader2 className="animate-spin mx-auto"/> : "FINALIZAR INSPEÇÃO"}
+              <button onClick={() => setStep(1)} className="flex-1 bg-white p-5 rounded-2xl font-black border-2 border-slate-200">VOLTAR</button>
+              <button onClick={handleFinalizar} disabled={!formData.termo_aceite || loading || (temAvaria && fotos.length === 0)} className="btn-tatico flex-[2] disabled:opacity-30">
+                {loading ? <Loader2 className="animate-spin mx-auto"/> : "FINALIZAR"}
               </button>
             </div>
           </div>
