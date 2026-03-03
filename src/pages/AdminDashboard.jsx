@@ -5,7 +5,7 @@ import {
   AlertTriangle, Search, Filter, ArrowRight, Droplets, 
   History, X, AlertCircle, ArrowLeft, TrendingUp, PieChart, 
   ExternalLink, Timer, Activity, Users, Printer, Clock, 
-  ShieldCheck, Map, CheckCircle2, Save, FileText, Menu
+  ShieldCheck, Map, CheckCircle2, Save, FileText, Menu, Edit2
 } from 'lucide-react';
 
 const AdminDashboard = ({ onBack }) => {
@@ -22,8 +22,12 @@ const AdminDashboard = ({ onBack }) => {
   // Estados para Modais e Formulários
   const [isAddingVtr, setIsAddingVtr] = useState(false);
   const [isManutencaoOpen, setIsManutencaoOpen] = useState(false);
+  
+  // MUDANÇA 1 & 2: Adicionado 'tipoCarroceria' e preparado para edição
   const [formData, setFormData] = useState({
-    prefixo: '', placa: '', modelo: '', ano: '', cor: '', dataEntrada: '', chassi: '', observacoes: ''
+    id: '', 
+    prefixo: '', placa: '', modelo: '', ano: '', cor: '', 
+    dataEntrada: '', chassi: '', observacoes: '', tipoCarroceria: 'CAMBURÃO'
   });
 
   // --- CARGA DE DADOS ---
@@ -38,7 +42,6 @@ const AdminDashboard = ({ onBack }) => {
       ]);
 
       if (resVtr.status === 'success') {
-        // Filtra para não mostrar viaturas que já foram baixadas permanentemente
         setViaturas(resVtr.data.filter(v => v.Status !== "FORA DE SERVIÇO (BAIXA)"));
       }
       if (resPendentes.status === 'success') {
@@ -67,14 +70,12 @@ const AdminDashboard = ({ onBack }) => {
 
   const handleAction = async (action, payload) => {
     let motivoFinal = payload.motivo || "";
-
     if (action === 'baixarViatura') {
       const confirmacao = window.prompt(`Deseja realmente BAIXAR a viatura ${payload.prefixo}? Digite o MOTIVO da baixa:`);
       if (!confirmacao) return;
       motivoFinal = confirmacao;
       payload.motivo = motivoFinal;
     }
-
     if (action !== 'baixarViatura' && !window.confirm(`Confirma operação de ${action} para ${payload.prefixo}?`)) return;
     
     setLoading(true);
@@ -95,15 +96,18 @@ const AdminDashboard = ({ onBack }) => {
     }
   };
 
+  // MUDANÇA: Lógica de Edição integrada no salvamento
   const handleSaveViatura = async (e) => {
     e.preventDefault();
     setLoading(true);
     try {
-      const res = await gasApi.doPost({ action: 'addViatura', payload: formData });
+      // Se houver prefixo original ou ID, entende-se como edição
+      const action = formData.isEditing ? 'updateViatura' : 'addViatura';
+      const res = await gasApi.doPost({ action, payload: formData });
       if (res.status === 'success') {
-        alert("Viatura cadastrada com sucesso!");
+        alert(formData.isEditing ? "Viatura atualizada!" : "Viatura cadastrada!");
         setIsAddingVtr(false);
-        setFormData({ prefixo: '', placa: '', modelo: '', ano: '', cor: '', dataEntrada: '', chassi: '', observacoes: '' });
+        setFormData({ prefixo: '', placa: '', modelo: '', ano: '', cor: '', dataEntrada: '', chassi: '', observacoes: '', tipoCarroceria: 'CAMBURÃO' });
         loadData();
       }
     } catch (err) {
@@ -113,51 +117,56 @@ const AdminDashboard = ({ onBack }) => {
     }
   };
 
+  // Função para abrir edição
+  const handleEditClick = (v) => {
+    setFormData({
+      ...v,
+      prefixo: v.Prefixo,
+      placa: v.Placa,
+      modelo: v.Modelo,
+      chassi: v.Chassi,
+      tipoCarroceria: v.TipoCarroceria || 'CAMBURÃO',
+      isEditing: true
+    });
+    setIsAddingVtr(true);
+  };
+
   const handlePrint = () => { window.print(); };
 
   // --- RENDERIZAÇÃO ---
   return (
     <div className="min-h-screen bg-slate-50 flex font-sans print:bg-white text-slate-900 relative">
       
-      {/* SIDEBAR - Responsiva */}
+      {/* SIDEBAR */}
       <aside className={`
         fixed inset-y-0 left-0 z-[200] w-64 bg-slate-900 text-white flex flex-col shadow-2xl transition-transform duration-300
         md:relative md:translate-x-0 ${isSidebarOpen ? 'translate-x-0' : '-translate-x-full'}
       `}>
-       <div className="p-6 border-b border-slate-800 text-center relative">
-  <h1 className="font-black text-xl tracking-tighter uppercase italic select-none">
-    Painel <span className="text-amber-500">CMDO</span>
-  </h1>
-  
-   <p 
-    onClick={() => setQruAtivo(!qruAtivo)} 
-    className={`text-[9px] font-bold tracking-widest uppercase cursor-pointer select-none transition-all duration-500 hover:text-amber-500 ${
-      qruAtivo ? 'text-amber-400 scale-110' : 'text-slate-500'
-    }`}
-  >
-    {qruAtivo ? "⚡ FORÇA E HONRA ⚡" : "1º BPM - Porto Velho"}
-  </p>
-
-  <button 
-    onClick={() => setIsSidebarOpen(false)} 
-    className="md:hidden absolute right-4 top-6 text-slate-500"
-  >
-    <X size={20}/>
-  </button>
-</div>
+        <div className="p-6 border-b border-slate-800 text-center relative">
+          <h1 className="font-black text-xl tracking-tighter uppercase italic select-none">
+            Painel <span className="text-amber-500">CMDO</span>
+          </h1>
+          <p 
+            onClick={() => setQruAtivo(!qruAtivo)} 
+            className={`text-[9px] font-bold tracking-widest uppercase cursor-pointer select-none transition-all duration-500 hover:text-amber-500 ${
+              qruAtivo ? 'text-amber-400 scale-110' : 'text-slate-500'
+            }`}
+          >
+            {qruAtivo ? "⚡ FORÇA E HONRA ⚡" : "1º BPM - Porto Velho"}
+          </p>
+          <button onClick={() => setIsSidebarOpen(false)} className="md:hidden absolute right-4 top-6 text-slate-500"><X size={20}/></button>
+        </div>
 
         <nav className="flex-1 p-4 space-y-1 overflow-y-auto">
           <button onClick={onBack} className="w-full flex items-center gap-3 p-3 rounded-xl text-[10px] font-black uppercase text-blue-400 hover:bg-slate-800 mb-4 border border-blue-900/30 transition-all">
             <ArrowLeft size={16}/> Sair do Sistema
           </button>
-          
           <MenuBtn active={activeTab==='frota'} onClick={()=>{setActiveTab('frota'); setIsSidebarOpen(false)}} icon={<ShieldCheck size={18}/>} label="Prontidão da Frota" />
           <MenuBtn active={activeTab==='admin'} onClick={()=>{setActiveTab('admin'); setIsSidebarOpen(false)}} icon={<Settings size={18}/>} label="Gestão de Frota" />
           <MenuBtn active={activeTab==='auditoria'} onClick={()=>{setActiveTab('auditoria'); setIsSidebarOpen(false)}} icon={<Activity size={18}/>} label="Auditoria de Pátio" />
         </nav>
       </aside>
 
-      {/* Overlay Mobile */}
       {isSidebarOpen && <div onClick={() => setIsSidebarOpen(false)} className="fixed inset-0 bg-black/50 z-[190] md:hidden" />}
 
       <main className="flex-1 flex flex-col min-w-0 overflow-hidden">
@@ -168,24 +177,21 @@ const AdminDashboard = ({ onBack }) => {
             <Menu size={20} className="text-slate-600" />
           </button>
           
-         <div className="flex-1 flex items-center gap-3 bg-slate-100 px-3 py-2 rounded-xl border border-slate-200 focus-within:border-blue-400 transition-all max-w-md">
-  {qruAtivo ? (
-    /* Ícone de Escudo que pulsa no modo especial */
-    <ShieldCheck size={14} className="text-amber-600 animate-pulse shrink-0" />
-  ) : (
-    /* Ícone de busca padrão */
-    <Search size={14} className="text-slate-400 shrink-0" />
-  )}
-  
-  <input 
-    type="text" 
-    placeholder={qruAtivo ? "CONSULTAR QRU..." : "Buscar por prefixo..."} 
-    className={`bg-transparent border-none outline-none text-[11px] font-bold w-full uppercase transition-colors ${
-      qruAtivo ? 'placeholder:text-amber-500/50 text-amber-700' : 'placeholder:text-slate-400'
-    }`} 
-    onChange={(e) => setSearchTerm(e.target.value)} 
-  />
-</div>
+          <div className="flex-1 flex items-center gap-3 bg-slate-100 px-3 py-2 rounded-xl border border-slate-200 focus-within:border-blue-400 transition-all max-w-md">
+            {qruAtivo ? (
+              <ShieldCheck size={14} className="text-amber-600 animate-pulse shrink-0" />
+            ) : (
+              <Search size={14} className="text-slate-400 shrink-0" />
+            )}
+            <input 
+              type="text" 
+              placeholder={qruAtivo ? "CONSULTAR QRU..." : "Buscar por prefixo..."} 
+              className={`bg-transparent border-none outline-none text-[11px] font-bold w-full uppercase transition-colors ${
+                qruAtivo ? 'placeholder:text-amber-500/50 text-amber-700' : 'placeholder:text-slate-400'
+              }`} 
+              onChange={(e) => setSearchTerm(e.target.value)} 
+            />
+          </div>
           
           <div className="ml-2">
              <button onClick={handlePrint} className="p-2 md:px-4 md:py-2 bg-slate-900 text-white rounded-lg text-[10px] font-black uppercase flex items-center gap-2">
@@ -207,7 +213,6 @@ const AdminDashboard = ({ onBack }) => {
               </div>
 
               <div className="bg-white rounded-2xl md:rounded-[2rem] shadow-sm border border-slate-200 overflow-hidden">
-                {/* Visão Tabela (Desktop) */}
                 <div className="hidden md:block">
                   <table className="w-full text-left">
                     <thead className="bg-slate-50 border-b border-slate-200 text-[10px] font-black uppercase text-slate-400">
@@ -235,7 +240,6 @@ const AdminDashboard = ({ onBack }) => {
                   </table>
                 </div>
 
-                {/* Visão Lista (Mobile) */}
                 <div className="md:hidden divide-y divide-slate-100">
                   {viaturas.filter(v => v.Prefixo?.includes(searchTerm.toUpperCase())).map((v, i) => (
                     <div key={i} onClick={() => setSelectedVtr(v)} className="p-4 flex justify-between items-center active:bg-slate-50">
@@ -261,7 +265,10 @@ const AdminDashboard = ({ onBack }) => {
             <div className="space-y-6 animate-in slide-in-from-right duration-500">
               <div className="flex justify-between items-center">
                 <h2 className="text-xl md:text-2xl font-black uppercase italic leading-tight">Gestão de Ativos</h2>
-                <button onClick={() => setIsAddingVtr(true)} className="p-3 md:px-6 md:py-4 bg-blue-600 text-white rounded-xl md:rounded-2xl text-[10px] font-black uppercase flex items-center gap-2 shadow-lg">
+                <button onClick={() => {
+                  setFormData({ prefixo: '', placa: '', modelo: '', ano: '', cor: '', dataEntrada: '', chassi: '', observacoes: '', tipoCarroceria: 'CAMBURÃO' });
+                  setIsAddingVtr(true);
+                }} className="p-3 md:px-6 md:py-4 bg-blue-600 text-white rounded-xl md:rounded-2xl text-[10px] font-black uppercase flex items-center gap-2 shadow-lg">
                   <Plus size={18}/> <span className="hidden md:inline">Adicionar</span>
                 </button>
               </div>
@@ -272,7 +279,7 @@ const AdminDashboard = ({ onBack }) => {
                     <tr>
                       <th className="p-5">Prefixo</th>
                       <th className="p-5">Placa</th>
-                      <th className="p-5">Modelo</th>
+                      <th className="p-5">Modelo / Tipo</th>
                       <th className="p-5">Chassi</th>
                       <th className="p-5 text-center">Ações</th>
                     </tr>
@@ -282,12 +289,21 @@ const AdminDashboard = ({ onBack }) => {
                       <tr key={i} className="hover:bg-blue-50/50">
                         <td className="p-5 text-slate-900 font-black">{v.Prefixo}</td>
                         <td className="p-5">{v.Placa || '---'}</td>
-                        <td className="p-5">{v.Modelo}</td>
+                        <td className="p-5">
+                          <div className="flex flex-col">
+                            <span>{v.Modelo}</span>
+                            <span className="text-[8px] text-slate-400">{v.TipoCarroceria}</span>
+                          </div>
+                        </td>
                         <td className="p-5 font-mono text-[9px]">{v.Chassi || '---'}</td>
                         <td className="p-5">
                           <div className="flex justify-center gap-2">
-                            <button onClick={() => { setSelectedVtr(v); setIsManutencaoOpen(true); }} className="p-2 bg-blue-50 text-blue-600 rounded-lg"><FileText size={16}/></button>
-                            <button onClick={() => handleAction('baixarViatura', { prefixo: v.Prefixo })} className="p-2 bg-red-50 text-red-600 rounded-lg"><X size={16}/></button>
+                            {/* BOTÃO EDITAR ADICIONADO */}
+                            <button onClick={() => handleEditClick(v)} className="p-2 bg-amber-50 text-amber-600 rounded-lg hover:bg-amber-100 transition-colors" title="Editar Viatura">
+                              <Edit2 size={16}/>
+                            </button>
+                            <button onClick={() => { setSelectedVtr(v); setIsManutencaoOpen(true); }} className="p-2 bg-blue-50 text-blue-600 rounded-lg" title="Manutenção"><FileText size={16}/></button>
+                            <button onClick={() => handleAction('baixarViatura', { prefixo: v.Prefixo })} className="p-2 bg-red-50 text-red-600 rounded-lg" title="Dar Baixa"><X size={16}/></button>
                           </div>
                         </td>
                       </tr>
@@ -300,20 +316,44 @@ const AdminDashboard = ({ onBack }) => {
         </section>
       </main>
 
-      {/* MODAL: ADICIONAR VIATURA */}
+      {/* MODAL: ADICIONAR/EDITAR VIATURA */}
       {isAddingVtr && (
         <div className="fixed inset-0 bg-slate-900/90 backdrop-blur-sm z-[250] flex items-center justify-center p-4">
           <div className="bg-white w-full max-w-2xl rounded-[2rem] md:rounded-[3rem] shadow-2xl overflow-hidden animate-in zoom-in-95">
             <div className="p-6 bg-slate-900 text-white flex justify-between items-center">
-              <h2 className="font-black italic uppercase">Cadastrar Viatura</h2>
+              <h2 className="font-black italic uppercase">{formData.isEditing ? 'Editar Viatura' : 'Cadastrar Viatura'}</h2>
               <button onClick={() => setIsAddingVtr(false)}><X/></button>
             </div>
             <form onSubmit={handleSaveViatura} className="p-6 md:p-10 grid grid-cols-2 gap-4 md:gap-6 max-h-[80vh] overflow-y-auto">
-              <Input label="Prefixo" value={formData.prefixo} onChange={e => setFormData({...formData, prefixo: e.target.value.toUpperCase()})} required />
+              <Input label="Prefixo" value={formData.prefixo} onChange={e => setFormData({...formData, prefixo: e.target.value.toUpperCase()})} required disabled={formData.isEditing} />
               <Input label="Placa" value={formData.placa} onChange={e => setFormData({...formData, placa: e.target.value.toUpperCase()})} />
-              <div className="col-span-2 md:col-span-1"><Input label="Modelo" value={formData.modelo} onChange={e => setFormData({...formData, modelo: e.target.value})} /></div>
-              <div className="col-span-2 md:col-span-1"><Input label="Chassi" value={formData.chassi} onChange={e => setFormData({...formData, chassi: e.target.value.toUpperCase()})} /></div>
-              <button type="submit" className="col-span-2 py-4 bg-blue-600 text-white rounded-2xl font-black uppercase text-xs shadow-xl"><Save size={18} className="inline mr-2"/> Salvar no Acervo</button>
+              
+              {/* CAMPO MODELO */}
+              <div className="col-span-2 md:col-span-1">
+                <Input label="Modelo" value={formData.modelo} onChange={e => setFormData({...formData, modelo: e.target.value})} />
+              </div>
+
+              {/* CAMPO TIPO DE CARROCERIA */}
+              <div className="col-span-2 md:col-span-1">
+                <label className="text-[9px] font-black uppercase text-slate-400 mb-1 block ml-1">Tipo de Carroceria</label>
+                <select 
+                  value={formData.tipoCarroceria}
+                  onChange={e => setFormData({...formData, tipoCarroceria: e.target.value})}
+                  className="w-full bg-slate-50 border border-slate-200 rounded-xl p-3 text-sm font-bold outline-none focus:border-blue-500"
+                >
+                  <option value="CAMBURÃO">CAMBURÃO</option>
+                  <option value="CARROCERIA ABERTA">CARROCERIA ABERTA</option>
+                  <option value="OSTENSIVA COMUM">OSTENSIVA COMUM</option>
+                  <option value="ADMINISTRATIVA">ADMINISTRATIVA</option>
+                  <option value="OUTROS">OUTROS</option>
+                </select>
+              </div>
+
+              <div className="col-span-2"><Input label="Chassi" value={formData.chassi} onChange={e => setFormData({...formData, chassi: e.target.value.toUpperCase()})} /></div>
+              
+              <button type="submit" className="col-span-2 py-4 bg-blue-600 text-white rounded-2xl font-black uppercase text-xs shadow-xl">
+                <Save size={18} className="inline mr-2"/> {formData.isEditing ? 'Salvar Alterações' : 'Salvar no Acervo'}
+              </button>
             </form>
           </div>
         </div>
@@ -354,7 +394,7 @@ const AdminDashboard = ({ onBack }) => {
 const Input = ({ label, ...props }) => (
   <div>
     <label className="text-[9px] font-black uppercase text-slate-400 mb-1 block ml-1">{label}</label>
-    <input {...props} className="w-full bg-slate-50 border border-slate-200 rounded-xl p-3 text-sm font-bold outline-none focus:border-blue-500" />
+    <input {...props} className={`w-full bg-slate-50 border border-slate-200 rounded-xl p-3 text-sm font-bold outline-none focus:border-blue-500 ${props.disabled ? 'opacity-50' : ''}`} />
   </div>
 );
 
@@ -402,6 +442,11 @@ const VtrDetailsModal = ({ vtr, onClose, checkOil, onAction }) => {
              <div className="p-4 bg-slate-50 rounded-xl">
                 <span className="text-[9px] font-black text-slate-400 uppercase">Modelo</span>
                 <p className="font-bold">{vtr.Modelo}</p>
+             </div>
+             {/* NOVO: Exibição da carroceria no detalhe */}
+             <div className="p-4 bg-slate-50 rounded-xl col-span-2">
+                <span className="text-[9px] font-black text-slate-400 uppercase">Tipo de Carroceria</span>
+                <p className="font-bold">{vtr.TipoCarroceria || 'NÃO INFORMADO'}</p>
              </div>
           </div>
           <button onClick={() => onAction('baixarViatura', { prefixo: vtr.Prefixo })} className="w-full py-5 bg-red-600 text-white rounded-2xl font-black uppercase text-xs hover:bg-red-700 transition-all mt-6">
