@@ -17,6 +17,7 @@ const AdminDashboard = ({ onBack }) => {
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedVtr, setSelectedVtr] = useState(null);
+  const [qruAtivo, setQruAtivo] = useState(false);
   
   // Estados para Modais e Formulários
   const [isAddingVtr, setIsAddingVtr] = useState(false);
@@ -123,11 +124,27 @@ const AdminDashboard = ({ onBack }) => {
         fixed inset-y-0 left-0 z-[200] w-64 bg-slate-900 text-white flex flex-col shadow-2xl transition-transform duration-300
         md:relative md:translate-x-0 ${isSidebarOpen ? 'translate-x-0' : '-translate-x-full'}
       `}>
-        <div className="p-6 border-b border-slate-800 text-center relative">
-          <h1 className="font-black text-xl tracking-tighter uppercase italic">Painel <span className="text-amber-500">CMDO</span></h1>
-          <p className="text-[9px] font-bold text-slate-500 tracking-widest uppercase">1º BPM - Porto Velho</p>
-          <button onClick={() => setIsSidebarOpen(false)} className="md:hidden absolute right-4 top-6 text-slate-500"><X size={20}/></button>
-        </div>
+       <div className="p-6 border-b border-slate-800 text-center relative">
+  <h1 className="font-black text-xl tracking-tighter uppercase italic select-none">
+    Painel <span className="text-amber-500">CMDO</span>
+  </h1>
+  
+   <p 
+    onClick={() => setQruAtivo(!qruAtivo)} 
+    className={`text-[9px] font-bold tracking-widest uppercase cursor-pointer select-none transition-all duration-500 hover:text-amber-500 ${
+      qruAtivo ? 'text-amber-400 scale-110' : 'text-slate-500'
+    }`}
+  >
+    {qruAtivo ? "⚡ FORÇA E HONRA ⚡" : "1º BPM - Porto Velho"}
+  </p>
+
+  <button 
+    onClick={() => setIsSidebarOpen(false)} 
+    className="md:hidden absolute right-4 top-6 text-slate-500"
+  >
+    <X size={20}/>
+  </button>
+</div>
 
         <nav className="flex-1 p-4 space-y-1 overflow-y-auto">
           <button onClick={onBack} className="w-full flex items-center gap-3 p-3 rounded-xl text-[10px] font-black uppercase text-blue-400 hover:bg-slate-800 mb-4 border border-blue-900/30 transition-all">
@@ -151,15 +168,24 @@ const AdminDashboard = ({ onBack }) => {
             <Menu size={20} className="text-slate-600" />
           </button>
           
-          <div className="flex-1 flex items-center gap-3 bg-slate-100 px-3 py-2 rounded-xl border border-slate-200 focus-within:border-blue-400 transition-all max-w-md">
-            <Search size={14} className="text-slate-400 shrink-0" />
-            <input 
-              type="text" 
-              placeholder="Buscar por prefixo..." 
-              className="bg-transparent border-none outline-none text-[11px] font-bold w-full uppercase" 
-              onChange={(e) => setSearchTerm(e.target.value)} 
-            />
-          </div>
+         <div className="flex-1 flex items-center gap-3 bg-slate-100 px-3 py-2 rounded-xl border border-slate-200 focus-within:border-blue-400 transition-all max-w-md">
+  {qruAtivo ? (
+    /* Ícone de Escudo que pulsa no modo especial */
+    <ShieldCheck size={14} className="text-amber-600 animate-pulse shrink-0" />
+  ) : (
+    /* Ícone de busca padrão */
+    <Search size={14} className="text-slate-400 shrink-0" />
+  )}
+  
+  <input 
+    type="text" 
+    placeholder={qruAtivo ? "CONSULTAR QRU..." : "Buscar por prefixo..."} 
+    className={`bg-transparent border-none outline-none text-[11px] font-bold w-full uppercase transition-colors ${
+      qruAtivo ? 'placeholder:text-amber-500/50 text-amber-700' : 'placeholder:text-slate-400'
+    }`} 
+    onChange={(e) => setSearchTerm(e.target.value)} 
+  />
+</div>
           
           <div className="ml-2">
              <button onClick={handlePrint} className="p-2 md:px-4 md:py-2 bg-slate-900 text-white rounded-lg text-[10px] font-black uppercase flex items-center gap-2">
@@ -366,7 +392,7 @@ const VtrDetailsModal = ({ vtr, onClose, checkOil, onAction }) => {
           <div className="p-5 bg-slate-50 rounded-2xl border border-slate-100">
             <p className="text-[10px] font-black text-slate-400 uppercase">Status do Motor</p>
             <div className={`text-xl font-black ${oilInfo.color}`}>{oilInfo.msg}</div>
-            <p className="text-[11px] font-bold text-slate-500 mt-1">KM Rodado: {parseInt(vtr.UltimoKM) - parseInt(vtr.KM_UltimaTroca)} km</p>
+            <p className="text-[11px] font-bold text-slate-500 mt-1">KM Rodado: {(parseInt(vtr.UltimoKM) || 0) - (parseInt(vtr.KM_UltimaTroca) || 0)} km</p>
           </div>
           <div className="grid grid-cols-2 gap-3">
              <div className="p-4 bg-slate-50 rounded-xl">
