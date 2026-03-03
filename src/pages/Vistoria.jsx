@@ -16,7 +16,6 @@ const ITENS_ENTRADA = [
   "Bancos", "Forro Interno", "Tapetes", "Protetor Dianteiro", "Regulador dos Bancos"
 ];
 
-// Mapeamento para inversão lógica na Saída
 const MAPA_FALHAS_SAIDA = {
   "Viatura Entregue Limpa": "VIATURA ENTREGUE SUJA",
   "Viatura em Condições de Uso": "VIATURA SEM CONDIÇÕES DE USO",
@@ -27,16 +26,16 @@ const MAPA_FALHAS_SAIDA = {
 };
 
 const ITENS_SAIDA = Object.keys(MAPA_FALHAS_SAIDA);
-
 const TIPOS_SERVICO = ["Patrulhamento Ordinário", "Operação", "Força Tática", "Patrulha Comunitária", "Patrulhamento Rural", "Outro"];
 
-const Vistoria = ({ onBack }) => {
+const Vistoria = ({ onBack, frotaInicial = [] }) => { 
   const { user } = useAuth();
   const [step, setStep] = useState(1);
   const [loading, setLoading] = useState(false);
   const [uploading, setUploading] = useState(false);
   
-  const [viaturas, setViaturas] = useState([]);
+  // 1. PERFORMANCE: Inicia o estado com a frota que já veio do App.jsx
+  const [viaturas, setViaturas] = useState(frotaInicial);
   const [efetivoLocal, setEfetivoLocal] = useState([]);
   
   const [tipoVistoria, setTipoVistoria] = useState('ENTRADA');
@@ -45,36 +44,28 @@ const Vistoria = ({ onBack }) => {
   const [kmReferencia, setKmReferencia] = useState(0);
   
   const [formData, setFormData] = useState({
-    prefixo_vtr: '', 
-    placa_vtr: '', 
-    hodometro: '', 
-    videomonitoramento: '', 
-    tipo_servico: '', 
-    unidade_externa: '',
+    prefixo_vtr: '', placa_vtr: '', hodometro: '', videomonitoramento: '', 
+    tipo_servico: '', unidade_externa: '',
     motorista_re: '', motorista_nome: '', motorista_unidade: '',
     comandante_re: '', comandante_nome: '', comandante_unidade: '',
     patrulheiro_re: '', patrulheiro_nome: '', patrulheiro_unidade: '',
     termo_aceite: false
   });
 
-  const [checklist, setChecklist] = useState({});
-  const itensAtuais = tipoVistoria === 'ENTRADA' ? ITENS_ENTRADA : ITENS_SAIDA;
-  const temAvaria = Object.values(checklist).includes('FALHA');
+  // 2. ESTABILIDADE: Inicializa o checklist sem resetar em re-renders bobos
+  const [checklist, setChecklist] = useState(() => {
+    const itens = tipoVistoria === 'ENTRADA' ? ITENS_ENTRADA : ITENS_SAIDA;
+    return itens.reduce((acc, item) => ({ ...acc, [item]: 'OK' }), {});
+  });
 
+  const temAvaria = Object.values(checklist).includes('FALHA');
   const toStr = (val) => (val !== undefined && val !== null ? String(val) : '');
 
-  // Nova função para gerar o texto do checklist_resumo conforme a lógica solicitada
   const formatarResumoChecklist = () => {
     const falhas = Object.entries(checklist).filter(([_, status]) => status === 'FALHA').map(([item]) => item);
-    
     if (falhas.length === 0) return "SEM ALTERAÇÕES";
-
-    if (tipoVistoria === 'ENTRADA') {
-      return `FALHA NOS SEGUINTES ITENS: (${falhas.join(', ')})`;
-    } else {
-      // Para Saída, converte o item do frontend para o texto de falha real
-      return falhas.map(item => MAPA_FALHAS_SAIDA[item] || item).join(', ');
-    }
+    if (tipoVistoria === 'ENTRADA') return `FALHA NOS SEGUINTES ITENS: (${falhas.join(', ')})`;
+    return falhas.map(item => MAPA_FALHAS_SAIDA[item] || item).join(', ');
   };
 
   const handleTrocaTipo = (novoTipo) => {
@@ -89,27 +80,29 @@ const Vistoria = ({ onBack }) => {
     });
     setFotos([]);
     setStep(1);
+    // Reseta o checklist para o novo tipo
+    const novosItens = novoTipo === 'ENTRADA' ? ITENS_ENTRADA : ITENS_SAIDA;
+    setChecklist(novosItens.reduce((acc, item) => ({ ...acc, [item]: 'OK' }), {}));
   };
 
   useEffect(() => {
     const sincronizarDados = async () => {
-      setLoading(true);
+      if (viaturas.length === 0) setLoading(true); 
       try {
         const [resVtr, resMil] = await Promise.all([
-          gasApi.getViaturas(),
+          viaturas.length === 0 ? gasApi.getViaturas() : Promise.resolve({ status: 'success', data: viaturas }),
           gasApi.getEfetivoCompleto()
         ]);
         if (resVtr.status === 'success') setViaturas(resVtr.data);
         if (resMil.status === 'success') setEfetivoLocal(resMil.data);
-      } catch (e) { console.error("Erro na sincronização"); } 
-      finally { setLoading(false); }
+      } catch (e) { 
+        console.error("Erro na sincronização"); 
+      } finally { 
+        setLoading(false); 
+      }
     };
     sincronizarDados();
-  }, []);
-
-  useEffect(() => {
-    setChecklist(itensAtuais.reduce((acc, item) => ({ ...acc, [item]: 'OK' }), {}));
-  }, [tipoVistoria]);
+  }, [frotaInicial]);
 
   const buscarMilitarNoCache = (reRaw) => {
     let reString = toStr(reRaw).replace(/\D/g, '');
@@ -125,7 +118,6 @@ const Vistoria = ({ onBack }) => {
   const handleMatriculaChange = (valor, cargo) => {
     let reLimpo = toStr(valor).replace(/\D/g, '');
     setFormData(prev => ({ ...prev, [`${cargo}_re`]: reLimpo }));
-
     if (reLimpo.length >= 4) {
       let reParaBusca = (reLimpo.length <= 6 && !reLimpo.startsWith("1000")) ? "1000" + reLimpo : reLimpo;
       const militar = buscarMilitarNoCache(reParaBusca);
@@ -154,34 +146,20 @@ const Vistoria = ({ onBack }) => {
   const handleVtrChange = (prefixo) => {
     const vtr = viaturas.find(v => toStr(v.Prefixo) === toStr(prefixo));
     if (!vtr) return;
-
     const kmAnterior = Number(vtr.UltimoKM) || 0;
     setKmReferencia(kmAnterior);
-
     if (tipoVistoria === 'SAÍDA') {
       setFormData(prev => ({
         ...prev,
-        prefixo_vtr: toStr(vtr.Prefixo),
-        placa_vtr: toStr(vtr.Placa),
+        prefixo_vtr: toStr(vtr.Prefixo), placa_vtr: toStr(vtr.Placa),
         tipo_servico: toStr(vtr.UltimoTipoServico) || '',
-        motorista_re: toStr(vtr.UltimoMotoristaRE),
-        motorista_nome: toStr(vtr.UltimoMotoristaNome),
-        motorista_unidade: toStr(vtr.UltimoMotoristaUnidade) || '1º BPM',
-        comandante_re: toStr(vtr.UltimoComandanteRE),
-        comandante_nome: toStr(vtr.UltimoComandanteNome),
-        comandante_unidade: toStr(vtr.UltimoComandanteUnidade) || '1º BPM',
-        patrulheiro_re: toStr(vtr.UltimoPatrulheiroRE),
-        patrulheiro_nome: toStr(vtr.UltimoPatrulheiroNome),
-        patrulheiro_unidade: toStr(vtr.UltimoPatrulheiroUnidade) || '1º BPM',
-        hodometro: toStr(vtr.UltimoKM),
-        videomonitoramento: toStr(vtr.UltimoVideoMonitoramento || '')
+        motorista_re: toStr(vtr.UltimoMotoristaRE), motorista_nome: toStr(vtr.UltimoMotoristaNome), motorista_unidade: toStr(vtr.UltimoMotoristaUnidade) || '1º BPM',
+        comandante_re: toStr(vtr.UltimoComandanteRE), comandante_nome: toStr(vtr.UltimoComandanteNome), comandante_unidade: toStr(vtr.UltimoComandanteUnidade) || '1º BPM',
+        patrulheiro_re: toStr(vtr.UltimoPatrulheiroRE), patrulheiro_nome: toStr(vtr.UltimoPatrulheiroNome), patrulheiro_unidade: toStr(vtr.UltimoPatrulheiroUnidade) || '1º BPM',
+        hodometro: toStr(vtr.UltimoKM), videomonitoramento: toStr(vtr.UltimoVideoMonitoramento || '')
       }));
     } else {
-      setFormData(prev => ({ 
-        ...prev, 
-        prefixo_vtr: toStr(vtr.Prefixo), 
-        placa_vtr: toStr(vtr.Placa) 
-      }));
+      setFormData(prev => ({ ...prev, prefixo_vtr: toStr(vtr.Prefixo), placa_vtr: toStr(vtr.Placa) }));
     }
   };
 
@@ -200,9 +178,7 @@ const Vistoria = ({ onBack }) => {
         militar_logado: `${user.patente} ${user.nome}`,
         status_garageiro: "PENDENTE"
       };
-
       const res = await gasApi.saveVistoria(payloadFinal);
-      
       if (res.status === 'success') { 
         alert("Inspeção finalizada com sucesso!"); 
         onBack(); 
@@ -238,7 +214,6 @@ const Vistoria = ({ onBack }) => {
         {step === 1 && (
           <div className="space-y-6 animate-in fade-in slide-in-from-bottom-4">
             <section className="bg-[var(--bg-card)] rounded-[2.5rem] p-6 shadow-sm border border-[var(--border-color)] space-y-5">
-              
               <div className="bg-slate-900 rounded-3xl p-5 mb-4 shadow-2xl border-b-4 border-blue-600">
                 <div className="flex items-center gap-2 mb-4 border-b border-white/10 pb-2">
                   <Users className="text-blue-400" size={18} />
@@ -272,41 +247,27 @@ const Vistoria = ({ onBack }) => {
               </div>
 
               {(formData.tipo_servico === 'Operação' || formData.tipo_servico === 'Outro') && (
-                <div className="animate-in slide-in-from-top-2">
-                   <input 
-                    placeholder={formData.tipo_servico === 'Operação' ? "NOME DA OPERAÇÃO" : "DESCREVA O SERVIÇO"} 
-                    className="vtr-input w-full !border-blue-500 !bg-blue-50/10" 
-                    value={formData.unidade_externa} 
-                    onChange={(e) => setFormData({...formData, unidade_externa: e.target.value.toUpperCase()})} 
-                  />
-                </div>
+                <input 
+                  placeholder={formData.tipo_servico === 'Operação' ? "NOME DA OPERAÇÃO" : "DESCREVA O SERVIÇO"} 
+                  className="vtr-input w-full !border-blue-500 !bg-blue-50/10" 
+                  value={formData.unidade_externa} 
+                  onChange={(e) => setFormData({...formData, unidade_externa: e.target.value.toUpperCase()})} 
+                />
               )}
 
               {formData.tipo_servico === 'Patrulha Comunitária' && (
-                <div className="animate-in slide-in-from-top-2">
-                  <select 
-                    className="vtr-input w-full !border-blue-500 !bg-blue-50/10" 
-                    value={formData.unidade_externa} 
-                    onChange={(e) => setFormData({...formData, unidade_externa: e.target.value})}
-                  >
-                    <option value="">MODALIDADE COMUNITÁRIA</option>
-                    <option value="Patrulha Comercial">Patrulha Comercial</option>
-                    <option value="Patrulha Escolar">Patrulha Escolar</option>
-                    <option value="Base Móvel">Base Móvel</option>
-                  </select>
-                </div>
+                <select className="vtr-input w-full !border-blue-500 !bg-blue-50/10" value={formData.unidade_externa} onChange={(e) => setFormData({...formData, unidade_externa: e.target.value})}>
+                  <option value="">MODALIDADE COMUNITÁRIA</option>
+                  <option value="Patrulha Comercial">Patrulha Comercial</option>
+                  <option value="Patrulha Escolar">Patrulha Escolar</option>
+                  <option value="Base Móvel">Base Móvel</option>
+                </select>
               )}
 
               <div className="grid grid-cols-2 gap-3">
                 <div className="space-y-1">
                   <span className="text-[9px] font-black text-slate-400 ml-2 uppercase">Hodômetro</span>
-                  <input 
-                    type="number" 
-                    className={`vtr-input ${kmInvalido ? '!border-red-500 !bg-red-50 text-red-900' : ''}`} 
-                    placeholder="KM ATUAL" 
-                    value={formData.hodometro} 
-                    onChange={(e) => setFormData({...formData, hodometro: e.target.value})} 
-                  />
+                  <input type="number" className={`vtr-input ${kmInvalido ? '!border-red-500 !bg-red-50 text-red-900' : ''}`} placeholder="KM ATUAL" value={formData.hodometro} onChange={(e) => setFormData({...formData, hodometro: e.target.value})} />
                 </div>
                 <div className="space-y-1">
                   <span className="text-[9px] font-black text-slate-400 ml-2 uppercase">Monitoramento</span>
@@ -319,21 +280,11 @@ const Vistoria = ({ onBack }) => {
                 </div>
               </div>
               
-              {kmInvalido && (
-                <p className="text-[9px] font-black text-red-600 flex items-center gap-1 animate-pulse ml-2">
-                  <AlertTriangle size={10}/> KM DEVE SER MAIOR QUE O DE ENTRADA ({kmReferencia})
-                </p>
-              )}
+              {kmInvalido && <p className="text-[9px] font-black text-red-600 flex items-center gap-1 animate-pulse ml-2"><AlertTriangle size={10}/> KM DEVE SER MAIOR QUE O DE ENTRADA ({kmReferencia})</p>}
 
               {['motorista', 'comandante', 'patrulheiro'].map(cargo => (
                 <div key={cargo} className="space-y-1">
-                  <input 
-                    placeholder={`MATRÍCULA ${cargo.toUpperCase()}`} 
-                    className="vtr-input !bg-[var(--bg-app)]" 
-                    value={formData[`${cargo}_re`]}
-                    onChange={(e) => handleMatriculaChange(e.target.value, cargo)}
-                    onBlur={() => handleMatriculaBlur(cargo)}
-                  />
+                  <input placeholder={`MATRÍCULA ${cargo.toUpperCase()}`} className="vtr-input !bg-[var(--bg-app)]" value={formData[`${cargo}_re`]} onChange={(e) => handleMatriculaChange(e.target.value, cargo)} onBlur={() => handleMatriculaBlur(cargo)} />
                   {formData[`${cargo}_re`].length >= 4 && !buscarMilitarNoCache(formData[`${cargo}_re`]) && (
                     <div className="grid grid-cols-1 gap-2 p-3 bg-blue-50 dark:bg-blue-900/10 border border-blue-200 rounded-2xl animate-in zoom-in-95">
                       <p className="text-[8px] font-black text-blue-600 uppercase">Militar Externo/Novo</p>
@@ -345,11 +296,7 @@ const Vistoria = ({ onBack }) => {
               ))}
             </section>
             
-            <button 
-              onClick={() => setStep(2)} 
-              disabled={!formData.prefixo_vtr || !formData.motorista_nome || !formData.comandante_nome || !formData.hodometro || !formData.videomonitoramento || kmInvalido} 
-              className={`btn-tatico w-full uppercase flex items-center justify-center gap-2 transition-all ${(!formData.prefixo_vtr || !formData.motorista_nome || !formData.comandante_nome || !formData.hodometro || !formData.videomonitoramento || kmInvalido) ? 'opacity-30 grayscale cursor-not-allowed' : 'opacity-100'}`}
-            >
+            <button onClick={() => setStep(2)} disabled={!formData.prefixo_vtr || !formData.motorista_nome || !formData.comandante_nome || !formData.hodometro || !formData.videomonitoramento || kmInvalido} className={`btn-tatico w-full uppercase flex items-center justify-center gap-2 transition-all ${(!formData.prefixo_vtr || !formData.motorista_nome || !formData.comandante_nome || !formData.hodometro || !formData.videomonitoramento || kmInvalido) ? 'opacity-30 grayscale cursor-not-allowed' : 'opacity-100'}`}>
               PRÓXIMO <ChevronRight size={18}/>
             </button>
           </div>
@@ -366,7 +313,7 @@ const Vistoria = ({ onBack }) => {
             </div>
 
              <div className="grid gap-2">
-              {itensAtuais.map(item => (
+              {(tipoVistoria === 'ENTRADA' ? ITENS_ENTRADA : ITENS_SAIDA).map(item => (
                 <div key={item} onClick={() => setChecklist(prev => ({...prev, [item]: prev[item] === 'OK' ? 'FALHA' : 'OK'}))} className={`checklist-item-ok cursor-pointer transition-colors ${checklist[item] === 'FALHA' ? '!border-red-500 !bg-red-50 dark:!bg-red-900/20' : ''}`}>
                   <span className="text-sm font-bold uppercase">{item}</span>
                   <div className={`px-3 py-1 rounded-lg text-[10px] font-black transition-colors ${checklist[item] === 'OK' ? 'bg-green-100 text-green-700' : 'bg-red-600 text-white'}`}>{checklist[item]}</div>
@@ -400,18 +347,13 @@ const Vistoria = ({ onBack }) => {
               </div>
             </div>
 
-            {/* TERMOS DE RESPONSABILIDADE PERSONALIZADOS */}
             <label className="flex items-start gap-4 p-5 bg-[var(--bg-card)] border-2 border-[var(--border-color)] rounded-3xl cursor-pointer hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors">
               <input type="checkbox" className="w-6 h-6 mt-1 rounded-lg text-blue-600" checked={formData.termo_aceite} onChange={(e) => setFormData({...formData, termo_aceite: e.target.checked})} />
               <div className="text-[10px] font-black uppercase leading-relaxed text-slate-600 dark:text-slate-400">
                 {tipoVistoria === 'ENTRADA' ? (
-                  <p>
-                    <span className="text-blue-600">TERMO DE RESPONSABILIDADE:</span> EU, <span className="text-slate-900 dark:text-white underline">{formData.motorista_nome || '[NOME DO MOTORISTA]'}</span>, declaro ter recebido a viatura <span className="text-slate-900 dark:text-white underline">{formData.prefixo_vtr || '[PREFIXO]'}</span> nas condições descritas conforme este formulário de inspeção de viatura, e me responsabilizando por seu uso. Informo que <span className="bg-yellow-300 text-black px-1">LI TODAS AS CONDIÇÕES ACIMA</span> e concordo com todas as condições descritas.
-                  </p>
+                  <p><span className="text-blue-600">TERMO DE RESPONSABILIDADE:</span> EU, <span className="text-slate-900 dark:text-white underline">{formData.motorista_nome || '[NOME DO MOTORISTA]'}</span>, declaro ter recebido a viatura <span className="text-slate-900 dark:text-white underline">{formData.prefixo_vtr || '[PREFIXO]'}</span> nas condições descritas, responsabilizando-me por seu uso.</p>
                 ) : (
-                  <p>
-                    <span className="text-orange-600">TERMO DE ENTREGA:</span> EU, <span className="text-slate-900 dark:text-white underline">{formData.motorista_nome || '[NOME DO MOTORISTA]'}</span>, declaro estar entregando a viatura <span className="text-slate-900 dark:text-white underline">{formData.prefixo_vtr || '[PREFIXO]'}</span> nas condições descritas neste formulário. Confirmo que <span className="bg-yellow-300 text-black px-1">LI E VERIFIQUEI TODAS AS INFORMAÇÕES</span> e estou ciente das condições de entrega.
-                  </p>
+                  <p><span className="text-orange-600">TERMO DE ENTREGA:</span> EU, <span className="text-slate-900 dark:text-white underline">{formData.motorista_nome || '[NOME DO MOTORISTA]'}</span>, declaro estar entregando a viatura <span className="text-slate-900 dark:text-white underline">{formData.prefixo_vtr || '[PREFIXO]'}</span> nas condições descritas acima.</p>
                 )}
               </div>
             </label>
