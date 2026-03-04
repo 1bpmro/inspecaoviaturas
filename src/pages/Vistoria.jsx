@@ -4,7 +4,7 @@ import { gasApi } from '../api/gasClient';
 import imageCompression from 'browser-image-compression';
 import { 
   ArrowLeft, ChevronRight, Loader2, X, Plus, 
-  Users, AlertTriangle, Lock, Unlock, Car, Shield, Tool
+  Users, AlertTriangle, Lock, Unlock, Car, Shield, Wrench
 } from 'lucide-react';
 
 // --- CONFIGURAÇÃO DE GRUPOS ---
@@ -26,7 +26,7 @@ const GRUPOS_ENTRADA = [
   },
   {
     nome: "Mecânica Básica",
-    icon: <Tool size={16} />,
+    icon: <Wrench size={16} />,
     itens: ["Nível de Água"]
   }
 ];
