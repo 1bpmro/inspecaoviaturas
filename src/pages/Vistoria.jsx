@@ -270,9 +270,10 @@ const Vistoria = ({ onBack, frotaInicial = [] }) => {
                   {kmInvalido && <span className="absolute -bottom-4 left-2 text-[8px] text-red-600 font-bold uppercase">KM inválido!</span>}
                 </div>
                 <select className="vtr-input" value={formData.videomonitoramento} onChange={(e) => setFormData({...formData, videomonitoramento: e.target.value})}>
-                  <option value="">VIDEO</option>
+                  <option value="">VIDEOMONITORAMENTO</option>
                   <option value="OPERANTE">OPERANTE</option>
                   <option value="INOPERANTE">INOPERANTE</option>
+                  <option value="INDISPONÍVEL">INDISPONÍVEL</option>
                 </select>
               </div>
 
