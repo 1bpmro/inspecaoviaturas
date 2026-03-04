@@ -42,6 +42,7 @@ const MAPA_FALHAS_SAIDA = {
 
 const ITENS_SAIDA = Object.keys(MAPA_FALHAS_SAIDA);
 const TIPOS_SERVICO = ["Patrulhamento Ordinário", "Operação", "Força Tática", "Patrulha Comunitária", "Patrulhamento Rural", "Outro"];
+const OPCOES_COMUNITARIA = ["Patrulha Comercial", "Base Móvel", "Patrulha Escolar"];
 
 const Vistoria = ({ onBack, frotaInicial = [] }) => { 
   const { user } = useAuth();
@@ -57,7 +58,7 @@ const Vistoria = ({ onBack, frotaInicial = [] }) => {
   
   const [formData, setFormData] = useState({
     prefixo_vtr: '', placa_vtr: '', hodometro: '', videomonitoramento: '', 
-    tipo_servico: '', unidade_externa: '',
+    tipo_servico: '', servico_detalhe: '',
     motorista_re: '', motorista_nome: '', motorista_unidade: '',
     comandante_re: '', comandante_nome: '', comandante_unidade: '',
     patrulheiro_re: '', patrulheiro_nome: '', patrulheiro_unidade: '',
@@ -65,6 +66,17 @@ const Vistoria = ({ onBack, frotaInicial = [] }) => {
   });
 
   const [checklist, setChecklist] = useState({});
+
+  // Filtragem de viaturas conforme o tipo de vistoria
+  const viaturasFiltradas = useMemo(() => {
+    if (tipoVistoria === 'ENTRADA') {
+      // Na entrada, só mostra o que não está em serviço
+      return viaturas.filter(v => v.Status !== 'EM SERVIÇO' && v.Status !== 'FORA DE SERVIÇO (BAIXA)');
+    } else {
+      // Na saída, só mostra o que está em serviço
+      return viaturas.filter(v => v.Status === 'EM SERVIÇO');
+    }
+  }, [viaturas, tipoVistoria]);
 
   useEffect(() => {
     const todosItens = tipoVistoria === 'ENTRADA' 
@@ -76,9 +88,18 @@ const Vistoria = ({ onBack, frotaInicial = [] }) => {
   const temAvaria = useMemo(() => Object.values(checklist).includes('FALHA'), [checklist]);
   const toStr = (val) => (val !== undefined && val !== null ? String(val) : '');
 
-  // Validação de campos obrigatórios (Patrulheiro é opcional)
+  // Lógica de validação condicional para os campos de serviço
+  const isServicoIncompleto = useMemo(() => {
+    if (!formData.tipo_servico) return true;
+    if (['Operação', 'Outro'].includes(formData.tipo_servico) && !formData.servico_detalhe) return true;
+    if (formData.tipo_servico === 'Patrulha Comunitária' && !formData.servico_detalhe) return true;
+    return false;
+  }, [formData.tipo_servico, formData.servico_detalhe]);
+
+  const kmInvalido = tipoVistoria === 'SAÍDA' && Number(formData.hodometro) <= kmReferencia;
+
   const isFormIncompleto = !formData.prefixo_vtr || 
-                           !formData.tipo_servico || 
+                           isServicoIncompleto ||
                            !formData.hodometro || 
                            !formData.motorista_nome || 
                            !formData.comandante_nome ||
@@ -106,7 +127,7 @@ const Vistoria = ({ onBack, frotaInicial = [] }) => {
     setStep(1);
     setFotos([]);
     setFormData({
-      prefixo_vtr: '', placa_vtr: '', hodometro: '', videomonitoramento: '', tipo_servico: '', unidade_externa: '',
+      prefixo_vtr: '', placa_vtr: '', hodometro: '', videomonitoramento: '', tipo_servico: '', servico_detalhe: '',
       motorista_re: '', motorista_nome: '', motorista_unidade: '',
       comandante_re: '', comandante_nome: '', comandante_unidade: '',
       patrulheiro_re: '', patrulheiro_nome: '', patrulheiro_unidade: '',
@@ -142,6 +163,7 @@ const Vistoria = ({ onBack, frotaInicial = [] }) => {
       prefixo_vtr: toStr(vtr.Prefixo),
       placa_vtr: toStr(vtr.Placa),
       tipo_servico: tipoVistoria === 'SAÍDA' ? toStr(vtr.UltimoTipoServico || '') : formData.tipo_servico,
+      servico_detalhe: tipoVistoria === 'SAÍDA' ? toStr(vtr.UltimoServicoDetalhe || '') : '',
       hodometro: tipoVistoria === 'SAÍDA' ? toStr(vtr.UltimoKM || '') : formData.hodometro,
       motorista_re: tipoVistoria === 'SAÍDA' ? toStr(vtr.UltimoMotoristaRE || '') : formData.motorista_re,
       motorista_nome: tipoVistoria === 'SAÍDA' ? toStr(vtr.UltimoMotoristaNome || '') : formData.motorista_nome,
@@ -157,8 +179,6 @@ const Vistoria = ({ onBack, frotaInicial = [] }) => {
       });
     }
   };
-
-  const kmInvalido = tipoVistoria === 'SAÍDA' && Number(formData.hodometro) <= kmReferencia;
 
   const handleFinalizar = async () => {
     if (temAvaria && fotos.length === 0) return alert("ERRO: É obrigatório tirar fotos das avarias.");
@@ -185,7 +205,6 @@ const Vistoria = ({ onBack, frotaInicial = [] }) => {
     finally { setLoading(false); }
   };
 
-  // Componente Reutilizável de Card de Guarnição (usado nos dois steps)
   const CardGuarnicao = ({ compacto = false }) => (
     <div className={`${compacto ? 'bg-slate-800 p-3 rounded-2xl' : 'bg-slate-900 p-5 rounded-3xl'} mb-4 border-b-4 border-blue-600`}>
       <div className={`flex items-center gap-2 border-b border-white/10 ${compacto ? 'mb-2 pb-1' : 'mb-4 pb-2'}`}>
@@ -233,21 +252,47 @@ const Vistoria = ({ onBack, frotaInicial = [] }) => {
               
               <div className="grid grid-cols-2 gap-3">
                 <select className="vtr-input !py-4" value={formData.prefixo_vtr} onChange={(e) => handleVtrChange(e.target.value)}>
-                  <option value="">VTR</option>
-                  {viaturas.map(v => <option key={v.Prefixo} value={v.Prefixo}>{v.Prefixo}</option>)}
+                  <option value="">{tipoVistoria === 'ENTRADA' ? 'VTR DISPONÍVEL' : 'VTR EM SERVIÇO'}</option>
+                  {viaturasFiltradas.map(v => <option key={v.Prefixo} value={v.Prefixo}>{v.Prefixo} ({v.Modelo})</option>)}
                 </select>
-                <select className="vtr-input !py-4" value={formData.tipo_servico} onChange={(e) => setFormData({...formData, tipo_servico: e.target.value})}>
-                  <option value="">SERVIÇO</option>
+                <select className="vtr-input !py-4" value={formData.tipo_servico} onChange={(e) => setFormData({...formData, tipo_servico: e.target.value, servico_detalhe: ''})}>
+                  <option value="">TIPO DE SERVIÇO</option>
                   {TIPOS_SERVICO.map(t => <option key={t} value={t}>{t}</option>)}
                 </select>
               </div>
 
+              {/* Lógica de Campos Condicionais de Serviço */}
+              {tipoVistoria === 'ENTRADA' && (
+                <div className="animate-in zoom-in-95 duration-200">
+                  {['Operação', 'Outro'].includes(formData.tipo_servico) && (
+                    <input 
+                      type="text" 
+                      className="vtr-input !bg-blue-50 border-blue-200" 
+                      placeholder={formData.tipo_servico === 'Operação' ? "NOME DA OPERAÇÃO" : "DESCREVA O SERVIÇO"}
+                      value={formData.servico_detalhe}
+                      onChange={(e) => setFormData({...formData, servico_detalhe: e.target.value.toUpperCase()})}
+                    />
+                  )}
+                  {formData.tipo_servico === 'Patrulha Comunitária' && (
+                    <select 
+                      className="vtr-input !bg-blue-50 border-blue-200"
+                      value={formData.servico_detalhe}
+                      onChange={(e) => setFormData({...formData, servico_detalhe: e.target.value})}
+                    >
+                      <option value="">SELECIONE A MODALIDADE</option>
+                      {OPCOES_COMUNITARIA.map(o => <option key={o} value={o}>{o}</option>)}
+                    </select>
+                  )}
+                </div>
+              )}
+
               <div className="grid grid-cols-2 gap-3">
                 <input type="number" className={`vtr-input ${kmInvalido ? '!border-red-500 !bg-red-50' : ''}`} placeholder="KM ATUAL" value={formData.hodometro} onChange={(e) => setFormData({...formData, hodometro: e.target.value})} />
                 <select className="vtr-input" value={formData.videomonitoramento} onChange={(e) => setFormData({...formData, videomonitoramento: e.target.value})}>
-                  <option value="">CÂMERAS</option>
+                  <option value="">VIDEOMONITORAMENTO</option>
                   <option value="OPERANTE">OPERANTE</option>
                   <option value="INOPERANTE">INOPERANTE</option>
+                  <option value="NÃO POSSUI">NÃO POSSUI</option>
                 </select>
               </div>
 
@@ -273,7 +318,6 @@ const Vistoria = ({ onBack, frotaInicial = [] }) => {
           </div>
         ) : (
           <div className="space-y-6 animate-in slide-in-from-right-4">
-            {/* Card de Guarnição repetido aqui no Step 2 */}
             <CardGuarnicao compacto={true} />
 
             <div onClick={() => setProtegerFotos(!protegerFotos)} className={`p-4 rounded-3xl border-2 transition-all flex items-center gap-4 ${protegerFotos ? 'bg-blue-600 border-blue-400 text-white' : 'bg-white border-slate-200'}`}>
