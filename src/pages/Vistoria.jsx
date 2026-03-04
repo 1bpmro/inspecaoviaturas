@@ -1,13 +1,13 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { useAuth } from '../lib/AuthContext';
 import { gasApi } from '../api/gasClient';
 import imageCompression from 'browser-image-compression';
 import { 
   ArrowLeft, ChevronRight, Loader2, X, Plus, 
-  Users, AlertTriangle, Lock, Unlock, Car, Shield, Wrench
+  Users, Lock, Unlock, Car, Shield, Wrench 
 } from 'lucide-react';
 
-// --- CONFIGURAÇÃO DE GRUPOS ---
+// --- CONFIGURAÇÃO E CONSTANTES ---
 const GRUPOS_ENTRADA = [
   {
     nome: "Documentação e Equipamentos",
@@ -67,41 +67,53 @@ const Vistoria = ({ onBack, frotaInicial = [] }) => {
 
   const [checklist, setChecklist] = useState({});
 
+  // 1. Helpers de Formatação e Busca
+  const toStr = useCallback((val) => (val !== undefined && val !== null ? String(val) : ''), []);
+
+  // 2. Memos de Filtragem e Validação
   const viaturasFiltradas = useMemo(() => {
-    if (tipoVistoria === 'ENTRADA') {
-      return viaturas.filter(v => v.Status !== 'EM SERVIÇO' && v.Status !== 'FORA DE SERVIÇO (BAIXA)');
-    } else {
-      return viaturas.filter(v => v.Status === 'EM SERVIÇO');
-    }
+    return tipoVistoria === 'ENTRADA' 
+      ? viaturas.filter(v => v.Status !== 'EM SERVIÇO' && v.Status !== 'FORA DE SERVIÇO (BAIXA)')
+      : viaturas.filter(v => v.Status === 'EM SERVIÇO');
   }, [viaturas, tipoVistoria]);
 
+  const temAvaria = useMemo(() => Object.values(checklist).includes('FALHA'), [checklist]);
+
+  const kmInvalido = useMemo(() => {
+    const kmAtual = Number(formData.hodometro);
+    // Na saída, o KM não pode ser menor ou igual ao KM de entrada
+    return tipoVistoria === 'SAÍDA' && kmAtual > 0 && kmAtual <= kmReferencia;
+  }, [formData.hodometro, kmReferencia, tipoVistoria]);
+
+  const isFormIncompleto = useMemo(() => {
+    const servicosEspeciais = ['Operação', 'Outro', 'Patrulha Comunitária'];
+    const servicoIncompleto = !formData.tipo_servico || (servicosEspeciais.includes(formData.tipo_servico) && !formData.servico_detalhe);
+    
+    return (
+      !formData.prefixo_vtr || 
+      servicoIncompleto ||
+      !formData.hodometro || 
+      !formData.motorista_nome || 
+      !formData.comandante_nome ||
+      kmInvalido
+    );
+  }, [formData, kmInvalido]);
+
+  // 3. Inicialização da Checklist por Tipo
   useEffect(() => {
     const todosItens = tipoVistoria === 'ENTRADA' 
       ? GRUPOS_ENTRADA.flatMap(g => g.itens) 
       : ITENS_SAIDA;
-    setChecklist(todosItens.reduce((acc, item) => ({ ...acc, [item]: 'OK' }), {}));
+
+    setChecklist(prev => {
+      const baseCheck = todosItens.reduce((acc, item) => ({ ...acc, [item]: 'OK' }), {});
+      return { ...baseCheck, ...prev };
+    });
   }, [tipoVistoria]);
 
-  const temAvaria = useMemo(() => Object.values(checklist).includes('FALHA'), [checklist]);
-  const toStr = (val) => (val !== undefined && val !== null ? String(val) : '');
-
-  const isServicoIncompleto = useMemo(() => {
-    if (!formData.tipo_servico) return true;
-    if (['Operação', 'Outro'].includes(formData.tipo_servico) && !formData.servico_detalhe) return true;
-    if (formData.tipo_servico === 'Patrulha Comunitária' && !formData.servico_detalhe) return true;
-    return false;
-  }, [formData.tipo_servico, formData.servico_detalhe]);
-
-  const kmInvalido = tipoVistoria === 'SAÍDA' && Number(formData.hodometro) <= kmReferencia;
-
-  const isFormIncompleto = !formData.prefixo_vtr || 
-                           isServicoIncompleto ||
-                           !formData.hodometro || 
-                           !formData.motorista_nome || 
-                           !formData.comandante_nome ||
-                           kmInvalido;
-
+  // 4. Sincronização de Dados (API)
   useEffect(() => {
+    let isMounted = true;
     const sincronizarDados = async () => {
       if (viaturas.length === 0) setLoading(true); 
       try {
@@ -109,34 +121,30 @@ const Vistoria = ({ onBack, frotaInicial = [] }) => {
           viaturas.length === 0 ? gasApi.getViaturas() : Promise.resolve({ status: 'success', data: viaturas }),
           gasApi.getEfetivoCompleto()
         ]);
-        if (resVtr.status === 'success') setViaturas(resVtr.data);
-        if (resMil.status === 'success') setEfetivoLocal(resMil.data);
-      } catch (e) { console.error("Erro na sincronização"); }
-      finally { setLoading(false); }
+        
+        if (isMounted) {
+          if (resVtr.status === 'success') setViaturas(resVtr.data);
+          if (resMil.status === 'success') setEfetivoLocal(resMil.data);
+        }
+      } catch (e) { 
+        console.error("Erro na sincronização:", e); 
+      } finally { 
+        if (isMounted) setLoading(false); 
+      }
     };
     sincronizarDados();
-  }, [frotaInicial, viaturas.length]);
+    return () => { isMounted = false; };
+  }, [frotaInicial]);
 
-  const handleTrocaTipo = (novoTipo) => {
-    if (formData.prefixo_vtr && !window.confirm("Mudar o tipo limpará os dados atuais. Continuar?")) return;
-    setTipoVistoria(novoTipo);
-    setStep(1);
-    setFotos([]);
-    setFormData({
-      prefixo_vtr: '', placa_vtr: '', hodometro: '', videomonitoramento: '', tipo_servico: '', servico_detalhe: '',
-      motorista_re: '', motorista_nome: '', motorista_unidade: '',
-      comandante_re: '', comandante_nome: '', comandante_unidade: '',
-      patrulheiro_re: '', patrulheiro_nome: '', patrulheiro_unidade: '',
-      termo_aceite: false
-    });
-  };
-
+  // 5. Handlers de Eventos
   const handleMatriculaChange = (valor, cargo) => {
-    let reLimpo = toStr(valor).replace(/\D/g, '');
+    const reLimpo = toStr(valor).replace(/\D/g, '');
     setFormData(prev => ({ ...prev, [`${cargo}_re`]: reLimpo }));
+
     if (reLimpo.length >= 4) {
-      let reParaBusca = (reLimpo.length <= 6 && !reLimpo.startsWith("1000")) ? "1000" + reLimpo : reLimpo;
+      const reParaBusca = (reLimpo.length <= 6 && !reLimpo.startsWith("1000")) ? "1000" + reLimpo : reLimpo;
       const militar = efetivoLocal.find(m => toStr(m.re) === reParaBusca || toStr(m.re) === reLimpo);
+      
       if (militar) {
         setFormData(prev => ({
           ...prev,
@@ -153,7 +161,9 @@ const Vistoria = ({ onBack, frotaInicial = [] }) => {
   const handleVtrChange = (prefixo) => {
     const vtr = viaturas.find(v => toStr(v.Prefixo) === toStr(prefixo));
     if (!vtr) return;
+
     setKmReferencia(Number(vtr.UltimoKM) || 0);
+    
     const novosDados = {
       ...formData,
       prefixo_vtr: toStr(vtr.Prefixo),
@@ -168,7 +178,10 @@ const Vistoria = ({ onBack, frotaInicial = [] }) => {
       patrulheiro_re: tipoVistoria === 'SAÍDA' ? toStr(vtr.UltimoPatrulheiroRE || '') : formData.patrulheiro_re,
       patrulheiro_nome: tipoVistoria === 'SAÍDA' ? toStr(vtr.UltimoPatrulheiroNome || '') : formData.patrulheiro_nome,
     };
+
     setFormData(novosDados);
+    
+    // Auto-update nomes se vierem apenas REs na saída
     if (tipoVistoria === 'SAÍDA') {
       ['motorista', 'comandante', 'patrulheiro'].forEach(c => {
         if (novosDados[`${c}_re`] && !novosDados[`${c}_nome`]) handleMatriculaChange(novosDados[`${c}_re`], c);
@@ -177,14 +190,15 @@ const Vistoria = ({ onBack, frotaInicial = [] }) => {
   };
 
   const handleFinalizar = async () => {
-    if (temAvaria && fotos.length === 0) return alert("ERRO: É obrigatório tirar fotos das avarias.");
-    if (!window.confirm("Deseja finalizar o envio?")) return;
+    if (temAvaria && fotos.length === 0) return alert("Atenção: É obrigatório anexar fotos das avarias encontradas.");
+    if (!window.confirm("Confirmar o envio da vistoria?")) return;
+    
     setLoading(true);
     try {
       const falhas = Object.entries(checklist).filter(([_, s]) => s === 'FALHA').map(([i]) => i);
-      let resumo = falhas.length === 0 ? "SEM ALTERAÇÕES" : 
-                   tipoVistoria === 'ENTRADA' ? `FALHA EM: ${falhas.join(', ')}` :
-                   falhas.map(item => MAPA_FALHAS_SAIDA[item] || item).join(', ');
+      const resumo = falhas.length === 0 ? "SEM ALTERAÇÕES" : 
+                     tipoVistoria === 'ENTRADA' ? `FALHA EM: ${falhas.join(', ')}` :
+                     falhas.map(item => MAPA_FALHAS_SAIDA[item] || item).join(', ');
 
       const res = await gasApi.saveVistoria({
         ...formData,
@@ -195,17 +209,26 @@ const Vistoria = ({ onBack, frotaInicial = [] }) => {
         militar_logado: `${user.patente} ${user.nome}`,
         status_garageiro: "PENDENTE"
       });
-      if (res.status === 'success') { alert("Sucesso!"); onBack(); } 
-      else { alert("Erro: " + res.message); }
-    } catch (e) { alert("Erro de conexão."); }
-    finally { setLoading(false); }
+
+      if (res.status === 'success') {
+        alert("Vistoria enviada com sucesso!");
+        onBack();
+      } else {
+        alert("Erro no servidor: " + res.message);
+      }
+    } catch (e) {
+      alert("Erro de conexão. Verifique sua internet.");
+    } finally {
+      setLoading(false);
+    }
   };
 
+  // 6. Sub-componentes
   const CardGuarnicao = ({ compacto = false }) => (
-    <div className={`${compacto ? 'bg-slate-800 p-3 rounded-2xl' : 'bg-slate-900 p-5 rounded-3xl'} mb-4 border-b-4 border-blue-600`}>
+    <div className={`${compacto ? 'bg-slate-800 p-3 rounded-2xl' : 'bg-slate-900 p-5 rounded-3xl'} mb-4 border-b-4 border-blue-600 shadow-inner transition-all`}>
       <div className={`flex items-center gap-2 border-b border-white/10 ${compacto ? 'mb-2 pb-1' : 'mb-4 pb-2'}`}>
         <Users className="text-blue-400" size={compacto ? 14 : 18} />
-        <span className={`${compacto ? 'text-[8px]' : 'text-[10px]'} font-black text-white tracking-widest uppercase`}>Guarnição Atual</span>
+        <span className={`${compacto ? 'text-[8px]' : 'text-[10px]'} font-black text-white tracking-widest uppercase`}>Guarnição</span>
       </div>
       <div className="space-y-2">
         {[{ label: 'MOT', cargo: 'motorista' }, { label: 'CMD', cargo: 'comandante' }, { label: 'PTR', cargo: 'patrulheiro' }].map(m => (
@@ -223,28 +246,40 @@ const Vistoria = ({ onBack, frotaInicial = [] }) => {
   );
 
   return (
-    <div className="min-h-screen bg-slate-50 pb-10 text-slate-900">
+    <div className="min-h-screen bg-slate-50 pb-10 text-slate-900 font-sans">
       <header className="bg-slate-900 text-white p-5 sticky top-0 z-50 border-b-4 border-blue-900 shadow-md">
         <div className="max-w-xl mx-auto flex items-center justify-between">
-          <button onClick={onBack} className="p-2 bg-white/10 rounded-full hover:bg-white/20"><ArrowLeft size={24}/></button>
+          <button onClick={onBack} className="p-2 bg-white/10 rounded-full hover:bg-white/20 transition-colors"><ArrowLeft size={24}/></button>
           <div className="text-center">
             <h1 className="font-black text-[10px] tracking-widest opacity-50 uppercase">1º BPM - Rondon</h1>
-            <p className="text-xs font-bold text-blue-400 uppercase">VISTORIA DE VIATURA</p>
+            <p className="text-xs font-bold text-blue-400 uppercase">Vistoria de Viatura</p>
           </div>
           <div className="w-10" />
         </div>
       </header>
 
       <main className="max-w-xl mx-auto p-4 space-y-6">
+        {/* Toggle Tipo Vistoria */}
         <div className="flex bg-slate-200 p-1 rounded-2xl shadow-inner">
-          <button onClick={() => handleTrocaTipo('ENTRADA')} className={`flex-1 py-3 rounded-xl font-black text-[10px] transition-all ${tipoVistoria === 'ENTRADA' ? 'bg-green-600 text-white shadow-lg' : 'text-slate-500'}`}>ENTRADA (ASSUMIR)</button>
-          <button onClick={() => handleTrocaTipo('SAÍDA')} className={`flex-1 py-3 rounded-xl font-black text-[10px] transition-all ${tipoVistoria === 'SAÍDA' ? 'bg-orange-500 text-white shadow-lg' : 'text-slate-500'}`}>SAÍDA (ENTREGAR)</button>
+          <button 
+            onClick={() => tipoVistoria !== 'ENTRADA' && setTipoVistoria('ENTRADA')} 
+            className={`flex-1 py-3 rounded-xl font-black text-[10px] transition-all ${tipoVistoria === 'ENTRADA' ? 'bg-green-600 text-white shadow-lg' : 'text-slate-500'}`}
+          >
+            ENTRADA (ASSUMIR)
+          </button>
+          <button 
+            onClick={() => tipoVistoria !== 'SAÍDA' && setTipoVistoria('SAÍDA')} 
+            className={`flex-1 py-3 rounded-xl font-black text-[10px] transition-all ${tipoVistoria === 'SAÍDA' ? 'bg-orange-500 text-white shadow-lg' : 'text-slate-500'}`}
+          >
+            SAÍDA (ENTREGAR)
+          </button>
         </div>
 
         {step === 1 ? (
-          <div className="space-y-6 animate-in fade-in slide-in-from-bottom-4">
+          <div className="space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-300">
             <section className="bg-white rounded-[2.5rem] p-6 shadow-sm border border-slate-200 space-y-5">
               <CardGuarnicao />
+              
               <div className="grid grid-cols-2 gap-3">
                 <select className="vtr-input !py-4" value={formData.prefixo_vtr} onChange={(e) => handleVtrChange(e.target.value)}>
                   <option value="">{tipoVistoria === 'ENTRADA' ? 'VTR DISPONÍVEL' : 'VTR EM SERVIÇO'}</option>
@@ -256,18 +291,10 @@ const Vistoria = ({ onBack, frotaInicial = [] }) => {
                 </select>
               </div>
 
-              {tipoVistoria === 'ENTRADA' && (
+              {/* Campos Condicionais de Serviço */}
+              {['Operação', 'Outro', 'Patrulha Comunitária'].includes(formData.tipo_servico) && (
                 <div className="animate-in zoom-in-95 duration-200">
-                  {['Operação', 'Outro'].includes(formData.tipo_servico) && (
-                    <input 
-                      type="text" 
-                      className="vtr-input !bg-blue-50 border-blue-200" 
-                      placeholder={formData.tipo_servico === 'Operação' ? "NOME DA OPERAÇÃO" : "DESCREVA O SERVIÇO"}
-                      value={formData.servico_detalhe}
-                      onChange={(e) => setFormData({...formData, servico_detalhe: e.target.value.toUpperCase()})}
-                    />
-                  )}
-                  {formData.tipo_servico === 'Patrulha Comunitária' && (
+                  {formData.tipo_servico === 'Patrulha Comunitária' ? (
                     <select 
                       className="vtr-input !bg-blue-50 border-blue-200"
                       value={formData.servico_detalhe}
@@ -276,12 +303,29 @@ const Vistoria = ({ onBack, frotaInicial = [] }) => {
                       <option value="">SELECIONE A MODALIDADE</option>
                       {OPCOES_COMUNITARIA.map(o => <option key={o} value={o}>{o}</option>)}
                     </select>
+                  ) : (
+                    <input 
+                      type="text" 
+                      className="vtr-input !bg-blue-50 border-blue-200" 
+                      placeholder={formData.tipo_servico === 'Operação' ? "NOME DA OPERAÇÃO" : "DESCREVA O SERVIÇO"}
+                      value={formData.servico_detalhe}
+                      onChange={(e) => setFormData({...formData, servico_detalhe: e.target.value.toUpperCase()})}
+                    />
                   )}
                 </div>
               )}
 
               <div className="grid grid-cols-2 gap-3">
-                <input type="number" className={`vtr-input ${kmInvalido ? '!border-red-500 !bg-red-50' : ''}`} placeholder="KM ATUAL" value={formData.hodometro} onChange={(e) => setFormData({...formData, hodometro: e.target.value})} />
+                <div className="relative">
+                  <input 
+                    type="number" 
+                    className={`vtr-input w-full ${kmInvalido ? '!border-red-500 !bg-red-50' : ''}`} 
+                    placeholder="KM ATUAL" 
+                    value={formData.hodometro} 
+                    onChange={(e) => setFormData({...formData, hodometro: e.target.value})} 
+                  />
+                  {kmInvalido && <span className="absolute -bottom-4 left-2 text-[8px] text-red-600 font-bold uppercase">KM menor que entrada!</span>}
+                </div>
                 <select className="vtr-input" value={formData.videomonitoramento} onChange={(e) => setFormData({...formData, videomonitoramento: e.target.value})}>
                   <option value="">VIDEOMONITORAMENTO</option>
                   <option value="OPERANTE">OPERANTE</option>
@@ -290,31 +334,35 @@ const Vistoria = ({ onBack, frotaInicial = [] }) => {
                 </select>
               </div>
 
-              {['motorista', 'comandante', 'patrulheiro'].map(cargo => (
-                <div key={cargo}>
+              {/* Matrículas */}
+              <div className="space-y-3 pt-2">
+                {['motorista', 'comandante', 'patrulheiro'].map(cargo => (
                   <input 
+                    key={cargo}
+                    type="tel"
                     placeholder={`MATRÍCULA ${cargo === 'patrulheiro' ? cargo.toUpperCase() + ' (OPCIONAL)' : cargo.toUpperCase()}`}
-                    className="vtr-input !bg-slate-50" 
+                    className="vtr-input !bg-slate-50 border-slate-200" 
                     value={formData[`${cargo}_re`]} 
                     onChange={(e) => handleMatriculaChange(e.target.value, cargo)}
                   />
-                </div>
-              ))}
+                ))}
+              </div>
             </section>
             
             <button 
               onClick={() => setStep(2)} 
               disabled={isFormIncompleto} 
-              className="btn-tatico w-full disabled:opacity-50"
+              className="btn-tatico w-full disabled:opacity-50 disabled:grayscale transition-all active:scale-95"
             >
               PRÓXIMO: CHECKLIST <ChevronRight size={18}/>
             </button>
           </div>
         ) : (
-          <div className="space-y-6 animate-in slide-in-from-right-4">
+          /* STEP 2: CHECKLIST */
+          <div className="space-y-6 animate-in slide-in-from-right-4 duration-300">
             <CardGuarnicao compacto={true} />
 
-            <div onClick={() => setProtegerFotos(!protegerFotos)} className={`p-4 rounded-3xl border-2 transition-all flex items-center gap-4 ${protegerFotos ? 'bg-blue-600 border-blue-400 text-white' : 'bg-white border-slate-200'}`}>
+            <div onClick={() => setProtegerFotos(!protegerFotos)} className={`p-4 rounded-3xl border-2 transition-all flex items-center gap-4 cursor-pointer shadow-sm ${protegerFotos ? 'bg-blue-600 border-blue-400 text-white' : 'bg-white border-slate-200'}`}>
               {protegerFotos ? <Lock size={20} /> : <Unlock size={20} className="opacity-30" />}
               <span className="font-black text-[10px] uppercase">Proteger Imagens (Evidência)</span>
             </div>
@@ -328,7 +376,7 @@ const Vistoria = ({ onBack, frotaInicial = [] }) => {
                     </div>
                     <div className="grid gap-2">
                       {grupo.itens.map(item => (
-                        <div key={item} onClick={() => setChecklist(prev => ({...prev, [item]: prev[item] === 'OK' ? 'FALHA' : 'OK'}))} className={`flex justify-between items-center p-3 rounded-xl border ${checklist[item] === 'FALHA' ? 'border-red-500 bg-red-50' : 'bg-slate-50/50'}`}>
+                        <div key={item} onClick={() => setChecklist(prev => ({...prev, [item]: prev[item] === 'OK' ? 'FALHA' : 'OK'}))} className={`flex justify-between items-center p-3 rounded-xl border transition-colors cursor-pointer ${checklist[item] === 'FALHA' ? 'border-red-500 bg-red-50' : 'bg-slate-50/50 border-slate-100'}`}>
                           <span className="text-[11px] font-bold uppercase">{item}</span>
                           <span className={`text-[9px] font-black px-2 py-1 rounded ${checklist[item] === 'OK' ? 'text-green-600' : 'bg-red-600 text-white'}`}>{checklist[item]}</span>
                         </div>
@@ -337,9 +385,9 @@ const Vistoria = ({ onBack, frotaInicial = [] }) => {
                   </div>
                 ))
               ) : (
-                <div className="bg-white rounded-3xl p-4 border border-slate-200 grid gap-2">
+                <div className="bg-white rounded-3xl p-4 border border-slate-200 grid gap-2 shadow-sm">
                   {ITENS_SAIDA.map(item => (
-                    <div key={item} onClick={() => setChecklist(prev => ({...prev, [item]: prev[item] === 'OK' ? 'FALHA' : 'OK'}))} className={`flex justify-between items-center p-3 rounded-xl border ${checklist[item] === 'FALHA' ? 'border-red-500 bg-red-50' : 'border-slate-100'}`}>
+                    <div key={item} onClick={() => setChecklist(prev => ({...prev, [item]: prev[item] === 'OK' ? 'FALHA' : 'OK'}))} className={`flex justify-between items-center p-3 rounded-xl border transition-colors cursor-pointer ${checklist[item] === 'FALHA' ? 'border-red-500 bg-red-50' : 'bg-slate-50/50 border-slate-100'}`}>
                       <span className="text-[11px] font-bold uppercase">{item}</span>
                       <span className={`text-[9px] font-black px-2 py-1 rounded ${checklist[item] === 'OK' ? 'text-green-600' : 'bg-red-600 text-white'}`}>{checklist[item]}</span>
                     </div>
@@ -348,7 +396,9 @@ const Vistoria = ({ onBack, frotaInicial = [] }) => {
               )}
             </div>
 
-            <div className={`p-6 rounded-[2.5rem] border-2 bg-white ${temAvaria && fotos.length === 0 ? 'border-red-500 animate-pulse' : 'border-slate-200'}`}>
+            {/* Upload de Fotos */}
+            <div className={`p-6 rounded-[2.5rem] border-2 bg-white transition-all shadow-sm ${temAvaria && fotos.length === 0 ? 'border-red-500 animate-pulse' : 'border-slate-200'}`}>
+              <p className="text-[9px] font-black text-slate-400 uppercase mb-3 text-center">Fotos da Vistoria (Mín 1 se houver falha)</p>
               <div className="grid grid-cols-4 gap-2">
                 {fotos.map((f, i) => (
                   <div key={i} className="relative aspect-square rounded-2xl overflow-hidden border border-slate-200">
@@ -357,15 +407,20 @@ const Vistoria = ({ onBack, frotaInicial = [] }) => {
                   </div>
                 ))}
                 {fotos.length < 4 && (
-                  <label className="aspect-square rounded-2xl border-2 border-dashed border-slate-300 flex items-center justify-center cursor-pointer bg-slate-50">
+                  <label className="aspect-square rounded-2xl border-2 border-dashed border-slate-300 flex items-center justify-center cursor-pointer bg-slate-50 hover:bg-slate-100 transition-colors">
                     {uploading ? <Loader2 className="animate-spin text-blue-600" /> : <Plus className="text-slate-400" />}
                     <input type="file" accept="image/*" capture="environment" className="hidden" onChange={async (e) => {
                       const file = e.target.files[0]; if (!file) return;
                       setUploading(true);
                       try {
-                        const compressed = await imageCompression(file, { maxSizeMB: 0.2, maxWidthOrHeight: 1000 });
-                        const reader = new FileReader(); reader.readAsDataURL(compressed);
-                        reader.onloadend = () => { setFotos(p => [...p, reader.result]); setUploading(false); };
+                        const options = { maxSizeMB: 0.2, maxWidthOrHeight: 1024, useWebWorker: true };
+                        const compressed = await imageCompression(file, options);
+                        const reader = new FileReader(); 
+                        reader.readAsDataURL(compressed);
+                        reader.onloadend = () => { 
+                          setFotos(p => [...p, reader.result]); 
+                          setUploading(false); 
+                        };
                       } catch (err) { setUploading(false); }
                     }} />
                   </label>
@@ -373,7 +428,8 @@ const Vistoria = ({ onBack, frotaInicial = [] }) => {
               </div>
             </div>
 
-            <label className="flex items-start gap-4 p-5 bg-white border-2 border-slate-200 rounded-3xl cursor-pointer">
+            {/* Termo de Responsabilidade */}
+            <label className="flex items-start gap-4 p-5 bg-white border-2 border-slate-200 rounded-3xl cursor-pointer shadow-sm hover:border-blue-300 transition-all">
               <input 
                 type="checkbox" 
                 className="w-6 h-6 rounded text-blue-600 mt-1" 
@@ -381,37 +437,36 @@ const Vistoria = ({ onBack, frotaInicial = [] }) => {
                 onChange={(e) => setFormData({...formData, termo_aceite: e.target.checked})} 
               />
               <p className="text-[10px] font-black uppercase text-slate-600 leading-tight text-justify">
+                EU, <span className="text-slate-900 underline">{formData.motorista_nome || 'MOTORISTA'}</span>, 
                 {tipoVistoria === 'ENTRADA' ? (
                   <>
-                    EU, <span className="text-slate-900 underline">{formData.motorista_nome || 'MOTORISTA'}</span>, 
-                    informo estar me responsabilizando pela viatura <span className="text-blue-600 font-black">{formData.prefixo_vtr || '_______'}</span>, 
-                    ciente do estado de conservação dos itens acima vistoriados. 
-                    Declaro que as informações acima são verdadeiras e assumo a responsabilidade pela viatura.
+                    &nbsp;INFORMO ESTAR ME RESPONSABILIZANDO PELA VIATURA <span className="text-blue-600 font-black">{formData.prefixo_vtr || '_______'}</span>, 
+                    CIENTE DO ESTADO DE CONSERVAÇÃO DOS ITENS ACIMA VISTORIADOS. 
+                    DECLARO QUE AS INFORMAÇÕES SÃO VERDADEIRAS.
                   </>
                 ) : (
                   <>
-                    EU, <span className="text-slate-900 underline">{formData.motorista_nome || 'MOTORISTA'}</span>, 
-                    informo estar realizando a entrega da viatura <span className="text-orange-600 font-black">{formData.prefixo_vtr || '_______'}</span>, 
-                    atestando que o estado de limpeza e conservação condiz com o checklist realizado. 
-                    Declaro que as informações acima são verdadeiras e assumo a responsabilidade pela viatura.
+                    &nbsp;ESTOU REALIZANDO A ENTREGA DA VIATURA <span className="text-orange-600 font-black">{formData.prefixo_vtr || '_______'}</span>, 
+                    ATESTANDO QUE O ESTADO DE LIMPEZA E CONSERVAÇÃO CONDIZ COM O CHECKLIST REALIZADO.
                   </>
                 )}
               </p>
             </label>
 
+            {/* Ações Finais */}
             <div className="flex gap-2">
               <button 
                 onClick={() => setStep(1)} 
-                className="flex-1 bg-white p-5 rounded-2xl font-black border-2 border-slate-200 text-slate-900"
+                className="flex-1 bg-white p-5 rounded-2xl font-black border-2 border-slate-200 text-slate-900 hover:bg-slate-50 transition-colors"
               >
                 VOLTAR
               </button>
               <button 
                 onClick={handleFinalizar} 
                 disabled={!formData.termo_aceite || loading || (temAvaria && fotos.length === 0)} 
-                className="btn-tatico flex-[2] disabled:bg-slate-300 disabled:text-slate-500"
+                className="btn-tatico flex-[2] disabled:bg-slate-300 disabled:text-slate-500 shadow-lg active:scale-95 transition-all"
               >
-                {loading ? <Loader2 className="animate-spin mx-auto"/> : "FINALIZAR"}
+                {loading ? <Loader2 className="animate-spin mx-auto"/> : "FINALIZAR ENVIO"}
               </button>
             </div>
           </div>
