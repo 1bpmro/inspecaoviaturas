@@ -37,11 +37,13 @@ const GarageiroDashboard = ({ onBack }) => {
   const fetchData = async () => {
     setLoading(true);
     try {
+      // CORREÇÃO: Alterado getMotoristas para getEfetivoCompleto
       const [resVtr, resPend, resMot] = await Promise.all([
         gasApi.getViaturas(), 
         gasApi.getVistoriasPendentes(),
-        gasApi.getMotoristas()
+        gasApi.getEfetivoCompleto() 
       ]);
+      
       if (resVtr.status === 'success') setViaturas(resVtr.data);
       if (resPend.status === 'success') setVistorias(resPend.data);
       if (resMot.status === 'success') setMotoristas(resMot.data);
@@ -157,7 +159,7 @@ const GarageiroDashboard = ({ onBack }) => {
             </div>
             <div>
               <h1 className="font-black uppercase tracking-tighter text-lg leading-none">Fiscalização de Pátio</h1>
-              <p className="text-[10px] font-bold text-amber-500 uppercase tracking-widest">1º BPM - Rondon</p>
+              <p className="text-[10px] font-bold text-amber-500 uppercase tracking-widest text-white/80">1º BPM - Rondon</p>
             </div>
           </div>
           <div className="text-right">
@@ -201,7 +203,7 @@ const GarageiroDashboard = ({ onBack }) => {
                     </div>
                     <div className="space-y-1 mb-6">
                       <p className="text-xs font-bold text-slate-500 uppercase flex items-center gap-1">
-                         <User size={12} /> {vtr.motorista_nome}
+                         <User size={12} /> {vtr.motorista_nome || "NÃO IDENTIFICADO"}
                       </p>
                       <p className="text-[10px] text-slate-400 font-bold uppercase italic">Hodômetro: {vtr.hodometro} KM</p>
                     </div>
@@ -274,7 +276,8 @@ const GarageiroDashboard = ({ onBack }) => {
                     onClick={() => setConf({...conf, motoristaConfirmado: true})}
                     className={`flex-1 py-3 rounded-2xl font-black text-xs transition-all ${conf.motoristaConfirmado ? 'bg-amber-500 text-slate-900 shadow-md' : 'bg-white text-slate-400 border border-slate-200'}`}
                   >
-                    SIM, É O {selectedVtr.motorista_nome.split(' ')[0]}
+                    {/* PROTEÇÃO: split apenas se existir nome */}
+                    SIM, É O {selectedVtr.motorista_nome ? selectedVtr.motorista_nome.split(' ')[0] : 'Motorista'}
                   </button>
                   <button 
                     onClick={() => setConf({...conf, motoristaConfirmado: false})}
@@ -357,7 +360,7 @@ const GarageiroDashboard = ({ onBack }) => {
         </div>
       )}
 
-      {/* MODAL DE STATUS (CORRIGIDO PARA O BUILD) */}
+      {/* MODAL DE STATUS */}
       {showLockModal && (
         <div className="fixed inset-0 bg-slate-900/90 backdrop-blur-md z-[60] flex items-center justify-center p-4">
           <div className="bg-white w-full max-w-sm rounded-[2.5rem] p-8 shadow-2xl animate-in zoom-in duration-300">
