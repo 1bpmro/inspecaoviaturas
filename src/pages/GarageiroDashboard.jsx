@@ -19,12 +19,15 @@ const GarageiroDashboard = ({ onBack }) => {
   const [selectedVtr, setSelectedVtr] = useState(null);
   
   const [conf, setConf] = useState({ 
-    limpa: false, 
+    limpezaInterna: true,   // Novo
+    limpezaExterna: true,   // Novo
+    pertences: 'NÃO',        // Novo
+    detalhePertences: '',    // Novo
     motoristaConfirmado: true, 
     novoMotoristaRE: '',
     avaria: false, 
     obs: '' 
-  });
+});
   
   const [fotoAvaria, setFotoAvaria] = useState(null);
   const [uploading, setUploading] = useState(false);
@@ -73,50 +76,70 @@ const GarageiroDashboard = ({ onBack }) => {
     }
   };
 
-  const finalizarConferencia = async () => {
-    if (isSubmitting) return;
-    
-    if (!conf.motoristaConfirmado && !conf.novoMotoristaRE) {
-      return alert("Por favor, selecione quem está entregando a viatura.");
-    }
-    if (conf.avaria && !fotoAvaria) {
-      return alert("Por favor, tire uma foto da avaria detectada.");
-    }
-    
-    setIsSubmitting(true);
-    try {
-      const res = await gasApi.confirmarVistoriaGarageiro({
-        rowId: selectedVtr.rowId,
-        status_fisico: conf.avaria ? 'AVARIADA' : 'OK',
-        limpeza: conf.limpa ? 'LIMPA' : 'SUJA',
-        obs_garageiro: conf.obs,
-        garageiro_re: user.re,
-        foto_avaria: fotoAvaria,
-        motorista_confirmado: conf.motoristaConfirmado,
-        novo_motorista_re: conf.novoMotoristaRE
-      });
+const finalizarConferencia = async () => {
+  if (isSubmitting) return;
 
-      if (res.status === 'success') {
+  // Validações de segurança
+  if (!conf.motoristaConfirmado && !conf.novoMotoristaRE) {
+    return alert("Por favor, selecione quem está entregando a viatura.");
+  }
+  
+  if (conf.pertences === 'SIM' && (!conf.detalhePertences || conf.detalhePertences.trim() === '')) {
+    return alert("Por favor, descreva quais pertences foram encontrados.");
+  }
+
+  if (conf.avaria && !fotoAvaria) {
+    return alert("Por favor, tire uma foto da avaria detectada.");
+  }
+
+  setIsSubmitting(true);
+  try {
+    const res = await gasApi.confirmarVistoriaGarageiro({
+      rowId: selectedVtr.rowId,
+      status_fisico: conf.avaria ? 'AVARIADA' : 'OK',
+      // Envia os dois status de limpeza concatenados para a coluna de limpeza
+      limpeza: `INT: ${conf.limpezaInterna ? 'C' : 'NC'} | EXT: ${conf.limpezaExterna ? 'C' : 'NC'}`,
+      // Envia a informação de pertences
+      pertences: conf.pertences === 'SIM' ? `SIM: ${conf.detalhePertences}` : 'NÃO',
+      obs_garageiro: conf.obs,
+      garageiro_re: user.re,
+      foto_avaria: fotoAvaria,
+      motorista_confirmado: conf.motoristaConfirmado,
+      novo_motorista_re: conf.novoMotoristaRE
+    });
+
+    if (res.status === 'success') {
+      setShowModal(false);
+      setFotoAvaria(null);
+      // Reset completo do estado para o padrão original
+      setConf({ 
+        limpezaInterna: true, 
+        limpezaExterna: true, 
+        pertences: 'NÃO', 
+        detalhePertences: '', 
+        motoristaConfirmado: true, 
+        novoMotoristaRE: '', 
+        avaria: false, 
+        obs: '' 
+      });
+      fetchData();
+    } else {
+      // Tratamento para o erro de concorrência (vistoria já removida da planilha de pendentes)
+      if (res.message && (res.message.includes("não encontrada") || res.message.includes("removida"))) {
+        alert("Esta vistoria já foi finalizada ou não consta mais na lista. Atualizando...");
         setShowModal(false);
-        setFotoAvaria(null);
-        setConf({ limpa: false, motoristaConfirmado: true, novoMotoristaRE: '', avaria: false, obs: '' });
         fetchData();
       } else {
-        // CORREÇÃO: Tratamento para o erro de vistoria já removida
-        if (res.message && res.message.includes("não encontrada")) {
-          alert("Vistoria já finalizada por outro usuário ou removida. Atualizando lista...");
-          setShowModal(false);
-          fetchData();
-        } else {
-          alert(res.message || "Erro ao salvar conferência.");
-        }
+        alert(res.message || "Erro ao salvar conferência.");
       }
-    } catch (e) {
-      alert("Erro de conexão.");
-    } finally {
-      setIsSubmitting(false);
     }
-  };
+  } catch (e) {
+    console.error("Erro na conferência:", e);
+    alert("Erro de conexão com o servidor.");
+  } finally {
+    setIsSubmitting(false);
+  }
+};
 
   const abrirModalBloqueio = (v) => {
     const s = (v.Status || v.status || "").toUpperCase();
@@ -273,108 +296,158 @@ const GarageiroDashboard = ({ onBack }) => {
         )}
       </main>
 
-      {/* MODAL DE CONFERÊNCIA */}
-      {showModal && selectedVtr && (
-        <div className="fixed inset-0 bg-slate-900/80 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-          <div className="bg-white w-full max-w-lg rounded-[2.5rem] shadow-2xl overflow-hidden animate-in fade-in zoom-in duration-300">
-            <div className="bg-slate-900 p-6 text-white flex justify-between items-center">
-              <div>
-                <h2 className="text-2xl font-black tracking-tighter uppercase">Fiscon {selectedVtr.prefixo_vtr}</h2>
-                <p className="text-[10px] text-amber-500 font-black uppercase tracking-widest">Conferência Final de Turno</p>
-              </div>
-              <button onClick={() => { setShowModal(false); setFotoAvaria(null); }} className="text-slate-400 hover:text-white"><X /></button>
-            </div>
+{/* MODAL DE CONFERÊNCIA */}
+{showModal && selectedVtr && (
+  <div className="fixed inset-0 bg-slate-900/80 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+    <div className="bg-white w-full max-w-lg rounded-[2.5rem] shadow-2xl overflow-hidden animate-in fade-in zoom-in duration-300">
+      
+      {/* Header do Modal */}
+      <div className="bg-slate-900 p-6 text-white flex justify-between items-center">
+        <div>
+          <h2 className="text-2xl font-black tracking-tighter uppercase">Fiscon {selectedVtr.prefixo_vtr}</h2>
+          <p className="text-[10px] text-amber-500 font-black uppercase tracking-widest">Conferência Final de Turno</p>
+        </div>
+        <button 
+          onClick={() => { setShowModal(false); setFotoAvaria(null); }} 
+          className="p-2 hover:bg-white/10 rounded-full transition-colors"
+        >
+          <X size={24} />
+        </button>
+      </div>
 
-            <div className="p-8 space-y-5 overflow-y-auto max-h-[70vh]">
-              <div className="bg-slate-50 p-4 rounded-3xl border-2 border-slate-100">
-                <p className="text-[10px] font-black text-slate-400 uppercase mb-3 tracking-widest text-center">Confirmação de Identidade</p>
-                <div className="flex gap-2">
-                  <button 
-                    onClick={() => setConf({...conf, motoristaConfirmado: true})}
-                    className={`flex-1 py-3 rounded-2xl font-black text-xs transition-all ${conf.motoristaConfirmado ? 'bg-amber-500 text-slate-900 shadow-md' : 'bg-white text-slate-400 border border-slate-200'}`}
-                  >
-                    SIM, É O {selectedVtr.motorista_nome ? selectedVtr.motorista_nome.split(' ')[0] : 'Motorista'}
-                  </button>
-                  <button 
-                    onClick={() => setConf({...conf, motoristaConfirmado: false})}
-                    className={`flex-1 py-3 rounded-2xl font-black text-xs transition-all ${!conf.motoristaConfirmado ? 'bg-red-600 text-white shadow-md' : 'bg-white text-slate-400 border border-slate-200'}`}
-                  >
-                    NÃO É ELE
-                  </button>
-                </div>
+      <div className="p-6 space-y-5 overflow-y-auto max-h-[75vh]">
+        
+        {/* 1. Confirmação de Identidade */}
+        <div className="bg-slate-50 p-4 rounded-3xl border-2 border-slate-100">
+          <p className="text-[10px] font-black text-slate-400 uppercase mb-3 tracking-widest text-center">O Motorista é este?</p>
+          <div className="flex gap-2">
+            <button 
+              onClick={() => setConf({...conf, motoristaConfirmado: true})}
+              className={`flex-1 py-3 rounded-2xl font-black text-xs transition-all ${conf.motoristaConfirmado ? 'bg-amber-500 text-slate-900 shadow-md' : 'bg-white text-slate-400 border border-slate-200'}`}
+            >
+              SIM, É O {selectedVtr.motorista_nome ? selectedVtr.motorista_nome.split(' ')[0] : 'Motorista'}
+            </button>
+            <button 
+              onClick={() => setConf({...conf, motoristaConfirmado: false})}
+              className={`flex-1 py-3 rounded-2xl font-black text-xs transition-all ${!conf.motoristaConfirmado ? 'bg-red-600 text-white shadow-md' : 'bg-white text-slate-400 border border-slate-200'}`}
+            >
+              NÃO É ELE
+            </button>
+          </div>
 
-                {!conf.motoristaConfirmado && (
-                  <div className="mt-4 animate-in slide-in-from-top-2">
-                    <label className="text-[9px] font-black text-red-600 uppercase mb-1 block">Quem está entregando?</label>
-                    <div className="relative">
-                       <select 
-                         className="w-full p-4 bg-white border-2 border-red-100 rounded-2xl font-bold text-sm outline-none appearance-none"
-                         value={conf.novoMotoristaRE}
-                         onChange={(e) => setConf({...conf, novoMotoristaRE: e.target.value})}
-                       >
-                         <option value="">Selecione o motorista...</option>
-                         {motoristas.map((m, idx) => (
-                           <option key={idx} value={m.re}>{m.patente} {m.nome} ({m.re})</option>
-                         ))}
-                       </select>
-                       <ChevronDown className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" size={18} />
-                    </div>
-                  </div>
-                )}
-              </div>
-
-              <div className="grid grid-cols-2 gap-3">
-                <button 
-                  onClick={() => setConf({...conf, limpa: !conf.limpa})}
-                  className={`p-4 rounded-3xl border-2 flex flex-col items-center gap-2 transition-all ${conf.limpa ? 'bg-emerald-50 border-emerald-500 text-emerald-700' : 'bg-slate-50 border-transparent text-slate-400'}`}
+          {!conf.motoristaConfirmado && (
+            <div className="mt-4 animate-in slide-in-from-top-2">
+              <label className="text-[9px] font-black text-red-600 uppercase mb-1 block">Quem está entregando?</label>
+              <div className="relative">
+                <select 
+                  className="w-full p-4 bg-white border-2 border-red-100 rounded-2xl font-bold text-sm outline-none appearance-none"
+                  value={conf.novoMotoristaRE}
+                  onChange={(e) => setConf({...conf, novoMotoristaRE: e.target.value})}
                 >
-                  <CheckCircle2 size={24} />
-                  <span className="text-[10px] font-black uppercase">Limpa</span>
-                </button>
-                <button 
-                  onClick={() => setConf({...conf, avaria: !conf.avaria})}
-                  className={`p-4 rounded-3xl border-2 flex flex-col items-center gap-2 transition-all ${conf.avaria ? 'bg-red-50 border-red-500 text-red-700' : 'bg-slate-50 border-transparent text-slate-400'}`}
-                >
-                  <AlertTriangle size={24} />
-                  <span className="text-[10px] font-black uppercase">Avaria</span>
-                </button>
+                  <option value="">Selecione o militar...</option>
+                  {motoristas.map((m, idx) => (
+                    <option key={idx} value={m.re}>{m.patente} {m.nome} ({m.re})</option>
+                  ))}
+                </select>
+                <ChevronDown className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" size={18} />
               </div>
-
-              {conf.avaria && (
-                <div className="p-4 bg-red-50 border-2 border-dashed border-red-200 rounded-2xl">
-                  <label className="flex flex-col items-center justify-center gap-2 cursor-pointer py-4 bg-white rounded-xl min-h-[100px]">
-                    {fotoAvaria ? (
-                      <img src={fotoAvaria} className="w-full h-24 object-cover rounded-lg" alt="Dano" />
-                    ) : (
-                      <>
-                        <Camera size={30} className={uploading ? "animate-bounce text-red-300" : "text-red-400"} />
-                        <span className="text-[10px] font-bold text-red-400">Anexar Prova do Dano</span>
-                      </>
-                    )}
-                    <input type="file" accept="image/*" capture="environment" className="hidden" onChange={handleFileChange} />
-                  </label>
-                </div>
-              )}
-
-              <textarea 
-                className="w-full bg-slate-50 border-2 border-slate-100 rounded-2xl p-4 text-sm font-medium outline-none focus:border-amber-500"
-                placeholder="Observações do pátio..."
-                value={conf.obs}
-                onChange={e => setConf({...conf, obs: e.target.value})}
-                rows={2}
-              />
-
-              <button 
-                onClick={finalizarConferencia}
-                disabled={uploading || isSubmitting}
-                className={`w-full py-5 rounded-[1.5rem] font-black uppercase tracking-widest text-xs shadow-lg transition-all ${isSubmitting || uploading ? 'bg-slate-300 cursor-not-allowed' : 'bg-slate-900 text-white hover:bg-emerald-600'}`}
-              >
-                {isSubmitting ? 'Processando...' : uploading ? 'Aguarde a Foto...' : 'Finalizar e Liberar'}
-              </button>
             </div>
+          )}
+        </div>
+
+        {/* 2. Seção de Limpeza (Interna e Externa) */}
+        <div className="space-y-3">
+          <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest px-2">Condições de Limpeza</p>
+          <div className="grid grid-cols-2 gap-3">
+            <button 
+              onClick={() => setConf({...conf, limpezaInterna: !conf.limpezaInterna})}
+              className={`p-4 rounded-3xl border-2 flex flex-col items-center gap-2 transition-all ${conf.limpezaInterna ? 'bg-emerald-50 border-emerald-500 text-emerald-700' : 'bg-slate-50 border-transparent text-slate-400'}`}
+            >
+              <CheckCircle2 size={20} />
+              <span className="text-[10px] font-black uppercase">Interior {conf.limpezaInterna ? 'OK' : 'Sujo'}</span>
+            </button>
+            <button 
+              onClick={() => setConf({...conf, limpezaExterna: !conf.limpezaExterna})}
+              className={`p-4 rounded-3xl border-2 flex flex-col items-center gap-2 transition-all ${conf.limpezaExterna ? 'bg-emerald-50 border-emerald-500 text-emerald-700' : 'bg-slate-50 border-transparent text-slate-400'}`}
+            >
+              <CheckCircle2 size={20} />
+              <span className="text-[10px] font-black uppercase">Exterior {conf.limpezaExterna ? 'OK' : 'Sujo'}</span>
+            </button>
           </div>
         </div>
-      )}
+
+        {/* 3. Pertences e Avarias */}
+        <div className="grid grid-cols-2 gap-3">
+          <div className="space-y-2">
+             <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest px-1">Pertences?</p>
+             <select 
+               className={`w-full p-3 rounded-2xl font-bold text-[11px] border-2 outline-none transition-all ${conf.pertences === 'SIM' ? 'bg-amber-50 border-amber-500 text-amber-700' : 'bg-slate-50 border-transparent text-slate-400'}`}
+               value={conf.pertences}
+               onChange={(e) => setConf({...conf, pertences: e.target.value})}
+             >
+               <option value="NÃO">NÃO</option>
+               <option value="SIM">SIM</option>
+             </select>
+          </div>
+          <div className="space-y-2">
+            <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest px-1">Avarias?</p>
+            <button 
+              onClick={() => setConf({...conf, avaria: !conf.avaria})}
+              className={`w-full p-3 rounded-2xl border-2 font-black text-[11px] transition-all ${conf.avaria ? 'bg-red-50 border-red-500 text-red-700' : 'bg-slate-50 border-transparent text-slate-400'}`}
+            >
+              {conf.avaria ? 'DETECTADA' : 'NÃO'}
+            </button>
+          </div>
+        </div>
+
+        {/* Campo dinâmico para detalhe de pertences */}
+        {conf.pertences === 'SIM' && (
+          <input 
+            type="text"
+            placeholder="O que foi esquecido na VTR?"
+            className="w-full p-4 bg-amber-50 border-2 border-amber-200 rounded-2xl font-bold text-xs outline-none animate-in slide-in-from-top-1"
+            value={conf.detalhePertences}
+            onChange={e => setConf({...conf, detalhePertences: e.target.value})}
+          />
+        )}
+
+        {/* Seção de Foto se houver Avaria */}
+        {conf.avaria && (
+          <div className="p-4 bg-red-50 border-2 border-dashed border-red-200 rounded-2xl">
+            <label className="flex flex-col items-center justify-center gap-2 cursor-pointer py-4 bg-white rounded-xl min-h-[100px]">
+              {fotoAvaria ? (
+                <img src={fotoAvaria} className="w-full h-24 object-cover rounded-lg" alt="Dano" />
+              ) : (
+                <>
+                  <Camera size={30} className={uploading ? "animate-bounce text-red-300" : "text-red-400"} />
+                  <span className="text-[10px] font-bold text-red-400 uppercase">Anexar Foto da Avaria</span>
+                </>
+              )}
+              <input type="file" accept="image/*" capture="environment" className="hidden" onChange={handleFileChange} />
+            </label>
+          </div>
+        )}
+
+        <textarea 
+          className="w-full bg-slate-50 border-2 border-slate-100 rounded-2xl p-4 text-sm font-medium outline-none focus:border-amber-500"
+          placeholder="Observações adicionais do pátio..."
+          value={conf.obs}
+          onChange={e => setConf({...conf, obs: e.target.value})}
+          rows={2}
+        />
+
+        <button 
+          onClick={finalizarConferencia}
+          disabled={uploading || isSubmitting}
+          className={`w-full py-5 rounded-[1.5rem] font-black uppercase tracking-widest text-xs shadow-lg transition-all ${isSubmitting || uploading ? 'bg-slate-300 cursor-not-allowed' : 'bg-slate-900 text-white hover:bg-emerald-600'}`}
+        >
+          {isSubmitting ? 'Processando...' : uploading ? 'Aguarde a Foto...' : 'Finalizar e Liberar VTR'}
+        </button>
+      </div>
+    </div>
+  </div>
+)}
+      
 
       {/* MODAL DE STATUS */}
       {showLockModal && (
