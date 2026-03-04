@@ -354,16 +354,13 @@ const Vistoria = ({ onBack, frotaInicial = [] }) => {
               )}
             </div>
 
-            {/* ÁREA DE FOTOS (EVIDÊNCIAS) */}
+           {/* ÁREA DE FOTOS (MANTIDA) */}
 <div className={`p-6 rounded-[2.5rem] border-2 bg-white ${temAvaria && fotos.length === 0 ? 'border-red-500 animate-pulse' : 'border-slate-200'}`}>
   <div className="grid grid-cols-4 gap-2">
     {fotos.map((f, i) => (
       <div key={i} className="relative aspect-square rounded-2xl overflow-hidden border border-slate-200">
-        <img src={f} className="object-cover w-full h-full" alt={`Vistoria ${i}`} />
-        <button 
-          onClick={() => setFotos(p => p.filter((_, idx) => idx !== i))} 
-          className="absolute top-1 right-1 bg-red-600 text-white rounded-full p-1"
-        >
+        <img src={f} className="object-cover w-full h-full" alt="Vistoria" />
+        <button onClick={() => setFotos(p => p.filter((_, idx) => idx !== i))} className="absolute top-1 right-1 bg-red-600 text-white rounded-full p-1">
           <X size={10}/>
         </button>
       </div>
@@ -371,27 +368,21 @@ const Vistoria = ({ onBack, frotaInicial = [] }) => {
     {fotos.length < 4 && (
       <label className="aspect-square rounded-2xl border-2 border-dashed border-slate-300 flex items-center justify-center cursor-pointer bg-slate-50">
         {uploading ? <Loader2 className="animate-spin text-blue-600" /> : <Plus className="text-slate-400" />}
-        <input 
-          type="file" 
-          accept="image/*" 
-          capture="environment" 
-          className="hidden" 
-          onChange={async (e) => {
-            const file = e.target.files[0]; if (!file) return;
-            setUploading(true);
-            try {
-              const compressed = await imageCompression(file, { maxSizeMB: 0.2, maxWidthOrHeight: 1000 });
-              const reader = new FileReader(); reader.readAsDataURL(compressed);
-              reader.onloadend = () => { setFotos(p => [...p, reader.result]); setUploading(false); };
-            } catch (err) { setUploading(false); }
-          }} 
-        />
+        <input type="file" accept="image/*" capture="environment" className="hidden" onChange={async (e) => {
+          const file = e.target.files[0]; if (!file) return;
+          setUploading(true);
+          try {
+            const compressed = await imageCompression(file, { maxSizeMB: 0.2, maxWidthOrHeight: 1000 });
+            const reader = new FileReader(); reader.readAsDataURL(compressed);
+            reader.onloadend = () => { setFotos(p => [...p, reader.result]); setUploading(false); };
+          } catch (err) { setUploading(false); }
+        }} />
       </label>
     )}
   </div>
 </div>
 
-{/* TERMO DE ACEITE DINÂMICO (ENTRADA vs SAÍDA) */}
+{/* TERMO DE ACEITE ÚNICO E DINÂMICO */}
 <label className="flex items-start gap-4 p-5 bg-white border-2 border-slate-200 rounded-3xl cursor-pointer">
   <input 
     type="checkbox" 
@@ -410,7 +401,7 @@ const Vistoria = ({ onBack, frotaInicial = [] }) => {
     ) : (
       <>
         EU, <span className="text-slate-900 underline">{formData.motorista_nome || 'MOTORISTA'}</span>, 
-        informo estar me responsabilizando pela viatura <span className="text-orange-600 font-black">{formData.prefixo_vtr || '_______'}</span>, 
+        informo estar realizando a entrega da viatura <span className="text-orange-600 font-black">{formData.prefixo_vtr || '_______'}</span>, 
         atestando que o estado de limpeza e conservação condiz com o checklist realizado. 
         Declaro que as informações acima são verdadeiras e assumo a responsabilidade pela viatura.
       </>
@@ -418,13 +409,22 @@ const Vistoria = ({ onBack, frotaInicial = [] }) => {
   </p>
 </label>
 
-            <label className="flex items-start gap-4 p-5 bg-white border-2 border-slate-200 rounded-3xl cursor-pointer">
-              <input type="checkbox" className="w-6 h-6 rounded text-blue-600 mt-1" checked={formData.termo_aceite} onChange={(e) => setFormData({...formData, termo_aceite: e.target.checked})} />
-              <p className="text-[9px] font-black uppercase text-slate-500 leading-tight">
-                Eu, <span className="text-slate-900 underline">{formData.motorista_nome || 'MOTORISTA'}</span>, declaro que as informações acima são verdadeiras.
-              </p>
-            </label>
-
+{/* BOTÕES DE AÇÃO */}
+<div className="flex gap-2">
+  <button 
+    onClick={() => setStep(1)} 
+    className="flex-1 bg-white p-5 rounded-2xl font-black border-2 border-slate-200 text-slate-900"
+  >
+    VOLTAR
+  </button>
+  <button 
+    onClick={handleFinalizar} 
+    disabled={!formData.termo_aceite || loading || (temAvaria && fotos.length === 0)} 
+    className="btn-tatico flex-[2] disabled:bg-slate-300 disabled:text-slate-500"
+  >
+    {loading ? <Loader2 className="animate-spin mx-auto"/> : "FINALIZAR"}
+  </button>
+</div>
             <div className="flex gap-2">
               <button onClick={() => setStep(1)} className="flex-1 bg-white p-5 rounded-2xl font-black border-2 border-slate-200">VOLTAR</button>
               <button onClick={handleFinalizar} disabled={!formData.termo_aceite || loading || (temAvaria && fotos.length === 0)} className="btn-tatico flex-[2]">
