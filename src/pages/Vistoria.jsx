@@ -145,58 +145,76 @@ const Vistoria = ({ onBack, frotaInicial = [] }) => {
   };
 
 const handleVtrChange = (prefixo) => {
-  // Busca a viatura ignorando se o "P" de Prefixo é maiúsculo ou minúsculo
   const vtr = viaturas.find(v => toStr(v.Prefixo || v.PREFIXO) === toStr(prefixo));
   
   if (!vtr) {
-    setFormData(prev => ({ ...prev, prefixo_vtr: '', placa_vtr: '', hodometro: '' }));
+    setFormData(prev => ({ 
+      ...prev, 
+      prefixo_vtr: '', 
+      placa_vtr: '', 
+      hodometro: '',
+      motorista_nome: '', comandante_nome: '', patrulheiro_nome: '' 
+    }));
     return;
   }
 
-  // Função auxiliar para pegar o valor da chave mesmo que mude de MAIÚSCULO para minúsculo
   const getV = (key) => vtr[key] || vtr[key.toUpperCase()] || vtr[key.toLowerCase()] || '';
-
   const ultKM = getV('UltimoKM');
   setKmReferencia(Number(ultKM) || 0);
 
-  // Criamos o objeto de novos dados com prioridade para o que vem do PAINEL se for SAÍDA
-  const novosDados = {
-    ...formData,
-    prefixo_vtr: toStr(vtr.Prefixo || vtr.PREFIXO),
-    placa_vtr: toStr(vtr.Placa || vtr.PLACA),
-    
-    // Dados de serviço e KM
-    tipo_servico: tipoVistoria === 'SAÍDA' ? toStr(getV('UltimoTipoServico')) : formData.tipo_servico,
-    servico_detalhe: tipoVistoria === 'SAÍDA' ? toStr(getV('UltimoServicoDetalhe')) : '',
-    hodometro: tipoVistoria === 'SAÍDA' ? toStr(ultKM) : formData.hodometro,
-    
-    // Matrículas (RE) - Buscando por chaves flexíveis
-    motorista_re: tipoVistoria === 'SAÍDA' ? toStr(getV('UltimoMotoristaRE')) : formData.motorista_re,
-    comandante_re: tipoVistoria === 'SAÍDA' ? toStr(getV('UltimoComandanteRE')) : formData.comandante_re,
-    patrulheiro_re: tipoVistoria === 'SAÍDA' ? toStr(getV('UltimoPatrulheiroRE')) : formData.patrulheiro_re,
-    
-    // Nomes vindos direto da planilha
-    motorista_nome: tipoVistoria === 'SAÍDA' ? toStr(getV('UltimoMotoristaNome')) : formData.motorista_nome,
-    comandante_nome: tipoVistoria === 'SAÍDA' ? toStr(getV('UltimoComandanteNome')) : formData.comandante_nome,
-    patrulheiro_nome: tipoVistoria === 'SAÍDA' ? toStr(getV('UltimoPatrulheiroNome')) : formData.patrulheiro_nome,
-  };
-
-  // Atualiza o estado principal
-  setFormData(novosDados);
-
-  // LÓGICA DE RECUPERAÇÃO DE NOMES:
-  // Se o RE veio da planilha, mas o nome não, ou se queremos garantir que a patente esteja atualizada
   if (tipoVistoria === 'SAÍDA') {
-    // Usamos um pequeno timeout para garantir que o setFormData acima começou a processar
-    setTimeout(() => {
-      ['motorista', 'comandante', 'patrulheiro'].forEach(cargo => {
-        const reEncontrado = novosDados[`${cargo}_re`];
-        // Se temos o RE, chamamos a função que já temos pronta para buscar no efetivoLocal
-        if (reEncontrado && reEncontrado.trim() !== "") {
-          handleMatriculaChange(reEncontrado, cargo);
-        }
-      });
-    }, 100);
+    // 1. Extraímos os REs primeiro
+    const res = {
+      motorista: toStr(getV('UltimoMotoristaRE')),
+      comandante: toStr(getV('UltimoComandanteRE')),
+      patrulheiro: toStr(getV('UltimoPatrulheiroRE'))
+    };
+
+    // 2. Criamos uma função rápida para achar o nome no efetivoLocal carregado
+    const buscarNomeNoEfetivo = (re) => {
+      if (!re) return '';
+      const reLimpo = re.replace(/\D/g, '');
+      const reParaBusca = (reLimpo.length <= 6 && !reLimpo.startsWith("1000")) ? "1000" + reLimpo : reLimpo;
+      const m = efetivoLocal.find(mil => toStr(mil.re) === reParaBusca || toStr(mil.re) === reLimpo);
+      return m ? `${m.patente} ${m.nome}` : '';
+    };
+
+    // 3. Montamos os nomes (se não tiver no PAINEL, busca no EFETIVO)
+    const nomes = {
+      motorista: toStr(getV('UltimoMotoristaNome')) || buscarNomeNoEfetivo(res.motorista),
+      comandante: toStr(getV('UltimoComandanteNome')) || buscarNomeNoEfetivo(res.comandante),
+      patrulheiro: toStr(getV('UltimoPatrulheiroNome')) || buscarNomeNoEfetivo(res.patrulheiro)
+    };
+
+    // 4. Atualizamos tudo de uma vez
+    setFormData(prev => ({
+      ...prev,
+      prefixo_vtr: toStr(vtr.Prefixo || vtr.PREFIXO),
+      placa_vtr: toStr(vtr.Placa || vtr.PLACA),
+      tipo_servico: toStr(getV('UltimoTipoServico')),
+      servico_detalhe: toStr(getV('UltimoServicoDetalhe')),
+      hodometro: toStr(ultKM),
+      // REs
+      motorista_re: res.motorista,
+      comandante_re: res.comandante,
+      patrulheiro_re: res.patrulheiro,
+      // Nomes (O que faz o Card funcionar)
+      motorista_nome: nomes.motorista,
+      comandante_nome: nomes.comandante,
+      patrulheiro_nome: nomes.patrulheiro,
+    }));
+
+  } else {
+    // Para ENTRADA: Limpa guarnição e foca na nova vistoria
+    setFormData(prev => ({
+      ...prev,
+      prefixo_vtr: toStr(vtr.Prefixo || vtr.PREFIXO),
+      placa_vtr: toStr(vtr.Placa || vtr.PLACA),
+      hodometro: '',
+      motorista_re: '', motorista_nome: '',
+      comandante_re: '', comandante_nome: '',
+      patrulheiro_re: '', patrulheiro_nome: ''
+    }));
   }
 };
 
