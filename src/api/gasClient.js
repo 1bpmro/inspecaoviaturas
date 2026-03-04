@@ -41,6 +41,8 @@ export const gasApi = {
   getViaturas: () => gasApi.post('getViaturas'),
   buscarMilitar: (re) => gasApi.post('buscarMilitar', { re }),
   getEfetivoCompleto: () => gasApi.post('getEfetivoCompleto'),
+
+  getMotoristas: () => gasApi.post('getEfetivoCompleto'),
   
   getVistoriasPendentes: () => gasApi.post('getVistoriasPendentes'),
   confirmarVistoriaGarageiro: (dados) => gasApi.post('confirmarVistoriaGarageiro', dados),
