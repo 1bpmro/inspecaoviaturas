@@ -144,29 +144,49 @@ const Vistoria = ({ onBack, frotaInicial = [] }) => {
     }
   };
 
-  const handleVtrChange = (prefixo) => {
+ const handleVtrChange = (prefixo) => {
     const vtr = viaturas.find(v => toStr(v.Prefixo) === toStr(prefixo));
-    if (!vtr) return;
+    if (!vtr) {
+      // Limpa campos sensíveis se desmarcar a VTR
+      setFormData(prev => ({ ...prev, prefixo_vtr: '', placa_vtr: '', hodometro: '' }));
+      return;
+    }
 
     setKmReferencia(Number(vtr.UltimoKM) || 0);
+
+    // Se for SAÍDA, puxamos o histórico do "PAINEL". Se for ENTRADA, mantemos o que o usuário digitou ou limpamos.
     const novosDados = {
       ...formData,
       prefixo_vtr: toStr(vtr.Prefixo),
       placa_vtr: toStr(vtr.Placa),
+      // Mapeamento direto das colunas da sua guia PAINEL
       tipo_servico: tipoVistoria === 'SAÍDA' ? toStr(vtr.UltimoTipoServico || '') : formData.tipo_servico,
       servico_detalhe: tipoVistoria === 'SAÍDA' ? toStr(vtr.UltimoServicoDetalhe || '') : '',
       hodometro: tipoVistoria === 'SAÍDA' ? toStr(vtr.UltimoKM || '') : formData.hodometro,
+      
+      // Matrículas (RE) - O coração da sua solicitação
       motorista_re: tipoVistoria === 'SAÍDA' ? toStr(vtr.UltimoMotoristaRE || '') : formData.motorista_re,
-      motorista_nome: tipoVistoria === 'SAÍDA' ? toStr(vtr.UltimoMotoristaNome || '') : formData.motorista_nome,
       comandante_re: tipoVistoria === 'SAÍDA' ? toStr(vtr.UltimoComandanteRE || '') : formData.comandante_re,
-      comandante_nome: tipoVistoria === 'SAÍDA' ? toStr(vtr.UltimoComandanteNome || '') : formData.comandante_nome,
       patrulheiro_re: tipoVistoria === 'SAÍDA' ? toStr(vtr.UltimoPatrulheiroRE || '') : formData.patrulheiro_re,
+      
+      // Nomes (Opcional: se o Painel já trouxer o nome, economiza uma chamada de busca)
+      motorista_nome: tipoVistoria === 'SAÍDA' ? toStr(vtr.UltimoMotoristaNome || '') : formData.motorista_nome,
+      comandante_nome: tipoVistoria === 'SAÍDA' ? toStr(vtr.UltimoComandanteNome || '') : formData.comandante_nome,
       patrulheiro_nome: tipoVistoria === 'SAÍDA' ? toStr(vtr.UltimoPatrulheiroNome || '') : formData.patrulheiro_nome,
     };
+
     setFormData(novosDados);
+
+    // Caso o Painel traga apenas o RE e não o Nome, forçamos a busca no efetivoLocal para preencher os nomes
     if (tipoVistoria === 'SAÍDA') {
-      ['motorista', 'comandante', 'patrulheiro'].forEach(c => {
-        if (novosDados[`${c}_re`] && !novosDados[`${c}_nome`]) handleMatriculaChange(novosDados[`${c}_re`], c);
+      ['motorista', 'comandante', 'patrulheiro'].forEach(cargo => {
+        const reEncontrado = novosDados[`${cargo}_re`];
+        const nomeExistente = novosDados[`${cargo}_nome`];
+        
+        // Se temos o RE mas o nome veio vazio do Painel, buscamos no efetivoLocal
+        if (reEncontrado && !nomeExistente) {
+          handleMatriculaChange(reEncontrado, cargo);
+        }
       });
     }
   };
