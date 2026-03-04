@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { gasApi } from '../api/gasClient';
 import { useAuth } from '../lib/AuthContext';
 import { 
-  Car, CheckCircle2, AlertTriangle, Clock, 
+  Car, CheckCircle2, AlertTriangle, Clock, RefreshCw,
   Search, ShieldCheck, Lock, Unlock, History, Camera, User, X, AlertCircle, ChevronDown
 } from 'lucide-react';
 
@@ -37,7 +37,6 @@ const GarageiroDashboard = ({ onBack }) => {
   const fetchData = async () => {
     setLoading(true);
     try {
-      // CORREÇÃO: Alterado getMotoristas para getEfetivoCompleto
       const [resVtr, resPend, resMot] = await Promise.all([
         gasApi.getViaturas(), 
         gasApi.getVistoriasPendentes(),
@@ -103,7 +102,14 @@ const GarageiroDashboard = ({ onBack }) => {
         setConf({ limpa: false, motoristaConfirmado: true, novoMotoristaRE: '', avaria: false, obs: '' });
         fetchData();
       } else {
-        alert(res.message || "Erro ao salvar conferência.");
+        // CORREÇÃO: Tratamento para o erro de vistoria já removida
+        if (res.message && res.message.includes("não encontrada")) {
+          alert("Vistoria já finalizada por outro usuário ou removida. Atualizando lista...");
+          setShowModal(false);
+          fetchData();
+        } else {
+          alert(res.message || "Erro ao salvar conferência.");
+        }
       }
     } catch (e) {
       alert("Erro de conexão.");
@@ -162,9 +168,20 @@ const GarageiroDashboard = ({ onBack }) => {
               <p className="text-[10px] font-bold text-amber-500 uppercase tracking-widest text-white/80">1º BPM - Rondon</p>
             </div>
           </div>
-          <div className="text-right">
-            <p className="text-[10px] text-slate-400 font-bold uppercase">Garageiro</p>
-            <p className="text-sm font-black text-white">{user?.patente} {user?.nome}</p>
+          
+          <div className="flex items-center gap-4">
+            {/* NOVO: Botão de Refresh manual para o Garageiro */}
+            <button 
+              onClick={fetchData} 
+              disabled={loading}
+              className={`p-2 rounded-full transition-all ${loading ? 'animate-spin text-amber-500' : 'text-slate-400 hover:text-white hover:bg-slate-800'}`}
+            >
+              <RefreshCw size={20} />
+            </button>
+            <div className="text-right hidden sm:block">
+              <p className="text-[10px] text-slate-400 font-bold uppercase">Garageiro</p>
+              <p className="text-sm font-black text-white">{user?.patente} {user?.nome}</p>
+            </div>
           </div>
         </div>
       </header>
@@ -185,7 +202,7 @@ const GarageiroDashboard = ({ onBack }) => {
       </nav>
 
       <main className="p-4 max-w-6xl mx-auto w-full flex-1">
-        {loading ? (
+        {loading && vistorias.length === 0 ? (
            <div className="py-20 text-center animate-pulse font-black text-slate-400 uppercase text-xs">Sincronizando...</div>
         ) : (
           <>
@@ -276,7 +293,6 @@ const GarageiroDashboard = ({ onBack }) => {
                     onClick={() => setConf({...conf, motoristaConfirmado: true})}
                     className={`flex-1 py-3 rounded-2xl font-black text-xs transition-all ${conf.motoristaConfirmado ? 'bg-amber-500 text-slate-900 shadow-md' : 'bg-white text-slate-400 border border-slate-200'}`}
                   >
-                    {/* PROTEÇÃO: split apenas se existir nome */}
                     SIM, É O {selectedVtr.motorista_nome ? selectedVtr.motorista_nome.split(' ')[0] : 'Motorista'}
                   </button>
                   <button 
