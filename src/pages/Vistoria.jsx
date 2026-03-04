@@ -67,13 +67,10 @@ const Vistoria = ({ onBack, frotaInicial = [] }) => {
 
   const [checklist, setChecklist] = useState({});
 
-  // Filtragem de viaturas conforme o tipo de vistoria
   const viaturasFiltradas = useMemo(() => {
     if (tipoVistoria === 'ENTRADA') {
-      // Na entrada, só mostra o que não está em serviço
       return viaturas.filter(v => v.Status !== 'EM SERVIÇO' && v.Status !== 'FORA DE SERVIÇO (BAIXA)');
     } else {
-      // Na saída, só mostra o que está em serviço
       return viaturas.filter(v => v.Status === 'EM SERVIÇO');
     }
   }, [viaturas, tipoVistoria]);
@@ -88,7 +85,6 @@ const Vistoria = ({ onBack, frotaInicial = [] }) => {
   const temAvaria = useMemo(() => Object.values(checklist).includes('FALHA'), [checklist]);
   const toStr = (val) => (val !== undefined && val !== null ? String(val) : '');
 
-  // Lógica de validação condicional para os campos de serviço
   const isServicoIncompleto = useMemo(() => {
     if (!formData.tipo_servico) return true;
     if (['Operação', 'Outro'].includes(formData.tipo_servico) && !formData.servico_detalhe) return true;
@@ -249,7 +245,6 @@ const Vistoria = ({ onBack, frotaInicial = [] }) => {
           <div className="space-y-6 animate-in fade-in slide-in-from-bottom-4">
             <section className="bg-white rounded-[2.5rem] p-6 shadow-sm border border-slate-200 space-y-5">
               <CardGuarnicao />
-              
               <div className="grid grid-cols-2 gap-3">
                 <select className="vtr-input !py-4" value={formData.prefixo_vtr} onChange={(e) => handleVtrChange(e.target.value)}>
                   <option value="">{tipoVistoria === 'ENTRADA' ? 'VTR DISPONÍVEL' : 'VTR EM SERVIÇO'}</option>
@@ -261,7 +256,6 @@ const Vistoria = ({ onBack, frotaInicial = [] }) => {
                 </select>
               </div>
 
-              {/* Lógica de Campos Condicionais de Serviço */}
               {tipoVistoria === 'ENTRADA' && (
                 <div className="animate-in zoom-in-95 duration-200">
                   {['Operação', 'Outro'].includes(formData.tipo_servico) && (
@@ -311,7 +305,7 @@ const Vistoria = ({ onBack, frotaInicial = [] }) => {
             <button 
               onClick={() => setStep(2)} 
               disabled={isFormIncompleto} 
-              className="btn-tatico w-full disabled:opacity-50 disabled:grayscale"
+              className="btn-tatico w-full disabled:opacity-50"
             >
               PRÓXIMO: CHECKLIST <ChevronRight size={18}/>
             </button>
@@ -354,80 +348,69 @@ const Vistoria = ({ onBack, frotaInicial = [] }) => {
               )}
             </div>
 
-           {/* ÁREA DE FOTOS (MANTIDA) */}
-<div className={`p-6 rounded-[2.5rem] border-2 bg-white ${temAvaria && fotos.length === 0 ? 'border-red-500 animate-pulse' : 'border-slate-200'}`}>
-  <div className="grid grid-cols-4 gap-2">
-    {fotos.map((f, i) => (
-      <div key={i} className="relative aspect-square rounded-2xl overflow-hidden border border-slate-200">
-        <img src={f} className="object-cover w-full h-full" alt="Vistoria" />
-        <button onClick={() => setFotos(p => p.filter((_, idx) => idx !== i))} className="absolute top-1 right-1 bg-red-600 text-white rounded-full p-1">
-          <X size={10}/>
-        </button>
-      </div>
-    ))}
-    {fotos.length < 4 && (
-      <label className="aspect-square rounded-2xl border-2 border-dashed border-slate-300 flex items-center justify-center cursor-pointer bg-slate-50">
-        {uploading ? <Loader2 className="animate-spin text-blue-600" /> : <Plus className="text-slate-400" />}
-        <input type="file" accept="image/*" capture="environment" className="hidden" onChange={async (e) => {
-          const file = e.target.files[0]; if (!file) return;
-          setUploading(true);
-          try {
-            const compressed = await imageCompression(file, { maxSizeMB: 0.2, maxWidthOrHeight: 1000 });
-            const reader = new FileReader(); reader.readAsDataURL(compressed);
-            reader.onloadend = () => { setFotos(p => [...p, reader.result]); setUploading(false); };
-          } catch (err) { setUploading(false); }
-        }} />
-      </label>
-    )}
-  </div>
-</div>
+            <div className={`p-6 rounded-[2.5rem] border-2 bg-white ${temAvaria && fotos.length === 0 ? 'border-red-500 animate-pulse' : 'border-slate-200'}`}>
+              <div className="grid grid-cols-4 gap-2">
+                {fotos.map((f, i) => (
+                  <div key={i} className="relative aspect-square rounded-2xl overflow-hidden border border-slate-200">
+                    <img src={f} className="object-cover w-full h-full" alt="Vistoria" />
+                    <button onClick={() => setFotos(p => p.filter((_, idx) => idx !== i))} className="absolute top-1 right-1 bg-red-600 text-white rounded-full p-1"><X size={10}/></button>
+                  </div>
+                ))}
+                {fotos.length < 4 && (
+                  <label className="aspect-square rounded-2xl border-2 border-dashed border-slate-300 flex items-center justify-center cursor-pointer bg-slate-50">
+                    {uploading ? <Loader2 className="animate-spin text-blue-600" /> : <Plus className="text-slate-400" />}
+                    <input type="file" accept="image/*" capture="environment" className="hidden" onChange={async (e) => {
+                      const file = e.target.files[0]; if (!file) return;
+                      setUploading(true);
+                      try {
+                        const compressed = await imageCompression(file, { maxSizeMB: 0.2, maxWidthOrHeight: 1000 });
+                        const reader = new FileReader(); reader.readAsDataURL(compressed);
+                        reader.onloadend = () => { setFotos(p => [...p, reader.result]); setUploading(false); };
+                      } catch (err) { setUploading(false); }
+                    }} />
+                  </label>
+                )}
+              </div>
+            </div>
 
-{/* TERMO DE ACEITE ÚNICO E DINÂMICO */}
-<label className="flex items-start gap-4 p-5 bg-white border-2 border-slate-200 rounded-3xl cursor-pointer">
-  <input 
-    type="checkbox" 
-    className="w-6 h-6 rounded text-blue-600 mt-1" 
-    checked={formData.termo_aceite} 
-    onChange={(e) => setFormData({...formData, termo_aceite: e.target.checked})} 
-  />
-  <p className="text-[10px] font-black uppercase text-slate-600 leading-tight text-justify">
-    {tipoVistoria === 'ENTRADA' ? (
-      <>
-        EU, <span className="text-slate-900 underline">{formData.motorista_nome || 'MOTORISTA'}</span>, 
-        informo estar me responsabilizando pela viatura <span className="text-blue-600 font-black">{formData.prefixo_vtr || '_______'}</span>, 
-        ciente do estado de conservação dos itens acima vistoriados. 
-        Declaro que as informações acima são verdadeiras e assumo a responsabilidade pela viatura.
-      </>
-    ) : (
-      <>
-        EU, <span className="text-slate-900 underline">{formData.motorista_nome || 'MOTORISTA'}</span>, 
-        informo estar realizando a entrega da viatura <span className="text-orange-600 font-black">{formData.prefixo_vtr || '_______'}</span>, 
-        atestando que o estado de limpeza e conservação condiz com o checklist realizado. 
-        Declaro que as informações acima são verdadeiras e assumo a responsabilidade pela viatura.
-      </>
-    )}
-  </p>
-</label>
+            <label className="flex items-start gap-4 p-5 bg-white border-2 border-slate-200 rounded-3xl cursor-pointer">
+              <input 
+                type="checkbox" 
+                className="w-6 h-6 rounded text-blue-600 mt-1" 
+                checked={formData.termo_aceite} 
+                onChange={(e) => setFormData({...formData, termo_aceite: e.target.checked})} 
+              />
+              <p className="text-[10px] font-black uppercase text-slate-600 leading-tight text-justify">
+                {tipoVistoria === 'ENTRADA' ? (
+                  <>
+                    EU, <span className="text-slate-900 underline">{formData.motorista_nome || 'MOTORISTA'}</span>, 
+                    informo estar me responsabilizando pela viatura <span className="text-blue-600 font-black">{formData.prefixo_vtr || '_______'}</span>, 
+                    ciente do estado de conservação dos itens acima vistoriados. 
+                    Declaro que as informações acima são verdadeiras e assumo a responsabilidade pela viatura.
+                  </>
+                ) : (
+                  <>
+                    EU, <span className="text-slate-900 underline">{formData.motorista_nome || 'MOTORISTA'}</span>, 
+                    informo estar realizando a entrega da viatura <span className="text-orange-600 font-black">{formData.prefixo_vtr || '_______'}</span>, 
+                    atestando que o estado de limpeza e conservação condiz com o checklist realizado. 
+                    Declaro que as informações acima são verdadeiras e assumo a responsabilidade pela viatura.
+                  </>
+                )}
+              </p>
+            </label>
 
-{/* BOTÕES DE AÇÃO */}
-<div className="flex gap-2">
-  <button 
-    onClick={() => setStep(1)} 
-    className="flex-1 bg-white p-5 rounded-2xl font-black border-2 border-slate-200 text-slate-900"
-  >
-    VOLTAR
-  </button>
-  <button 
-    onClick={handleFinalizar} 
-    disabled={!formData.termo_aceite || loading || (temAvaria && fotos.length === 0)} 
-    className="btn-tatico flex-[2] disabled:bg-slate-300 disabled:text-slate-500"
-  >
-    {loading ? <Loader2 className="animate-spin mx-auto"/> : "FINALIZAR"}
-  </button>
-</div>
             <div className="flex gap-2">
-              <button onClick={() => setStep(1)} className="flex-1 bg-white p-5 rounded-2xl font-black border-2 border-slate-200">VOLTAR</button>
-              <button onClick={handleFinalizar} disabled={!formData.termo_aceite || loading || (temAvaria && fotos.length === 0)} className="btn-tatico flex-[2]">
+              <button 
+                onClick={() => setStep(1)} 
+                className="flex-1 bg-white p-5 rounded-2xl font-black border-2 border-slate-200 text-slate-900"
+              >
+                VOLTAR
+              </button>
+              <button 
+                onClick={handleFinalizar} 
+                disabled={!formData.termo_aceite || loading || (temAvaria && fotos.length === 0)} 
+                className="btn-tatico flex-[2] disabled:bg-slate-300 disabled:text-slate-500"
+              >
                 {loading ? <Loader2 className="animate-spin mx-auto"/> : "FINALIZAR"}
               </button>
             </div>
