@@ -67,10 +67,8 @@ const Vistoria = ({ onBack, frotaInicial = [] }) => {
 
   const [checklist, setChecklist] = useState({});
 
-  // 1. Helpers
   const toStr = useCallback((val) => (val !== undefined && val !== null ? String(val) : ''), []);
 
-  // 2. Memos
   const viaturasFiltradas = useMemo(() => {
     return tipoVistoria === 'ENTRADA' 
       ? viaturas.filter(v => v.Status !== 'EM SERVIÇO' && v.Status !== 'FORA DE SERVIÇO (BAIXA)')
@@ -98,7 +96,6 @@ const Vistoria = ({ onBack, frotaInicial = [] }) => {
     );
   }, [formData, kmInvalido]);
 
-  // 3. Efeitos
   useEffect(() => {
     const todosItens = tipoVistoria === 'ENTRADA' ? GRUPOS_ENTRADA.flatMap(g => g.itens) : ITENS_SAIDA;
     setChecklist(todosItens.reduce((acc, item) => ({ ...acc, [item]: 'OK' }), {}));
@@ -123,7 +120,6 @@ const Vistoria = ({ onBack, frotaInicial = [] }) => {
     return () => { isMounted = false; };
   }, [frotaInicial]);
 
-  // 4. Handlers
   const handleMatriculaChange = (valor, cargo) => {
     const reLimpo = toStr(valor).replace(/\D/g, '');
     setFormData(prev => ({ ...prev, [`${cargo}_re`]: reLimpo }));
@@ -144,83 +140,62 @@ const Vistoria = ({ onBack, frotaInicial = [] }) => {
     }
   };
 
-const handleVtrChange = (prefixo) => {
-  const vtr = viaturas.find(v => toStr(v.Prefixo || v.PREFIXO) === toStr(prefixo));
-  
-  if (!vtr) {
-    setFormData(prev => ({ 
-      ...prev, 
-      prefixo_vtr: '', 
-      placa_vtr: '', 
-      hodometro: '',
-      motorista_nome: '', comandante_nome: '', patrulheiro_nome: '' 
-    }));
-    return;
-  }
+  const handleVtrChange = (prefixo) => {
+    const vtr = viaturas.find(v => toStr(v.Prefixo || v.PREFIXO) === toStr(prefixo));
+    
+    if (!vtr) {
+      setFormData(prev => ({ 
+        ...prev, prefixo_vtr: '', placa_vtr: '', hodometro: '',
+        motorista_nome: '', comandante_nome: '', patrulheiro_nome: '' 
+      }));
+      return;
+    }
 
-  const getV = (key) => vtr[key] || vtr[key.toUpperCase()] || vtr[key.toLowerCase()] || '';
-  const ultKM = getV('UltimoKM');
-  setKmReferencia(Number(ultKM) || 0);
+    const getV = (key) => vtr[key] || vtr[key.toUpperCase()] || vtr[key.toLowerCase()] || '';
+    const ultKM = Number(getV('UltimoKM')) || 0;
+    setKmReferencia(ultKM);
 
-  if (tipoVistoria === 'SAÍDA') {
-    // 1. Extraímos os REs primeiro
-    const res = {
-      motorista: toStr(getV('UltimoMotoristaRE')),
-      comandante: toStr(getV('UltimoComandanteRE')),
-      patrulheiro: toStr(getV('UltimoPatrulheiroRE'))
-    };
+    if (tipoVistoria === 'SAÍDA') {
+      const buscarNome = (re) => {
+        if (!re) return '';
+        const reLimpo = toStr(re).replace(/\D/g, '');
+        const reParaBusca = (reLimpo.length <= 6 && !reLimpo.startsWith("1000")) ? "1000" + reLimpo : reLimpo;
+        const m = efetivoLocal.find(mil => toStr(mil.re) === reParaBusca || toStr(mil.re) === reLimpo);
+        return m ? `${m.patente} ${m.nome}` : '';
+      };
 
-    // 2. Criamos uma função rápida para achar o nome no efetivoLocal carregado
-    const buscarNomeNoEfetivo = (re) => {
-      if (!re) return '';
-      const reLimpo = re.replace(/\D/g, '');
-      const reParaBusca = (reLimpo.length <= 6 && !reLimpo.startsWith("1000")) ? "1000" + reLimpo : reLimpo;
-      const m = efetivoLocal.find(mil => toStr(mil.re) === reParaBusca || toStr(mil.re) === reLimpo);
-      return m ? `${m.patente} ${m.nome}` : '';
-    };
-
-    // 3. Montamos os nomes (se não tiver no PAINEL, busca no EFETIVO)
-    const nomes = {
-      motorista: toStr(getV('UltimoMotoristaNome')) || buscarNomeNoEfetivo(res.motorista),
-      comandante: toStr(getV('UltimoComandanteNome')) || buscarNomeNoEfetivo(res.comandante),
-      patrulheiro: toStr(getV('UltimoPatrulheiroNome')) || buscarNomeNoEfetivo(res.patrulheiro)
-    };
-
-    // 4. Atualizamos tudo de uma vez
-    setFormData(prev => ({
-      ...prev,
-      prefixo_vtr: toStr(vtr.Prefixo || vtr.PREFIXO),
-      placa_vtr: toStr(vtr.Placa || vtr.PLACA),
-      tipo_servico: toStr(getV('UltimoTipoServico')),
-      servico_detalhe: toStr(getV('UltimoServicoDetalhe')),
-      hodometro: toStr(ultKM),
-      // REs
-      motorista_re: res.motorista,
-      comandante_re: res.comandante,
-      patrulheiro_re: res.patrulheiro,
-      // Nomes (O que faz o Card funcionar)
-      motorista_nome: nomes.motorista,
-      comandante_nome: nomes.comandante,
-      patrulheiro_nome: nomes.patrulheiro,
-    }));
-
-  } else {
-    // Para ENTRADA: Limpa guarnição e foca na nova vistoria
-    setFormData(prev => ({
-      ...prev,
-      prefixo_vtr: toStr(vtr.Prefixo || vtr.PREFIXO),
-      placa_vtr: toStr(vtr.Placa || vtr.PLACA),
-      hodometro: '',
-      motorista_re: '', motorista_nome: '',
-      comandante_re: '', comandante_nome: '',
-      patrulheiro_re: '', patrulheiro_nome: ''
-    }));
-  }
-};
+      setFormData(prev => ({
+        ...prev,
+        prefixo_vtr: toStr(vtr.Prefixo || vtr.PREFIXO),
+        placa_vtr: toStr(vtr.Placa || vtr.PLACA),
+        tipo_servico: toStr(getV('UltimoTipoServico')),
+        servico_detalhe: toStr(getV('UltimoServicoDetalhe')),
+        hodometro: toStr(ultKM),
+        motorista_re: toStr(getV('UltimoMotoristaRE')),
+        motorista_nome: toStr(getV('UltimoMotoristaNome')) || buscarNome(getV('UltimoMotoristaRE')),
+        comandante_re: toStr(getV('UltimoComandanteRE')),
+        comandante_nome: toStr(getV('UltimoComandanteNome')) || buscarNome(getV('UltimoComandanteRE')),
+        patrulheiro_re: toStr(getV('UltimoPatrulheiroRE')),
+        patrulheiro_nome: toStr(getV('UltimoPatrulheiroNome')) || buscarNome(getV('UltimoPatrulheiroRE')),
+      }));
+    } else {
+      setFormData(prev => ({
+        ...prev,
+        prefixo_vtr: toStr(vtr.Prefixo || vtr.PREFIXO),
+        placa_vtr: toStr(vtr.Placa || vtr.PLACA),
+        hodometro: '',
+        motorista_re: '', motorista_nome: '',
+        comandante_re: '', comandante_nome: '',
+        patrulheiro_re: '', patrulheiro_nome: ''
+      }));
+    }
+  };
 
   const handleFinalizar = async () => {
     if (temAvaria && fotos.length === 0) return alert("Atenção: É obrigatório anexar fotos das avarias.");
+    if (!formData.termo_aceite) return alert("Aceite o termo para continuar.");
     if (!window.confirm("Confirmar o envio?")) return;
+
     setLoading(true);
     try {
       const falhas = Object.entries(checklist).filter(([_, s]) => s === 'FALHA').map(([i]) => i);
@@ -243,6 +218,7 @@ const handleVtrChange = (prefixo) => {
     } catch (e) { alert("Erro de conexão."); } finally { setLoading(false); }
   };
 
+  // --- COMPONENTES INTERNOS ---
   const CardGuarnicao = ({ compacto = false }) => (
     <div className={`${compacto ? 'bg-slate-800 p-3 rounded-2xl' : 'bg-slate-900 p-5 rounded-3xl'} mb-4 border-b-4 border-blue-600 shadow-inner`}>
       <div className={`flex items-center gap-2 border-b border-white/10 ${compacto ? 'mb-2 pb-1' : 'mb-4 pb-2'}`}>
@@ -290,7 +266,7 @@ const handleVtrChange = (prefixo) => {
               <div className="grid grid-cols-2 gap-3">
                 <select className="vtr-input !py-4" value={formData.prefixo_vtr} onChange={(e) => handleVtrChange(e.target.value)}>
                   <option value="">SELECIONE A VTR</option>
-                  {viaturasFiltradas.map(v => <option key={v.Prefixo} value={v.Prefixo}>{v.Prefixo}</option>)}
+                  {viaturasFiltradas.map(v => <option key={v.Prefixo || v.PREFIXO} value={v.Prefixo || v.PREFIXO}>{v.Prefixo || v.PREFIXO}</option>)}
                 </select>
                 <select className="vtr-input !py-4" value={formData.tipo_servico} onChange={(e) => setFormData({...formData, tipo_servico: e.target.value, servico_detalhe: ''})}>
                   <option value="">TIPO DE SERVIÇO</option>
@@ -426,19 +402,9 @@ const handleVtrChange = (prefixo) => {
               </p>
             </label>
 
-            {/* Ações Finais */}
             <div className="flex gap-2">
-              <button 
-                onClick={() => setStep(1)} 
-                className="flex-1 bg-white p-5 rounded-2xl font-black border-2 border-slate-200 text-slate-900 hover:bg-slate-50 transition-colors"
-              >
-                VOLTAR
-              </button>
-              <button 
-                onClick={handleFinalizar} 
-                disabled={!formData.termo_aceite || loading || (temAvaria && fotos.length === 0)} 
-                className="btn-tatico flex-[2] disabled:bg-slate-300 disabled:text-slate-500 shadow-lg active:scale-95 transition-all"
-              >
+              <button onClick={() => setStep(1)} className="flex-1 bg-white p-5 rounded-2xl font-black border-2 border-slate-200 text-slate-900 hover:bg-slate-50 transition-colors">VOLTAR</button>
+              <button onClick={handleFinalizar} disabled={!formData.termo_aceite || loading || (temAvaria && fotos.length === 0)} className="btn-tatico flex-[2] disabled:bg-slate-300 disabled:text-slate-500 shadow-lg active:scale-95 transition-all">
                 {loading ? <Loader2 className="animate-spin mx-auto"/> : "FINALIZAR ENVIO"}
               </button>
             </div>
