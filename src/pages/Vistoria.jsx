@@ -41,6 +41,7 @@ const MAPA_FALHAS_SAIDA = {
 };
 
 const ITENS_SAIDA = Object.keys(MAPA_FALHAS_SAIDA);
+const ITENS_ENTRADA = GRUPOS_ENTRADA.flatMap(g => g.itens);
 const TIPOS_SERVICO = ["Patrulhamento Ordinário", "Operação", "Força Tática", "Patrulha Comunitária", "Patrulhamento Rural", "Outro"];
 const OPCOES_COMUNITARIA = ["Patrulha Comercial", "Base Móvel", "Patrulha Escolar"];
 
@@ -67,20 +68,31 @@ const Vistoria = ({ onBack, frotaInicial = [] }) => {
   });
 
   // --- CORREÇÃO: LAZY INITIALIZATION DO CHECKLIST ---
-  const [checklist, setChecklist] = useState(() => {
-    const itensIniciais = tipoVistoria === 'ENTRADA' 
-      ? GRUPOS_ENTRADA.flatMap(g => g.itens) 
-      : ITENS_SAIDA;
-    return itensIniciais.reduce((acc, item) => ({ ...acc, [item]: 'OK' }), {});
-  });
+const [checklist, setChecklist] = useState(() => {
+  const itensIniciais = tipoVistoria === 'ENTRADA'
+    ? ITENS_ENTRADA
+    : ITENS_SAIDA;
+
+  const obj = {};
+  for (const item of itensIniciais) {
+    obj[item] = true;
+  }
+  return obj;
+});
 
   // Função para trocar o tipo de vistoria e resetar o checklist simultaneamente
   const alterarTipoVistoria = (tipo) => {
     setTipoVistoria(tipo);
     const novosItens = tipo === 'ENTRADA' 
-      ? GRUPOS_ENTRADA.flatMap(g => g.itens) 
-      : ITENS_SAIDA;
-    setChecklist(novosItens.reduce((acc, item) => ({ ...acc, [item]: 'OK' }), {}));
+  ? ITENS_ENTRADA
+  : ITENS_SAIDA;
+    const novoChecklist = {};
+for (const item of novosItens) {
+  novoChecklist[item] = true;
+}
+
+setChecklist(novoChecklist);
+    
     
     // Opcional: Limpar prefixo selecionado ao trocar tipo para evitar erros de KM
     setFormData(prev => ({ ...prev, prefixo_vtr: '', hodometro: '' }));
@@ -289,27 +301,48 @@ const handleMatriculaChange = (valor, cargo) => {
     } catch (e) { alert("Erro de conexão."); } finally { setLoading(false); }
   };
 
-  const CardGuarnicao = ({ compacto = false }) => (
+const CardGuarnicao = ({ compacto = false }) => (
   <div className={`${compacto ? 'bg-slate-800 p-3 rounded-2xl' : 'bg-slate-900 p-5 rounded-3xl'} mb-4 border-b-4 border-blue-600 shadow-inner`}>
+    
     <div className={`flex items-center gap-2 border-b border-white/10 ${compacto ? 'mb-2 pb-1' : 'mb-4 pb-2'}`}>
       <Users className="text-blue-400" size={compacto ? 14 : 18} />
-      <span className={`${compacto ? 'text-[8px]' : 'text-[10px]'} font-bold uppercase truncate ${formData[`${m.cargo}_nome`] ? 'text-white' : 'text-white/20 italic'}`}>
-  {formData[`${m.cargo}_nome`] || `---`}
-</span>
+      <span className={`${compacto ? 'text-[8px]' : 'text-[10px]'} font-bold uppercase text-white`}>
+        GUARNIÇÃO
+      </span>
     </div>
+
     <div className="space-y-2">
-      {[{ label: 'MOT', cargo: 'motorista' }, { label: 'CMD', cargo: 'comandante' }, { label: 'PTR', cargo: 'patrulheiro' }].map(m => (
+      {[
+        { label: 'MOT', cargo: 'motorista' },
+        { label: 'CMD', cargo: 'comandante' },
+        { label: 'PTR', cargo: 'patrulheiro' }
+      ].map(m => (
         <div key={m.label} className="flex items-center">
-          <span className={`${compacto ? 'text-[7px]' : 'text-[9px]'} font-black text-blue-500 w-8 text-center`}>{m.label}</span>
-          <div className={`flex-1 ml-2 ${compacto ? 'min-h-[24px] py-1' : 'min-h-[32px] py-2'} flex flex-col justify-center px-3 rounded-lg border ${formData[`${m.cargo}_nome`] ? 'bg-blue-900/30 border-blue-500/50' : 'bg-white/5 border-dashed border-white/20'}`}>
-            <span className={`${compacto ? 'text-[8px]' : 'text-[10px]'} font-bold uppercase truncate ${formData[`${m.cargo}_nome`] ? 'text-white' : 'text-white/20 italic'}`}>
-             formData?.[`${m.cargo}_nome`] ? 'text-white' : 'text-white/20 italic'
+
+          <span className={`${compacto ? 'text-[7px]' : 'text-[9px]'} font-black text-blue-500 w-8 text-center`}>
+            {m.label}
+          </span>
+
+          <div className={`flex-1 ml-2 ${compacto ? 'min-h-[24px] py-1' : 'min-h-[32px] py-2'} flex flex-col justify-center px-3 rounded-lg border ${
+            formData[`${m.cargo}_nome`]
+              ? 'bg-blue-900/30 border-blue-500/50'
+              : 'bg-white/5 border-dashed border-white/20'
+          }`}>
+
+            <span className={`${compacto ? 'text-[8px]' : 'text-[10px]'} font-bold uppercase truncate ${
+              formData[`${m.cargo}_nome`]
+                ? 'text-white'
+                : 'text-white/20 italic'
+            }`}>
+              {formData[`${m.cargo}_nome`] || '---'}
             </span>
+
             {formData[`${m.cargo}_unidade`] && (
               <span className="text-[7px] text-blue-300 font-medium uppercase leading-tight">
                 {formData[`${m.cargo}_unidade`]}
               </span>
             )}
+
           </div>
         </div>
       ))}
