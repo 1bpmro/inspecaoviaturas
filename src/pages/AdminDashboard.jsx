@@ -58,10 +58,13 @@ const AdminDashboard = ({ onBack }) => {
     v.troca_oleo === "SIM" && (!v.garageiro_re || v.garageiro_re === "" || v.garageiro_re === null)
   );
 
-  const viaturasFiltradas = viaturas.filter(v => 
-    v.Prefixo?.toUpperCase().includes(searchTerm.toUpperCase()) ||
-    v.Placa?.toUpperCase().includes(searchTerm.toUpperCase())
-  );
+ const viaturasFiltradas = viaturas.filter(v => {
+  const prefixo = (v.Prefixo || v.prefixo || "").toString().toUpperCase();
+  const placa = (v.Placa || v.placa || "").toString().toUpperCase();
+  const busca = searchTerm.toUpperCase();
+
+  return prefixo.includes(busca) || placa.includes(busca);
+});
 
   const handleSaveViatura = async (e) => {
     e.preventDefault();
@@ -150,8 +153,16 @@ const AdminDashboard = ({ onBack }) => {
             {activeTab === 'frota' && (
               <button 
                 onClick={() => {
-                  setFormData({prefixo:'', placa:'', modelo:'', tipoCarroceria:'CAMBURÃO', isEditing: false});
-                  setIsAddingVtr(true);
+                  onClick={() => {
+  setFormData({
+    id: '', // Importante manter a estrutura
+    prefixo: '', 
+    placa: '', 
+    modelo: '', 
+    tipoCarroceria: 'CAMBURÃO', 
+    isEditing: false
+  });
+  setIsAddingVtr(true);
                 }} 
                 className="bg-slate-900 text-white px-5 py-3 rounded-2xl text-[10px] font-black uppercase flex items-center gap-2 hover:bg-amber-500 hover:text-slate-900 transition-all shadow-lg"
               >
