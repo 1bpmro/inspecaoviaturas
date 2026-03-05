@@ -350,7 +350,7 @@ const CardGuarnicao = ({ compacto = false }) => (
   </div>
 );
 
-  return (
+return (
     <div className="min-h-screen bg-slate-50 pb-10 text-slate-900 font-sans">
       <header className="bg-slate-900 text-white p-5 sticky top-0 z-50 border-b-4 border-blue-900 shadow-md">
         <div className="max-w-xl mx-auto flex items-center justify-between">
@@ -410,74 +410,70 @@ const CardGuarnicao = ({ compacto = false }) => (
                 </select>
               </div>
 
-             <div className="space-y-4">
-  {['motorista', 'comandante', 'patrulheiro'].map(cargo => (
-    <div key={cargo} className="space-y-2 p-3 bg-slate-50 rounded-3xl border border-slate-200">
-      <div className="flex justify-between items-center px-2">
-        <label className="text-[9px] font-black text-slate-400 uppercase italic">{cargo}</label>
-        {formData[`${cargo}_re`]?.length >= 5 && !efetivoLocal.some(m => String(m.re).includes(formData[`${cargo}_re`])) && (
-           <span className="text-[7px] bg-orange-500 text-white px-2 py-0.5 rounded-full font-bold animate-pulse">EXTERNO</span>
-        )}
-      </div>
-      
-      {/* Input de Matrícula */}
-      <input 
-        type="tel" 
-        placeholder={`MATRÍCULA (RE)`} 
-        className="vtr-input !bg-white" 
-        value={formData[`${cargo}_re`]} 
-        onChange={(e) => handleMatriculaChange(e.target.value, cargo)} 
-      />
-
-      {/* Campos Extras: Abrem automaticamente para preenchimento manual */}
-      {formData[`${cargo}_re`]?.length >= 5 && (
-        <div className="grid grid-cols-1 gap-2 animate-in slide-in-from-top-2 duration-300">
-          <input 
-            type="text" 
-            placeholder="GRADUAÇÃO E NOME DE GUERRA" 
-            className={`vtr-input !py-3 !text-[10px] ${!formData[`${cargo}_nome`] ? 'border-orange-400 bg-orange-50' : 'bg-blue-50/50 border-blue-100'}`}
-            value={formData[`${cargo}_nome`] || ''} 
-            onChange={(e) => setFormData({...formData, [`${cargo}_nome`]: e.target.value.toUpperCase()})}
-          />
-          <input 
-            type="text" 
-            placeholder="LOTAÇÃO (Ex: 5º BPM, BPFRON...)" 
-            className={`vtr-input !py-3 !text-[10px] ${!formData[`${cargo}_unidade`] ? 'border-orange-400 bg-orange-50' : 'bg-blue-50/50 border-blue-100'}`}
-            value={formData[`${cargo}_unidade`] || ''} 
-            onChange={(e) => setFormData({...formData, [`${cargo}_unidade`]: e.target.value.toUpperCase()})}
-          />
-        </div>
-      )}
-    </div>
-  ))}
-</div>
-
-                {precisaTrocaOleo && (
-                  <div className="animate-in zoom-in-95 duration-300">
-                    <button type="button" onClick={() => setModalOleoOpen(true)} className="w-full bg-orange-50 border-2 border-orange-500 p-4 rounded-3xl flex items-center justify-between group active:scale-95 transition-all shadow-sm shadow-orange-100">
-                      <div className="flex items-center gap-3">
-                        <div className="bg-orange-500 p-2 rounded-xl text-white shadow-md">
-                          <Wrench size={20} className="animate-pulse" />
-                        </div>
-                        <div className="text-left">
-                          <p className="text-[10px] font-black text-orange-700 uppercase leading-none">Manutenção de Óleo</p>
-                          <p className="text-[8px] font-bold text-orange-500 uppercase italic">Necessário realizar a troca e registrar</p>
-                        </div>
+              <div className="space-y-4">
+                {['motorista', 'comandante', 'patrulheiro'].map(cargo => (
+                  <div key={cargo} className="space-y-2 p-3 bg-slate-50 rounded-3xl border border-slate-200">
+                    <div className="flex justify-between items-center px-2">
+                      <label className="text-[9px] font-black text-slate-400 uppercase italic">{cargo}</label>
+                      {formData[`${cargo}_re`]?.length >= 5 && !efetivoLocal.some(m => String(m.re).includes(formData[`${cargo}_re`])) && (
+                        <span className="text-[7px] bg-orange-500 text-white px-2 py-0.5 rounded-full font-bold animate-pulse">EXTERNO</span>
+                      )}
+                    </div>
+                    <input 
+                      type="tel" 
+                      placeholder={`MATRÍCULA (RE)`} 
+                      className="vtr-input !bg-white" 
+                      value={formData[`${cargo}_re`]} 
+                      onChange={(e) => handleMatriculaChange(e.target.value, cargo)} 
+                    />
+                    {formData[`${cargo}_re`]?.length >= 5 && (
+                      <div className="grid grid-cols-1 gap-2 animate-in slide-in-from-top-2 duration-300">
+                        <input 
+                          type="text" 
+                          placeholder="GRADUAÇÃO E NOME DE GUERRA" 
+                          className={`vtr-input !py-3 !text-[10px] ${!formData[`${cargo}_nome`] ? 'border-orange-400 bg-orange-50' : 'bg-blue-50/50 border-blue-100'}`}
+                          value={formData[`${cargo}_nome`] || ''} 
+                          onChange={(e) => setFormData({...formData, [`${cargo}_nome`]: e.target.value.toUpperCase()})}
+                        />
+                        <input 
+                          type="text" 
+                          placeholder="LOTAÇÃO (Ex: 5º BPM, BPFRON...)" 
+                          className={`vtr-input !py-3 !text-[10px] ${!formData[`${cargo}_unidade`] ? 'border-orange-400 bg-orange-50' : 'bg-blue-50/50 border-blue-100'}`}
+                          value={formData[`${cargo}_unidade`] || ''} 
+                          onChange={(e) => setFormData({...formData, [`${cargo}_unidade`]: e.target.value.toUpperCase()})}
+                        />
                       </div>
-                      <div className="bg-orange-500 text-white p-1 rounded-full"><ChevronRight size={16} /></div>
-                    </button>
+                    )}
                   </div>
-                )}
-
-                <ModalTrocaOleo 
-                  isOpen={modalOleoOpen} 
-                  onClose={() => setModalOleoOpen(false)}
-                  vtr={viaturas.find(v => String(v.Prefixo || v.PREFIXO) === String(formData.prefixo_vtr))}
-                  kmEntrada={formData.hodometro}
-                  user={user}
-                />
+                ))}
               </div>
+
+              {precisaTrocaOleo && (
+                <div className="animate-in zoom-in-95 duration-300">
+                  <button type="button" onClick={() => setModalOleoOpen(true)} className="w-full bg-orange-50 border-2 border-orange-500 p-4 rounded-3xl flex items-center justify-between group active:scale-95 transition-all shadow-sm shadow-orange-100">
+                    <div className="flex items-center gap-3">
+                      <div className="bg-orange-500 p-2 rounded-xl text-white shadow-md">
+                        <Wrench size={20} className="animate-pulse" />
+                      </div>
+                      <div className="text-left">
+                        <p className="text-[10px] font-black text-orange-700 uppercase leading-none">Manutenção de Óleo</p>
+                        <p className="text-[8px] font-bold text-orange-500 uppercase italic">Necessário realizar a troca e registrar</p>
+                      </div>
+                    </div>
+                    <div className="bg-orange-500 text-white p-1 rounded-full"><ChevronRight size={16} /></div>
+                  </button>
+                </div>
+              )}
+
+              <ModalTrocaOleo 
+                isOpen={modalOleoOpen} 
+                onClose={() => setModalOleoOpen(false)}
+                vtr={viaturas.find(v => String(v.Prefixo || v.PREFIXO) === String(formData.prefixo_vtr))}
+                kmEntrada={formData.hodometro}
+                user={user}
+              />
             </section>
+            
             <button onClick={() => setStep(2)} disabled={isFormIncompleto} className="btn-tatico w-full disabled:opacity-50">PRÓXIMO <ChevronRight size={18}/></button>
           </div>
         ) : (
@@ -544,6 +540,20 @@ const CardGuarnicao = ({ compacto = false }) => (
                 )}
               </div>
             </div>
+
+            <button 
+              onClick={handleSalvarVistoria} 
+              disabled={isSubmitting || (temAvaria && fotos.length === 0)} 
+              className="btn-tatico w-full"
+            >
+              {isSubmitting ? <Loader2 className="animate-spin" /> : 'CONCLUIR VISTORIA'}
+            </button>
+            <button onClick={() => setStep(1)} className="w-full py-4 text-[10px] font-black text-slate-400 uppercase">Voltar ao Início</button>
+          </div>
+        )}
+      </main>
+    </div>
+  );
 
             <label className="flex items-start gap-4 p-5 bg-white border-2 border-slate-200 rounded-3xl cursor-pointer shadow-sm hover:border-blue-300 transition-all">
               <input type="checkbox" className="w-6 h-6 rounded text-blue-600 mt-1" checked={formData.termo_aceite} onChange={(e) => setFormData({...formData, termo_aceite: e.target.checked})} />
