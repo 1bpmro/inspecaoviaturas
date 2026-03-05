@@ -55,6 +55,7 @@ const Vistoria = ({ onBack, frotaInicial = [] }) => {
   const [fotos, setFotos] = useState([]);
   const [protegerFotos, setProtegerFotos] = useState(false);
   const [kmReferencia, setKmReferencia] = useState(0);
+  const [modalOleoOpen, setModalOleoOpen] = useState(false);
   
   const [formData, setFormData] = useState({
     prefixo_vtr: '', placa_vtr: '', hodometro: '', videomonitoramento: '', 
@@ -65,7 +66,25 @@ const Vistoria = ({ onBack, frotaInicial = [] }) => {
     termo_aceite: false
   });
 
-  const [checklist, setChecklist] = useState({});
+  // --- CORREÇÃO: LAZY INITIALIZATION DO CHECKLIST ---
+  const [checklist, setChecklist] = useState(() => {
+    const itensIniciais = tipoVistoria === 'ENTRADA' 
+      ? GRUPOS_ENTRADA.flatMap(g => g.itens) 
+      : ITENS_SAIDA;
+    return itensIniciais.reduce((acc, item) => ({ ...acc, [item]: 'OK' }), {});
+  });
+
+  // Função para trocar o tipo de vistoria e resetar o checklist simultaneamente
+  const alterarTipoVistoria = (tipo) => {
+    setTipoVistoria(tipo);
+    const novosItens = tipo === 'ENTRADA' 
+      ? GRUPOS_ENTRADA.flatMap(g => g.itens) 
+      : ITENS_SAIDA;
+    setChecklist(novosItens.reduce((acc, item) => ({ ...acc, [item]: 'OK' }), {}));
+    
+    // Opcional: Limpar prefixo selecionado ao trocar tipo para evitar erros de KM
+    setFormData(prev => ({ ...prev, prefixo_vtr: '', hodometro: '' }));
+  };
 
   const toStr = useCallback((val) => (val !== undefined && val !== null ? String(val) : ''), []);
 
@@ -82,10 +101,32 @@ const Vistoria = ({ onBack, frotaInicial = [] }) => {
     return tipoVistoria === 'SAÍDA' && kmAtual > 0 && kmAtual <= kmReferencia;
   }, [formData.hodometro, kmReferencia, tipoVistoria]);
 
+  const precisaTrocaOleo = useMemo(() => {
+    if (!formData.hodometro || !formData.prefixo_vtr) return false;
+    const vtr = viaturas.find(v => String(v.Prefixo || v.PREFIXO) === String(formData.prefixo_vtr));
+    if (!vtr) return false;
+
+    const kmAtual = Number(formData.hodometro);
+    const kmUltima = Number(vtr.KM_UltimaTroca || 0);
+    const dataUltimaStr = vtr.Data_UltimaTroca; 
+
+    const limiteKM = kmUltima + 10000;
+    const trocaPorKM = (limiteKM - kmAtual) <= 50;
+
+    let trocaPorData = false;
+    if (dataUltimaStr) {
+      const dataUltima = new Date(dataUltimaStr);
+      const hoje = new Date();
+      const seisMesesDepois = new Date(dataUltima);
+      seisMesesDepois.setMonth(dataUltima.getMonth() + 6);
+      trocaPorData = hoje >= seisMesesDepois;
+    }
+    return trocaPorKM || trocaPorData;
+  }, [formData.hodometro, formData.prefixo_vtr, viaturas]);
+
   const isFormIncompleto = useMemo(() => {
     const servicosEspeciais = ['Operação', 'Outro', 'Patrulha Comunitária'];
     const servicoIncompleto = !formData.tipo_servico || (servicosEspeciais.includes(formData.tipo_servico) && !formData.servico_detalhe);
-    
     return (
       !formData.prefixo_vtr || 
       servicoIncompleto ||
@@ -95,11 +136,6 @@ const Vistoria = ({ onBack, frotaInicial = [] }) => {
       kmInvalido
     );
   }, [formData, kmInvalido]);
-
-  useEffect(() => {
-    const todosItens = tipoVistoria === 'ENTRADA' ? GRUPOS_ENTRADA.flatMap(g => g.itens) : ITENS_SAIDA;
-    setChecklist(todosItens.reduce((acc, item) => ({ ...acc, [item]: 'OK' }), {}));
-  }, [tipoVistoria]);
 
   useEffect(() => {
     let isMounted = true;
@@ -123,7 +159,6 @@ const Vistoria = ({ onBack, frotaInicial = [] }) => {
   const handleMatriculaChange = (valor, cargo) => {
     const reLimpo = toStr(valor).replace(/\D/g, '');
     setFormData(prev => ({ ...prev, [`${cargo}_re`]: reLimpo }));
-
     if (reLimpo.length >= 4) {
       const reParaBusca = (reLimpo.length <= 6 && !reLimpo.startsWith("1000")) ? "1000" + reLimpo : reLimpo;
       const militar = efetivoLocal.find(m => toStr(m.re) === reParaBusca || toStr(m.re) === reLimpo);
@@ -142,7 +177,6 @@ const Vistoria = ({ onBack, frotaInicial = [] }) => {
 
   const handleVtrChange = (prefixo) => {
     const vtr = viaturas.find(v => toStr(v.Prefixo || v.PREFIXO) === toStr(prefixo));
-    
     if (!vtr) {
       setFormData(prev => ({ 
         ...prev, prefixo_vtr: '', placa_vtr: '', hodometro: '',
@@ -150,7 +184,6 @@ const Vistoria = ({ onBack, frotaInicial = [] }) => {
       }));
       return;
     }
-
     const getV = (key) => vtr[key] || vtr[key.toUpperCase()] || vtr[key.toLowerCase()] || '';
     const ultKM = Number(getV('UltimoKM')) || 0;
     setKmReferencia(ultKM);
@@ -163,7 +196,6 @@ const Vistoria = ({ onBack, frotaInicial = [] }) => {
         const m = efetivoLocal.find(mil => toStr(mil.re) === reParaBusca || toStr(mil.re) === reLimpo);
         return m ? `${m.patente} ${m.nome}` : '';
       };
-
       setFormData(prev => ({
         ...prev,
         prefixo_vtr: toStr(vtr.Prefixo || vtr.PREFIXO),
@@ -212,13 +244,11 @@ const Vistoria = ({ onBack, frotaInicial = [] }) => {
         militar_logado: `${user.patente} ${user.nome}`,
         status_garageiro: "PENDENTE"
       });
-
       if (res.status === 'success') { alert("Sucesso!"); onBack(); }
       else { alert("Erro: " + res.message); }
     } catch (e) { alert("Erro de conexão."); } finally { setLoading(false); }
   };
 
-  // --- COMPONENTES INTERNOS ---
   const CardGuarnicao = ({ compacto = false }) => (
     <div className={`${compacto ? 'bg-slate-800 p-3 rounded-2xl' : 'bg-slate-900 p-5 rounded-3xl'} mb-4 border-b-4 border-blue-600 shadow-inner`}>
       <div className={`flex items-center gap-2 border-b border-white/10 ${compacto ? 'mb-2 pb-1' : 'mb-4 pb-2'}`}>
@@ -255,8 +285,8 @@ const Vistoria = ({ onBack, frotaInicial = [] }) => {
 
       <main className="max-w-xl mx-auto p-4 space-y-6">
         <div className="flex bg-slate-200 p-1 rounded-2xl shadow-inner">
-          <button onClick={() => setTipoVistoria('ENTRADA')} className={`flex-1 py-3 rounded-xl font-black text-[10px] transition-all ${tipoVistoria === 'ENTRADA' ? 'bg-green-600 text-white shadow-lg' : 'text-slate-500'}`}>ENTRADA</button>
-          <button onClick={() => setTipoVistoria('SAÍDA')} className={`flex-1 py-3 rounded-xl font-black text-[10px] transition-all ${tipoVistoria === 'SAÍDA' ? 'bg-orange-500 text-white shadow-lg' : 'text-slate-500'}`}>SAÍDA</button>
+          <button onClick={() => alterarTipoVistoria('ENTRADA')} className={`flex-1 py-3 rounded-xl font-black text-[10px] transition-all ${tipoVistoria === 'ENTRADA' ? 'bg-green-600 text-white shadow-lg' : 'text-slate-500'}`}>ENTRADA</button>
+          <button onClick={() => alterarTipoVistoria('SAÍDA')} className={`flex-1 py-3 rounded-xl font-black text-[10px] transition-all ${tipoVistoria === 'SAÍDA' ? 'bg-orange-500 text-white shadow-lg' : 'text-slate-500'}`}>SAÍDA</button>
         </div>
 
         {step === 1 ? (
@@ -304,6 +334,31 @@ const Vistoria = ({ onBack, frotaInicial = [] }) => {
                 {['motorista', 'comandante', 'patrulheiro'].map(cargo => (
                   <input key={cargo} type="tel" placeholder={`MATRÍCULA ${cargo.toUpperCase()}`} className="vtr-input !bg-slate-50" value={formData[`${cargo}_re`]} onChange={(e) => handleMatriculaChange(e.target.value, cargo)} />
                 ))}
+
+                {precisaTrocaOleo && (
+                  <div className="animate-in zoom-in-95 duration-300">
+                    <button type="button" onClick={() => setModalOleoOpen(true)} className="w-full bg-orange-50 border-2 border-orange-500 p-4 rounded-3xl flex items-center justify-between group active:scale-95 transition-all shadow-sm shadow-orange-100">
+                      <div className="flex items-center gap-3">
+                        <div className="bg-orange-500 p-2 rounded-xl text-white shadow-md">
+                          <Wrench size={20} className="animate-pulse" />
+                        </div>
+                        <div className="text-left">
+                          <p className="text-[10px] font-black text-orange-700 uppercase leading-none">Manutenção de Óleo</p>
+                          <p className="text-[8px] font-bold text-orange-500 uppercase italic">Necessário realizar a troca e registrar</p>
+                        </div>
+                      </div>
+                      <div className="bg-orange-500 text-white p-1 rounded-full"><ChevronRight size={16} /></div>
+                    </button>
+                  </div>
+                )}
+
+                <ModalTrocaOleo 
+                  isOpen={modalOleoOpen} 
+                  onClose={() => setModalOleoOpen(false)}
+                  vtr={viaturas.find(v => String(v.Prefixo || v.PREFIXO) === String(formData.prefixo_vtr))}
+                  kmEntrada={formData.hodometro}
+                  user={user}
+                />
               </div>
             </section>
             <button onClick={() => setStep(2)} disabled={isFormIncompleto} className="btn-tatico w-full disabled:opacity-50">PRÓXIMO <ChevronRight size={18}/></button>
@@ -345,7 +400,6 @@ const Vistoria = ({ onBack, frotaInicial = [] }) => {
               )}
             </div>
 
-            {/* Upload de Fotos */}
             <div className={`p-6 rounded-[2.5rem] border-2 bg-white transition-all shadow-sm ${temAvaria && fotos.length === 0 ? 'border-red-500 animate-pulse' : 'border-slate-200'}`}>
               <p className="text-[9px] font-black text-slate-400 uppercase mb-3 text-center">Fotos da Vistoria (Mín 1 se houver falha)</p>
               <div className="grid grid-cols-4 gap-2">
@@ -366,10 +420,7 @@ const Vistoria = ({ onBack, frotaInicial = [] }) => {
                         const compressed = await imageCompression(file, options);
                         const reader = new FileReader(); 
                         reader.readAsDataURL(compressed);
-                        reader.onloadend = () => { 
-                          setFotos(p => [...p, reader.result]); 
-                          setUploading(false); 
-                        };
+                        reader.onloadend = () => { setFotos(p => [...p, reader.result]); setUploading(false); };
                       } catch (err) { setUploading(false); }
                     }} />
                   </label>
@@ -377,33 +428,20 @@ const Vistoria = ({ onBack, frotaInicial = [] }) => {
               </div>
             </div>
 
-            {/* Termo de Responsabilidade */}
             <label className="flex items-start gap-4 p-5 bg-white border-2 border-slate-200 rounded-3xl cursor-pointer shadow-sm hover:border-blue-300 transition-all">
-              <input 
-                type="checkbox" 
-                className="w-6 h-6 rounded text-blue-600 mt-1" 
-                checked={formData.termo_aceite} 
-                onChange={(e) => setFormData({...formData, termo_aceite: e.target.checked})} 
-              />
+              <input type="checkbox" className="w-6 h-6 rounded text-blue-600 mt-1" checked={formData.termo_aceite} onChange={(e) => setFormData({...formData, termo_aceite: e.target.checked})} />
               <p className="text-[10px] font-black uppercase text-slate-600 leading-tight text-justify">
                 EU, <span className="text-slate-900 underline">{formData.motorista_nome || 'MOTORISTA'}</span>, 
                 {tipoVistoria === 'ENTRADA' ? (
-                  <>
-                    &nbsp;INFORMO ESTAR ME RESPONSABILIZANDO PELA VIATURA <span className="text-blue-600 font-black">{formData.prefixo_vtr || '_______'}</span>, 
-                    CIENTE DO ESTADO DE CONSERVAÇÃO DOS ITENS ACIMA VISTORIADOS. 
-                    DECLARO QUE AS INFORMAÇÕES SÃO VERDADEIRAS.
-                  </>
+                  <> &nbsp;INFORMO ESTAR ME RESPONSABILIZANDO PELA VIATURA <span className="text-blue-600 font-black">{formData.prefixo_vtr || '_______'}</span>, CIENTE DO ESTADO DE CONSERVAÇÃO DOS ITENS ACIMA VISTORIADOS. </>
                 ) : (
-                  <>
-                    &nbsp;ESTOU REALIZANDO A ENTREGA DA VIATURA <span className="text-orange-600 font-black">{formData.prefixo_vtr || '_______'}</span>, 
-                    ATESTANDO QUE O ESTADO DE LIMPEZA E CONSERVAÇÃO CONDIZ COM O CHECKLIST REALIZADO.
-                  </>
+                  <> &nbsp;ESTOU REALIZANDO A ENTREGA DA VIATURA <span className="text-orange-600 font-black">{formData.prefixo_vtr || '_______'}</span>, ATESTANDO QUE O ESTADO DE LIMPEZA E CONSERVAÇÃO CONDIZ COM O CHECKLIST REALIZADO. </>
                 )}
               </p>
             </label>
 
             <div className="flex gap-2">
-              <button onClick={() => setStep(1)} className="flex-1 bg-white p-5 rounded-2xl font-black border-2 border-slate-200 text-slate-900 hover:bg-slate-50 transition-colors">VOLTAR</button>
+              <button onClick={() => setStep(1)} className="flex-1 bg-white p-5 rounded-2xl font-black border-2 border-slate-200 text-slate-900">VOLTAR</button>
               <button onClick={handleFinalizar} disabled={!formData.termo_aceite || loading || (temAvaria && fotos.length === 0)} className="btn-tatico flex-[2] disabled:bg-slate-300 disabled:text-slate-500 shadow-lg active:scale-95 transition-all">
                 {loading ? <Loader2 className="animate-spin mx-auto"/> : "FINALIZAR ENVIO"}
               </button>
@@ -411,6 +449,68 @@ const Vistoria = ({ onBack, frotaInicial = [] }) => {
           </div>
         )}
       </main>
+    </div>
+  );
+};
+
+const ModalTrocaOleo = ({ isOpen, onClose, vtr, kmEntrada, user }) => {
+  const [loading, setLoading] = useState(false);
+  const [fotoOleo, setFotoOleo] = useState(null);
+  const [dadosOleo, setDadosOleo] = useState({
+    data_troca: new Date().toISOString().split('T')[0],
+    km_troca: kmEntrada
+  });
+
+  if (!isOpen || !vtr) return null;
+
+  const handleSalvar = async () => {
+    if (Number(dadosOleo.km_troca) <= Number(kmEntrada)) return alert("O KM da troca deve ser maior que o KM de entrada!");
+    if (!fotoOleo) return alert("Anexe a foto do comprovante.");
+    setLoading(true);
+    try {
+      const res = await gasApi.registrarTrocaOleo({
+        prefixo: vtr.Prefixo || vtr.PREFIXO,
+        ...dadosOleo,
+        foto: fotoOleo,
+        militar_re: user.re,
+        militar_nome: `${user.patente} ${user.nome}`
+      });
+      if (res.status === 'success') { alert("Registrado!"); onClose(); }
+    } catch (e) { alert("Erro ao enviar."); } finally { setLoading(false); }
+  };
+
+  return (
+    <div className="fixed inset-0 z-[100] bg-slate-900/95 backdrop-blur-md flex items-center justify-center p-4">
+      <div className="bg-white w-full max-w-md rounded-[2.5rem] p-6 space-y-4 shadow-2xl border-t-8 border-orange-500">
+        <div className="text-center">
+          <div className="bg-orange-100 w-16 h-16 rounded-full flex items-center justify-center mx-auto mb-2 text-orange-600"><Wrench size={32} /></div>
+          <h2 className="font-black text-slate-900 uppercase text-sm">Registrar Troca de Óleo</h2>
+        </div>
+        <div className="grid grid-cols-2 gap-2">
+          <input type="date" className="vtr-input !bg-slate-50" value={dadosOleo.data_troca} onChange={e => setDadosOleo({...dadosOleo, data_troca: e.target.value})} />
+          <input type="number" className="vtr-input !bg-slate-50" value={dadosOleo.km_troca} onChange={e => setDadosOleo({...dadosOleo, km_troca: e.target.value})} />
+        </div>
+        <div className="p-4 border-2 border-dashed border-slate-200 rounded-3xl text-center bg-slate-50">
+          {fotoOleo ? (
+            <div className="relative aspect-video rounded-2xl overflow-hidden"><img src={fotoOleo} className="w-full h-full object-cover" /><button onClick={() => setFotoOleo(null)} className="absolute top-2 right-2 bg-red-600 text-white p-1 rounded-full"><X size={14}/></button></div>
+          ) : (
+            <label className="cursor-pointer flex flex-col items-center py-4">
+              <Plus className="text-orange-500 mb-1" /><span className="text-[10px] font-black text-slate-500 uppercase">Foto do Comprovante</span>
+              <input type="file" accept="image/*" capture="environment" className="hidden" onChange={async (e) => {
+                 const file = e.target.files[0]; if (!file) return;
+                 const options = { maxSizeMB: 0.2, maxWidthOrHeight: 1024 };
+                 const compressed = await imageCompression(file, options);
+                 const reader = new FileReader(); reader.readAsDataURL(compressed);
+                 reader.onloadend = () => setFotoOleo(reader.result);
+              }} />
+            </label>
+          )}
+        </div>
+        <div className="flex gap-2">
+          <button onClick={onClose} className="flex-1 py-4 font-black text-[10px] uppercase text-slate-400">Cancelar</button>
+          <button onClick={handleSalvar} disabled={loading} className="flex-[2] bg-orange-500 text-white rounded-2xl font-black text-[10px] uppercase">{loading ? "..." : "Confirmar Troca"}</button>
+        </div>
+      </div>
     </div>
   );
 };
