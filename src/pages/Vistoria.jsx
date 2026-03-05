@@ -274,8 +274,14 @@ const Vistoria = ({ onBack, frotaInicial = [] }) => {
           </div>
         )}
       </main>
-      <ModalTrocaOleo isOpen={modalOleoOpen} onClose={() => setModalOleoOpen(false)} vtr={viaturas.find(v => toStr(v.Prefixo || v.PREFIXO) === toStr(formData.prefixo_vtr))} kmEntrada={formData.hodometro} user={user} />
-    </div>
+<ModalTrocaOleo 
+  isOpen={modalOleoOpen} 
+  onClose={() => setModalOleoOpen(false)} 
+  vtr={viaturas.find(v => toStr(v.Prefixo || v.PREFIXO) === toStr(formData.prefixo_vtr))} 
+  kmEntrada={formData.hodometro} 
+  user={user}
+  gasApi={gasApi} // ESTAVA FALTANDO ESSA LINHA
+/>    </div>
   );
 };
 
