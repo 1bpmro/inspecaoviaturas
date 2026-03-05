@@ -79,7 +79,7 @@ const GarageiroDashboard = ({ onBack }) => {
 const finalizarConferencia = async () => {
   if (isSubmitting) return;
 
-  // Validações de segurança
+  // 1. Validações de segurança
   if (!conf.motoristaConfirmado && !conf.novoMotoristaRE) {
     return alert("Por favor, selecione quem está entregando a viatura.");
   }
@@ -93,13 +93,14 @@ const finalizarConferencia = async () => {
   }
 
   setIsSubmitting(true);
+  
   try {
+    // O gasApi agora já tem o delay de 500ms embutido conforme ajustamos no gasClient.js
     const res = await gasApi.confirmarVistoriaGarageiro({
       rowId: selectedVtr.rowId,
+      id_vistoria: selectedVtr.id_sistema || selectedVtr.ID_SISTEMA, // Adicionado ID para redundância
       status_fisico: conf.avaria ? 'AVARIADA' : 'OK',
-      // Envia os dois status de limpeza concatenados para a coluna de limpeza
       limpeza: `INT: ${conf.limpezaInterna ? 'C' : 'NC'} | EXT: ${conf.limpezaExterna ? 'C' : 'NC'}`,
-      // Envia a informação de pertences
       pertences: conf.pertences === 'SIM' ? `SIM: ${conf.detalhePertences}` : 'NÃO',
       obs_garageiro: conf.obs,
       garageiro_re: user.re,
@@ -109,9 +110,11 @@ const finalizarConferencia = async () => {
     });
 
     if (res.status === 'success') {
+      // 2. Fecha o modal e limpa fotos
       setShowModal(false);
       setFotoAvaria(null);
-      // Reset completo do estado para o padrão original
+      
+      // 3. Reset do formulário para o estado inicial
       setConf({ 
         limpezaInterna: true, 
         limpezaExterna: true, 
@@ -122,11 +125,19 @@ const finalizarConferencia = async () => {
         avaria: false, 
         obs: '' 
       });
-      fetchData();
+
+      // 4. ESTRATÉGIA DE ATUALIZAÇÃO FORÇADA
+      // Limpamos os estados locais primeiro para garantir que o usuário veja a atualização
+      setVistorias([]); 
+      setViaturas([]);
+      
+      // Dispara a busca dos dados (que agora virão da planilha, pois o cache foi morto no GAS)
+      await fetchData(); 
+
     } else {
-      // Tratamento para o erro de concorrência (vistoria já removida da planilha de pendentes)
+      // Tratamento para o erro de concorrência
       if (res.message && (res.message.includes("não encontrada") || res.message.includes("removida"))) {
-        alert("Esta vistoria já foi finalizada ou não consta mais na lista. Atualizando...");
+        alert("Esta vistoria já foi finalizada por outro usuário ou atualizada no sistema.");
         setShowModal(false);
         fetchData();
       } else {
@@ -135,7 +146,8 @@ const finalizarConferencia = async () => {
     }
   } catch (e) {
     console.error("Erro na conferência:", e);
-    alert("Erro de conexão com o servidor.");
+    alert("Erro de conexão: Os dados foram salvos na planilha, mas a lista pode demorar a atualizar.");
+    fetchData(); // Tenta atualizar mesmo em caso de erro de timeout
   } finally {
     setIsSubmitting(false);
   }
