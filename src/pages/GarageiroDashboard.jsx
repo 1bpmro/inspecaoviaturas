@@ -1,9 +1,10 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { gasApi } from '../api/gasClient';
 import { useAuth } from '../lib/AuthContext';
 import { 
   Car, CheckCircle2, AlertTriangle, Clock, RefreshCw,
-  Search, ShieldCheck, Lock, Unlock, History, Camera, User, X, AlertCircle, ChevronDown
+  Search, ShieldCheck, Lock, Unlock, History, Camera, User, X, 
+  AlertCircle, ChevronDown, Inbox, Droplets, Eye, Check, Volume2, VolumeX
 } from 'lucide-react';
 
 const GarageiroDashboard = ({ onBack }) => {
@@ -13,21 +14,29 @@ const GarageiroDashboard = ({ onBack }) => {
   const [viaturas, setViaturas] = useState([]);
   const [motoristas, setMotoristas] = useState([]); 
   const [loading, setLoading] = useState(true);
-  const [isSubmitting, setIsSubmitting] = useState(false); 
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [searchTerm, setSearchTerm] = useState('');
+  const [soundEnabled, setSoundEnabled] = useState(false);
   
+  // Refs para controle de áudio e contagem
+  const audioRef = useRef(new Audio('https://assets.mixkit.co/active_storage/sfx/2869/2869-preview.mp3'));
+  const prevVistoriasCount = useRef(0);
+
   const [showModal, setShowModal] = useState(false);
   const [selectedVtr, setSelectedVtr] = useState(null);
+  const [viewingPhoto, setViewingPhoto] = useState(null);
   
   const [conf, setConf] = useState({ 
-    limpezaInterna: true,   // Novo
-    limpezaExterna: true,   // Novo
-    pertences: 'NÃO',        // Novo
-    detalhePertences: '',    // Novo
+    limpezaInterna: true,
+    limpezaExterna: true,
+    pertences: 'NÃO',
+    detalhePertences: '',
     motoristaConfirmado: true, 
     novoMotoristaRE: '',
     avaria: false, 
-    obs: '' 
-});
+    obs: '',
+    oleoConfirmado: false
+  });
   
   const [fotoAvaria, setFotoAvaria] = useState(null);
   const [uploading, setUploading] = useState(false);
@@ -36,6 +45,13 @@ const GarageiroDashboard = ({ onBack }) => {
   const [lockData, setLockData] = useState({ 
     prefixo: '', motivo: 'manutencao', detalhes: '', re_responsavel: '' 
   });
+
+  // Cálculo de tempo de espera
+  const calcularEspera = (timestamp) => {
+    if (!timestamp) return null;
+    const diff = Math.floor((new Date() - new Date(timestamp)) / 60000);
+    return diff >= 0 ? diff : 0;
+  };
 
   const fetchData = async () => {
     setLoading(true);
@@ -47,7 +63,17 @@ const GarageiroDashboard = ({ onBack }) => {
       ]);
       
       if (resVtr.status === 'success') setViaturas(resVtr.data);
-      if (resPend.status === 'success') setVistorias(resPend.data);
+      if (resPend.status === 'success') {
+        const novasVistorias = resPend.data;
+        
+        // LÓGICA DO SINAL SONORO
+        if (soundEnabled && novasVistorias.length > prevVistoriasCount.current) {
+          audioRef.current.play().catch(e => console.log("Erro ao tocar som:", e));
+        }
+        
+        prevVistoriasCount.current = novasVistorias.length;
+        setVistorias(novasVistorias);
+      }
       if (resMot.status === 'success') setMotoristas(resMot.data);
     } catch (error) {
       console.error("Erro ao buscar dados:", error);
@@ -56,7 +82,12 @@ const GarageiroDashboard = ({ onBack }) => {
     }
   };
 
-  useEffect(() => { fetchData(); }, []);
+  // Auto-refresh a cada 30 segundos para o Garageiro não perder nada
+  useEffect(() => {
+    fetchData();
+    const interval = setInterval(fetchData, 30000);
+    return () => clearInterval(interval);
+  }, [soundEnabled]);
 
   const handleFileChange = async (e) => {
     const file = e.target.files[0];
@@ -64,11 +95,7 @@ const GarageiroDashboard = ({ onBack }) => {
     setUploading(true);
     try {
       const res = await gasApi.uploadFoto(file); 
-      if (res.status === 'success') {
-        setFotoAvaria(res.url);
-      } else {
-        alert("Erro no upload da imagem.");
-      }
+      if (res.status === 'success') setFotoAvaria(res.url);
     } catch (err) {
       alert("Falha ao processar foto.");
     } finally {
@@ -76,93 +103,44 @@ const GarageiroDashboard = ({ onBack }) => {
     }
   };
 
-const finalizarConferencia = async () => {
-  if (isSubmitting) return;
+  const finalizarConferencia = async () => {
+    if (isSubmitting) return;
+    if (!conf.motoristaConfirmado && !conf.novoMotoristaRE) return alert("Selecione o motorista.");
+    if (conf.pertences === 'SIM' && !conf.detalhePertences) return alert("Descreva os pertences.");
+    if (conf.avaria && !fotoAvaria) return alert("Tire foto da avaria.");
+    if (selectedVtr.troca_oleo === "SIM" && !conf.oleoConfirmado) return alert("Confirme a troca de óleo visualmente.");
 
-  // 1. Validações de segurança
-  if (!conf.motoristaConfirmado && !conf.novoMotoristaRE) {
-    return alert("Por favor, selecione quem está entregando a viatura.");
-  }
-  
-  if (conf.pertences === 'SIM' && (!conf.detalhePertences || conf.detalhePertences.trim() === '')) {
-    return alert("Por favor, descreva quais pertences foram encontrados.");
-  }
-
-  if (conf.avaria && !fotoAvaria) {
-    return alert("Por favor, tire uma foto da avaria detectada.");
-  }
-
-  setIsSubmitting(true);
-  
-  try {
-    // O gasApi agora já tem o delay de 500ms embutido conforme ajustamos no gasClient.js
-    const res = await gasApi.confirmarVistoriaGarageiro({
-      rowId: selectedVtr.rowId,
-      id_vistoria: selectedVtr.id_sistema || selectedVtr.ID_SISTEMA, // Adicionado ID para redundância
-      status_fisico: conf.avaria ? 'AVARIADA' : 'OK',
-      limpeza: `INT: ${conf.limpezaInterna ? 'C' : 'NC'} | EXT: ${conf.limpezaExterna ? 'C' : 'NC'}`,
-      pertences: conf.pertences === 'SIM' ? `SIM: ${conf.detalhePertences}` : 'NÃO',
-      obs_garageiro: conf.obs,
-      garageiro_re: user.re,
-      foto_avaria: fotoAvaria,
-      motorista_confirmado: conf.motoristaConfirmado,
-      novo_motorista_re: conf.novoMotoristaRE
-    });
-
-    if (res.status === 'success') {
-      // 2. Fecha o modal e limpa fotos
-      setShowModal(false);
-      setFotoAvaria(null);
-      
-      // 3. Reset do formulário para o estado inicial
-      setConf({ 
-        limpezaInterna: true, 
-        limpezaExterna: true, 
-        pertences: 'NÃO', 
-        detalhePertences: '', 
-        motoristaConfirmado: true, 
-        novoMotoristaRE: '', 
-        avaria: false, 
-        obs: '' 
+    setIsSubmitting(true);
+    try {
+      const res = await gasApi.confirmarVistoriaGarageiro({
+        rowId: selectedVtr.rowId,
+        id_vistoria: selectedVtr.id_sistema || selectedVtr.ID_SISTEMA,
+        status_fisico: conf.avaria ? 'AVARIADA' : 'OK',
+        limpeza: `INT: ${conf.limpezaInterna ? 'C' : 'NC'} | EXT: ${conf.limpezaExterna ? 'C' : 'NC'}`,
+        pertences: conf.pertences === 'SIM' ? `SIM: ${conf.detalhePertences}` : 'NÃO',
+        obs_garageiro: conf.obs,
+        garageiro_re: user.re,
+        foto_avaria: fotoAvaria,
+        motorista_confirmado: conf.motoristaConfirmado,
+        novo_motorista_re: conf.novoMotoristaRE,
+        troca_oleo_aprovada: selectedVtr.troca_oleo === "SIM"
       });
 
-      // 4. ESTRATÉGIA DE ATUALIZAÇÃO FORÇADA
-      // Limpamos os estados locais primeiro para garantir que o usuário veja a atualização
-      setVistorias([]); 
-      setViaturas([]);
-      
-      // Dispara a busca dos dados (que agora virão da planilha, pois o cache foi morto no GAS)
-      await fetchData(); 
-
-    } else {
-      // Tratamento para o erro de concorrência
-      if (res.message && (res.message.includes("não encontrada") || res.message.includes("removida"))) {
-        alert("Esta vistoria já foi finalizada por outro usuário ou atualizada no sistema.");
+      if (res.status === 'success') {
         setShowModal(false);
+        setFotoAvaria(null);
+        setConf({ 
+          limpezaInterna: true, limpezaExterna: true, pertences: 'NÃO', 
+          detalhePertences: '', motoristaConfirmado: true, novoMotoristaRE: '', 
+          avaria: false, obs: '', oleoConfirmado: false 
+        });
         fetchData();
-      } else {
-        alert(res.message || "Erro ao salvar conferência.");
       }
+    } catch (e) {
+      alert("Erro ao salvar.");
+    } finally {
+      setIsSubmitting(false);
     }
-  } catch (e) {
-    console.error("Erro na conferência:", e);
-    alert("Erro de conexão: Os dados foram salvos na planilha, mas a lista pode demorar a atualizar.");
-    fetchData(); // Tenta atualizar mesmo em caso de erro de timeout
-  } finally {
-    setIsSubmitting(false);
-  }
-};
-
-  const abrirModalBloqueio = (v) => {
-    const s = (v.Status || v.status || "").toUpperCase();
-    const isDisp = s.includes("DISPON") || s === "OK";
-    setLockData({
-      prefixo: v.Prefixo || v.prefixo,
-      motivo: isDisp ? 'manutencao' : 'disponivel',
-      detalhes: '',
-      re_responsavel: user.re
-    });
-    setShowLockModal(true);
   };
 
   const confirmarAlteracaoStatus = async () => {
@@ -177,11 +155,9 @@ const finalizarConferencia = async () => {
       if (res.status === 'success') {
         setShowLockModal(false);
         fetchData();
-      } else {
-        alert("Erro ao alterar status.");
       }
     } catch (e) {
-      alert("Erro de comunicação com o servidor.");
+      alert("Erro de comunicação.");
     } finally {
       setIsSubmitting(false);
     }
@@ -192,31 +168,26 @@ const finalizarConferencia = async () => {
       <header className="bg-slate-900 text-white p-4 shadow-xl border-b-4 border-amber-500">
         <div className="max-w-6xl mx-auto flex justify-between items-center">
           <div className="flex items-center gap-3">
-            <button onClick={onBack} className="p-2 hover:bg-slate-800 rounded-lg transition-colors">
-               <X size={20} />
-            </button>
-            <div className="bg-amber-500 p-2 rounded-lg text-slate-900">
-              <ShieldCheck size={24} />
-            </div>
+            <button onClick={onBack} className="p-2 hover:bg-slate-800 rounded-lg transition-colors"><X size={20} /></button>
+            <div className="bg-amber-500 p-2 rounded-lg text-slate-900"><ShieldCheck size={24} /></div>
             <div>
               <h1 className="font-black uppercase tracking-tighter text-lg leading-none">Fiscalização de Pátio</h1>
-              <p className="text-[10px] font-bold text-amber-500 uppercase tracking-widest text-white/80">1º BPM - Rondon</p>
+              <p className="text-[10px] font-bold text-amber-500 uppercase tracking-widest">1º BPM - Rondon</p>
             </div>
           </div>
           
-          <div className="flex items-center gap-4">
-            {/* NOVO: Botão de Refresh manual para o Garageiro */}
+          <div className="flex items-center gap-2">
+            {/* BOTÃO DE SOM */}
             <button 
-              onClick={fetchData} 
-              disabled={loading}
-              className={`p-2 rounded-full transition-all ${loading ? 'animate-spin text-amber-500' : 'text-slate-400 hover:text-white hover:bg-slate-800'}`}
+              onClick={() => setSoundEnabled(!soundEnabled)}
+              className={`p-2 rounded-xl flex items-center gap-2 transition-all ${soundEnabled ? 'bg-emerald-500 text-white' : 'bg-slate-800 text-slate-400'}`}
             >
-              <RefreshCw size={20} />
+              {soundEnabled ? <Volume2 size={20} /> : <VolumeX size={20} />}
+              <span className="text-[10px] font-black uppercase hidden sm:block">
+                {soundEnabled ? 'Alerta Ligado' : 'Som Desligado'}
+              </span>
             </button>
-            <div className="text-right hidden sm:block">
-              <p className="text-[10px] text-slate-400 font-bold uppercase">Garageiro</p>
-              <p className="text-sm font-black text-white">{user?.patente} {user?.nome}</p>
-            </div>
+            <button onClick={fetchData} className={`p-2 rounded-full ${loading ? 'animate-spin text-amber-500' : 'text-slate-400'}`}><RefreshCw size={20} /></button>
           </div>
         </div>
       </header>
@@ -237,231 +208,212 @@ const finalizarConferencia = async () => {
       </nav>
 
       <main className="p-4 max-w-6xl mx-auto w-full flex-1">
-        {loading && vistorias.length === 0 ? (
-           <div className="py-20 text-center animate-pulse font-black text-slate-400 uppercase text-xs">Sincronizando...</div>
-        ) : (
-          <>
-            {tab === 'pendentes' && (
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                {vistorias.length === 0 ? (
-                  <div className="col-span-full py-20 text-center bg-white rounded-[2rem] border-2 border-dashed border-slate-200">
-                    <p className="text-slate-400 font-bold uppercase text-xs">Nenhum check-in pendente.</p>
-                  </div>
-                ) : vistorias.map((vtr, i) => (
-                  <div key={i} className="bg-white border-2 border-slate-200 rounded-[2rem] p-5 shadow-sm hover:border-amber-400 transition-all">
-                    <div className="flex justify-between items-start mb-4">
-                      <span className="text-3xl font-black text-slate-900 tracking-tighter">{vtr.prefixo_vtr}</span>
-                      <span className="bg-blue-100 text-blue-700 px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-widest">Aguardando</span>
-                    </div>
-                    <div className="space-y-1 mb-6">
-                      <p className="text-xs font-bold text-slate-500 uppercase flex items-center gap-1">
-                         <User size={12} /> {vtr.motorista_nome || "NÃO IDENTIFICADO"}
-                      </p>
-                      <p className="text-[10px] text-slate-400 font-bold uppercase italic">Hodômetro: {vtr.hodometro} KM</p>
-                    </div>
-                    <button onClick={() => { setSelectedVtr(vtr); setShowModal(true); }} className="w-full py-4 bg-slate-900 text-white rounded-2xl font-black uppercase text-xs tracking-widest hover:bg-amber-600 transition-all flex items-center justify-center gap-2">
-                      <CheckCircle2 size={16} /> Iniciar Conferência
-                    </button>
-                  </div>
-                ))}
+        {tab === 'pendentes' && (
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+            {vistorias.length === 0 ? (
+              <div className="col-span-full py-20 flex flex-col items-center justify-center bg-white rounded-[2.5rem] border-2 border-dashed border-slate-200">
+                <Inbox size={48} className="text-slate-200 mb-2" />
+                <p className="text-slate-400 font-black uppercase text-xs">Aguardando novos check-ins...</p>
               </div>
-            )}
+            ) : vistorias.map((vtr, i) => {
+              const espera = calcularEspera(vtr.timestamp || vtr.data_hora);
+              return (
+                <div key={i} className="bg-white border-2 border-slate-200 rounded-[2rem] p-5 shadow-sm hover:border-amber-400 transition-all animate-in fade-in slide-in-from-bottom-4">
+                  <div className="flex justify-between items-start mb-4">
+                    <span className="text-3xl font-black text-slate-900 tracking-tighter">{vtr.prefixo_vtr}</span>
+                    <div className="text-right">
+                      <span className="bg-blue-100 text-blue-700 px-3 py-1 rounded-full text-[9px] font-black uppercase">Pátio</span>
+                      {espera > 0 && (
+                        <p className={`text-[10px] font-black mt-1 ${espera > 10 ? 'text-red-500 animate-pulse' : 'text-slate-400'}`}>
+                          HÁ {espera} MIN
+                        </p>
+                      )}
+                    </div>
+                  </div>
+                  <div className="space-y-2 mb-6">
+                    <p className="text-xs font-bold text-slate-500 uppercase flex items-center gap-1"><User size={12} /> {vtr.motorista_nome || "MOTORISTA"}</p>
+                    {vtr.troca_oleo === "SIM" && (
+                      <span className="inline-flex items-center gap-1 bg-amber-100 text-amber-700 px-2 py-1 rounded-lg text-[9px] font-black uppercase">
+                        <Droplets size={12} /> Troca de Óleo Realizada
+                      </span>
+                    )}
+                  </div>
+                  <button onClick={() => { setSelectedVtr(vtr); setShowModal(true); }} className="w-full py-4 bg-slate-900 text-white rounded-2xl font-black uppercase text-xs tracking-widest hover:bg-amber-600 transition-all flex items-center justify-center gap-2 shadow-lg shadow-slate-200">
+                    <CheckCircle2 size={16} /> Abrir Vistoria
+                  </button>
+                </div>
+              );
+            })}
+          </div>
+        )}
 
-            {tab === 'frota' && (
-              <div className="bg-white rounded-[2rem] shadow-sm overflow-hidden border border-slate-200">
-                <table className="w-full text-left text-xs md:text-sm">
-                  <thead className="bg-slate-50 border-b border-slate-200">
-                    <tr>
-                      <th className="p-4 font-black uppercase text-slate-500 tracking-widest text-[10px]">Viatura</th>
-                      <th className="p-4 font-black uppercase text-slate-500 tracking-widest text-[10px]">Status</th>
-                      <th className="p-4 font-black uppercase text-slate-500 tracking-widest text-[10px] text-right">Ação</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-slate-100 font-bold uppercase">
-                    {viaturas.map((v, i) => {
-                      const s = (v.Status || v.status || "").toString().toUpperCase();
-                      const isDisp = s.includes("DISPON") || s === "OK";
-                      return (
-                        <tr key={i} className="hover:bg-slate-50 transition-colors">
-                          <td className="p-4">
-                            <p className="font-black text-slate-800">{v.Prefixo || v.prefixo}</p>
-                            <p className="text-[10px] text-slate-400">{v.Placa || v.placa}</p>
-                          </td>
-                          <td className="p-4">
-                            <span className={`text-[9px] font-black px-2 py-1 rounded-md ${isDisp ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'}`}>
-                               {s || "S/ INF"}
-                            </span>
-                          </td>
-                          <td className="p-4 text-right">
-                            <button onClick={() => abrirModalBloqueio(v)} className={`transition-colors p-2 rounded-lg ${isDisp ? 'text-slate-400 hover:text-red-600' : 'text-amber-600 hover:text-green-600'}`}>
-                               {isDisp ? <Unlock size={18} /> : <Lock size={18} />}
-                            </button>
-                          </td>
-                        </tr>
-                      );
-                    })}
-                  </tbody>
-                </table>
-              </div>
-            )}
-          </>
+        {tab === 'frota' && (
+          <div className="space-y-4">
+            <div className="relative">
+              <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" size={18} />
+              <input 
+                type="text" 
+                placeholder="FILTRAR POR PREFIXO OU PLACA..." 
+                className="w-full p-5 pl-12 bg-white border-2 border-slate-200 rounded-3xl font-black text-xs uppercase outline-none focus:border-amber-500 transition-all shadow-sm"
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
+              />
+            </div>
+            
+            <div className="bg-white rounded-[2rem] shadow-sm overflow-hidden border border-slate-200">
+              <table className="w-full text-left text-xs md:text-sm">
+                <thead className="bg-slate-50 border-b border-slate-200">
+                  <tr>
+                    <th className="p-4 font-black uppercase text-slate-500 tracking-widest text-[10px]">Viatura</th>
+                    <th className="p-4 font-black uppercase text-slate-500 tracking-widest text-[10px]">Situação</th>
+                    <th className="p-4 font-black uppercase text-slate-500 tracking-widest text-[10px] text-right">Ação</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-100 font-bold uppercase">
+                  {viaturas.filter(v => (v.Prefixo || v.prefixo || "").toLowerCase().includes(searchTerm.toLowerCase())).map((v, i) => {
+                    const s = (v.Status || v.status || "").toString().toUpperCase();
+                    const isDisp = s.includes("DISPON") || s === "OK";
+                    return (
+                      <tr key={i} className="hover:bg-slate-50 transition-colors">
+                        <td className="p-4">
+                          <p className="font-black text-slate-800">{v.Prefixo || v.prefixo}</p>
+                          <p className="text-[10px] text-slate-400">{v.Placa || v.placa}</p>
+                        </td>
+                        <td className="p-4">
+                          <span className={`text-[9px] font-black px-2 py-1 rounded-md ${isDisp ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'}`}>
+                             {s || "S/ INF"}
+                          </span>
+                        </td>
+                        <td className="p-4 text-right">
+                          <button onClick={() => {
+                            setLockData({ prefixo: v.Prefixo || v.prefixo, motivo: isDisp ? 'manutencao' : 'disponivel', re_responsavel: user.re });
+                            setShowLockModal(true);
+                          }} className="p-2 text-slate-400 hover:text-amber-600 transition-colors">
+                             {isDisp ? <Unlock size={18} /> : <Lock size={18} />}
+                          </button>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          </div>
         )}
       </main>
 
-{/* MODAL DE CONFERÊNCIA */}
-{showModal && selectedVtr && (
-  <div className="fixed inset-0 bg-slate-900/80 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-    <div className="bg-white w-full max-w-lg rounded-[2.5rem] shadow-2xl overflow-hidden animate-in fade-in zoom-in duration-300">
-      
-      {/* Header do Modal */}
-      <div className="bg-slate-900 p-6 text-white flex justify-between items-center">
-        <div>
-          <h2 className="text-2xl font-black tracking-tighter uppercase">Fiscon {selectedVtr.prefixo_vtr}</h2>
-          <p className="text-[10px] text-amber-500 font-black uppercase tracking-widest">Conferência Final de Turno</p>
-        </div>
-        <button 
-          onClick={() => { setShowModal(false); setFotoAvaria(null); }} 
-          className="p-2 hover:bg-white/10 rounded-full transition-colors"
-        >
-          <X size={24} />
-        </button>
-      </div>
-
-      <div className="p-6 space-y-5 overflow-y-auto max-h-[75vh]">
-        
-        {/* 1. Confirmação de Identidade */}
-        <div className="bg-slate-50 p-4 rounded-3xl border-2 border-slate-100">
-          <p className="text-[10px] font-black text-slate-400 uppercase mb-3 tracking-widest text-center">O Motorista é este?</p>
-          <div className="flex gap-2">
-            <button 
-              onClick={() => setConf({...conf, motoristaConfirmado: true})}
-              className={`flex-1 py-3 rounded-2xl font-black text-xs transition-all ${conf.motoristaConfirmado ? 'bg-amber-500 text-slate-900 shadow-md' : 'bg-white text-slate-400 border border-slate-200'}`}
-            >
-              SIM, É O {selectedVtr.motorista_nome ? selectedVtr.motorista_nome.split(' ')[0] : 'Motorista'}
-            </button>
-            <button 
-              onClick={() => setConf({...conf, motoristaConfirmado: false})}
-              className={`flex-1 py-3 rounded-2xl font-black text-xs transition-all ${!conf.motoristaConfirmado ? 'bg-red-600 text-white shadow-md' : 'bg-white text-slate-400 border border-slate-200'}`}
-            >
-              NÃO É ELE
-            </button>
-          </div>
-
-          {!conf.motoristaConfirmado && (
-            <div className="mt-4 animate-in slide-in-from-top-2">
-              <label className="text-[9px] font-black text-red-600 uppercase mb-1 block">Quem está entregando?</label>
-              <div className="relative">
-                <select 
-                  className="w-full p-4 bg-white border-2 border-red-100 rounded-2xl font-bold text-sm outline-none appearance-none"
-                  value={conf.novoMotoristaRE}
-                  onChange={(e) => setConf({...conf, novoMotoristaRE: e.target.value})}
-                >
-                  <option value="">Selecione o militar...</option>
-                  {motoristas.map((m, idx) => (
-                    <option key={idx} value={m.re}>{m.patente} {m.nome} ({m.re})</option>
-                  ))}
-                </select>
-                <ChevronDown className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" size={18} />
+      {/* MODAL DE CONFERÊNCIA (AGORA COM PARTE DO ÓLEO) */}
+      {showModal && selectedVtr && (
+        <div className="fixed inset-0 bg-slate-900/80 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+          <div className="bg-white w-full max-w-lg rounded-[2.5rem] shadow-2xl overflow-hidden flex flex-col max-h-[90vh]">
+            <div className="bg-slate-900 p-6 text-white flex justify-between items-center">
+              <div>
+                <h2 className="text-2xl font-black uppercase tracking-tighter">Fiscon {selectedVtr.prefixo_vtr}</h2>
+                <p className="text-[10px] text-amber-500 font-black uppercase tracking-widest">Conferência de Pátio</p>
               </div>
+              <button onClick={() => setShowModal(false)} className="p-2 hover:bg-white/10 rounded-full"><X size={24} /></button>
             </div>
-          )}
-        </div>
 
-        {/* 2. Seção de Limpeza (Interna e Externa) */}
-        <div className="space-y-3">
-          <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest px-2">Condições de Limpeza</p>
-          <div className="grid grid-cols-2 gap-3">
-            <button 
-              onClick={() => setConf({...conf, limpezaInterna: !conf.limpezaInterna})}
-              className={`p-4 rounded-3xl border-2 flex flex-col items-center gap-2 transition-all ${conf.limpezaInterna ? 'bg-emerald-50 border-emerald-500 text-emerald-700' : 'bg-slate-50 border-transparent text-slate-400'}`}
-            >
-              <CheckCircle2 size={20} />
-              <span className="text-[10px] font-black uppercase">Interior {conf.limpezaInterna ? 'OK' : 'Sujo'}</span>
-            </button>
-            <button 
-              onClick={() => setConf({...conf, limpezaExterna: !conf.limpezaExterna})}
-              className={`p-4 rounded-3xl border-2 flex flex-col items-center gap-2 transition-all ${conf.limpezaExterna ? 'bg-emerald-50 border-emerald-500 text-emerald-700' : 'bg-slate-50 border-transparent text-slate-400'}`}
-            >
-              <CheckCircle2 size={20} />
-              <span className="text-[10px] font-black uppercase">Exterior {conf.limpezaExterna ? 'OK' : 'Sujo'}</span>
-            </button>
-          </div>
-        </div>
-
-        {/* 3. Pertences e Avarias */}
-        <div className="grid grid-cols-2 gap-3">
-          <div className="space-y-2">
-             <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest px-1">Pertences?</p>
-             <select 
-               className={`w-full p-3 rounded-2xl font-bold text-[11px] border-2 outline-none transition-all ${conf.pertences === 'SIM' ? 'bg-amber-50 border-amber-500 text-amber-700' : 'bg-slate-50 border-transparent text-slate-400'}`}
-               value={conf.pertences}
-               onChange={(e) => setConf({...conf, pertences: e.target.value})}
-             >
-               <option value="NÃO">NÃO</option>
-               <option value="SIM">SIM</option>
-             </select>
-          </div>
-          <div className="space-y-2">
-            <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest px-1">Avarias?</p>
-            <button 
-              onClick={() => setConf({...conf, avaria: !conf.avaria})}
-              className={`w-full p-3 rounded-2xl border-2 font-black text-[11px] transition-all ${conf.avaria ? 'bg-red-50 border-red-500 text-red-700' : 'bg-slate-50 border-transparent text-slate-400'}`}
-            >
-              {conf.avaria ? 'DETECTADA' : 'NÃO'}
-            </button>
-          </div>
-        </div>
-
-        {/* Campo dinâmico para detalhe de pertences */}
-        {conf.pertences === 'SIM' && (
-          <input 
-            type="text"
-            placeholder="O que foi esquecido na VTR?"
-            className="w-full p-4 bg-amber-50 border-2 border-amber-200 rounded-2xl font-bold text-xs outline-none animate-in slide-in-from-top-1"
-            value={conf.detalhePertences}
-            onChange={e => setConf({...conf, detalhePertences: e.target.value})}
-          />
-        )}
-
-        {/* Seção de Foto se houver Avaria */}
-        {conf.avaria && (
-          <div className="p-4 bg-red-50 border-2 border-dashed border-red-200 rounded-2xl">
-            <label className="flex flex-col items-center justify-center gap-2 cursor-pointer py-4 bg-white rounded-xl min-h-[100px]">
-              {fotoAvaria ? (
-                <img src={fotoAvaria} className="w-full h-24 object-cover rounded-lg" alt="Dano" />
-              ) : (
-                <>
-                  <Camera size={30} className={uploading ? "animate-bounce text-red-300" : "text-red-400"} />
-                  <span className="text-[10px] font-bold text-red-400 uppercase">Anexar Foto da Avaria</span>
-                </>
+            <div className="p-6 space-y-5 overflow-y-auto">
+              {/* LÓGICA DO ÓLEO */}
+              {selectedVtr.troca_oleo === "SIM" && (
+                <div className="bg-amber-50 border-2 border-amber-200 rounded-3xl p-5 space-y-4">
+                  <div className="flex justify-between items-start">
+                    <div>
+                      <h4 className="text-amber-800 font-black text-xs uppercase flex items-center gap-2">
+                        <Droplets size={16} /> Troca de Óleo Informada
+                      </h4>
+                      <p className="text-[10px] text-amber-700 font-bold mt-1">HODÔMETRO: {selectedVtr.hodometro_oleo} KM</p>
+                    </div>
+                    {selectedVtr.foto_oleo && (
+                      <button 
+                        onClick={() => setViewingPhoto(selectedVtr.foto_oleo)}
+                        className="bg-white border-2 border-amber-200 p-2 rounded-xl text-amber-600 hover:bg-amber-100 transition-all shadow-sm"
+                      >
+                        <Eye size={20} />
+                      </button>
+                    )}
+                  </div>
+                  
+                  <button 
+                    onClick={() => setConf({...conf, oleoConfirmado: !conf.oleoConfirmado})}
+                    className={`w-full py-4 rounded-2xl font-black text-[10px] uppercase transition-all flex items-center justify-center gap-2 border-2 
+                      ${conf.oleoConfirmado ? 'bg-emerald-500 border-emerald-500 text-white' : 'bg-white border-amber-300 text-amber-600'}`}
+                  >
+                    {conf.oleoConfirmado ? <Check size={16}/> : <AlertCircle size={16}/>}
+                    {conf.oleoConfirmado ? 'ÓLEO E ETIQUETA CONFERIDOS' : 'CONFERIR ETIQUETA / NOTA AGORA'}
+                  </button>
+                </div>
               )}
-              <input type="file" accept="image/*" capture="environment" className="hidden" onChange={handleFileChange} />
-            </label>
+
+              {/* IDENTIFICAÇÃO DO MOTORISTA */}
+              <div className="bg-slate-50 p-4 rounded-3xl border-2 border-slate-100">
+                <p className="text-[10px] font-black text-slate-400 uppercase mb-3 text-center">Confirmar Entrega</p>
+                <div className="flex gap-2">
+                  <button onClick={() => setConf({...conf, motoristaConfirmado: true})} className={`flex-1 py-3 rounded-2xl font-black text-[10px] uppercase ${conf.motoristaConfirmado ? 'bg-amber-500 text-slate-900 shadow-md' : 'bg-white text-slate-300 border border-slate-100'}`}>SIM, É O {selectedVtr.motorista_nome?.split(' ')[0]}</button>
+                  <button onClick={() => setConf({...conf, motoristaConfirmado: false})} className={`flex-1 py-3 rounded-2xl font-black text-[10px] uppercase ${!conf.motoristaConfirmado ? 'bg-red-600 text-white shadow-md' : 'bg-white text-slate-300 border border-slate-100'}`}>NÃO É ELE</button>
+                </div>
+                {!conf.motoristaConfirmado && (
+                  <select className="w-full mt-3 p-4 bg-white border-2 border-red-100 rounded-2xl font-bold text-xs" value={conf.novoMotoristaRE} onChange={e => setConf({...conf, novoMotoristaRE: e.target.value})}>
+                    <option value="">QUEM ESTÁ ENTREGANDO?</option>
+                    {motoristas.map((m, idx) => <option key={idx} value={m.re}>{m.patente} {m.nome}</option>)}
+                  </select>
+                )}
+              </div>
+
+              {/* LIMPEZA */}
+              <div className="grid grid-cols-2 gap-3">
+                <button onClick={() => setConf({...conf, limpezaInterna: !conf.limpezaInterna})} className={`p-4 rounded-3xl border-2 font-black text-[10px] uppercase transition-all ${conf.limpezaInterna ? 'bg-emerald-50 border-emerald-500 text-emerald-700' : 'bg-slate-50 border-transparent text-slate-400'}`}>INT: {conf.limpezaInterna ? 'LIMPO' : 'SUJO'}</button>
+                <button onClick={() => setConf({...conf, limpezaExterna: !conf.limpezaExterna})} className={`p-4 rounded-3xl border-2 font-black text-[10px] uppercase transition-all ${conf.limpezaExterna ? 'bg-emerald-50 border-emerald-500 text-emerald-700' : 'bg-slate-50 border-transparent text-slate-400'}`}>EXT: {conf.limpezaExterna ? 'LIMPO' : 'SUJO'}</button>
+              </div>
+
+              {/* PERTENCES E AVARIAS */}
+              <div className="grid grid-cols-2 gap-3">
+                <select className={`p-4 rounded-3xl border-2 font-black text-[10px] uppercase ${conf.pertences === 'SIM' ? 'bg-amber-50 border-amber-500 text-amber-700' : 'bg-slate-50 border-transparent text-slate-400'}`} value={conf.pertences} onChange={e => setConf({...conf, pertences: e.target.value})}>
+                  <option value="NÃO">SEM PERTENCES</option>
+                  <option value="SIM">HÁ PERTENCES</option>
+                </select>
+                <button onClick={() => setConf({...conf, avaria: !conf.avaria})} className={`p-4 rounded-3xl border-2 font-black text-[10px] uppercase ${conf.avaria ? 'bg-red-50 border-red-500 text-red-700' : 'bg-slate-50 border-transparent text-slate-400'}`}>AVARIAS: {conf.avaria ? 'SIM' : 'NÃO'}</button>
+              </div>
+
+              {conf.pertences === 'SIM' && <input type="text" placeholder="O QUE FOI ESQUECIDO?" className="w-full p-4 bg-amber-50 border-2 border-amber-200 rounded-2xl font-bold text-xs" value={conf.detalhePertences} onChange={e => setConf({...conf, detalhePertences: e.target.value})} />}
+
+              {conf.avaria && (
+                <div className="p-4 bg-red-50 border-2 border-dashed border-red-200 rounded-2xl flex flex-col items-center gap-3">
+                  {fotoAvaria ? <img src={fotoAvaria} className="h-24 rounded-lg" alt="Dano" /> : <Camera size={32} className="text-red-300" />}
+                  <label className="bg-red-600 text-white px-4 py-2 rounded-xl font-black text-[10px] cursor-pointer uppercase">Tirar Foto da Avaria <input type="file" accept="image/*" capture="environment" className="hidden" onChange={handleFileChange} /></label>
+                </div>
+              )}
+
+              <textarea className="w-full bg-slate-50 border-2 border-slate-100 rounded-2xl p-4 text-xs font-bold uppercase" placeholder="OBSERVAÇÕES ADICIONAIS..." value={conf.obs} onChange={e => setConf({...conf, obs: e.target.value})} />
+
+              <button 
+                onClick={finalizarConferencia}
+                disabled={isSubmitting || (selectedVtr.troca_oleo === "SIM" && !conf.oleoConfirmado)}
+                className={`w-full py-5 rounded-[1.5rem] font-black uppercase tracking-widest text-xs shadow-xl transition-all ${isSubmitting || (selectedVtr.troca_oleo === "SIM" && !conf.oleoConfirmado) ? 'bg-slate-200 text-slate-400 cursor-not-allowed' : 'bg-slate-900 text-white hover:bg-emerald-600'}`}
+              >
+                {isSubmitting ? 'Processando...' : 'Finalizar e Liberar'}
+              </button>
+            </div>
           </div>
-        )}
+        </div>
+      )}
 
-        <textarea 
-          className="w-full bg-slate-50 border-2 border-slate-100 rounded-2xl p-4 text-sm font-medium outline-none focus:border-amber-500"
-          placeholder="Observações adicionais do pátio..."
-          value={conf.obs}
-          onChange={e => setConf({...conf, obs: e.target.value})}
-          rows={2}
-        />
+      {/* VISUALIZADOR DE FOTO CHEIA */}
+      {viewingPhoto && (
+        <div className="fixed inset-0 bg-black/95 z-[100] flex flex-col p-4 animate-in fade-in duration-300">
+          <button onClick={() => setViewingPhoto(null)} className="self-end text-white p-4 hover:bg-white/10 rounded-full transition-all"><X size={32} /></button>
+          <div className="flex-1 flex items-center justify-center">
+            <img src={viewingPhoto} className="max-w-full max-h-full object-contain rounded-2xl shadow-2xl border-2 border-white/20" alt="Comprovante Óleo" />
+          </div>
+          <div className="p-6 text-center">
+             <p className="text-white font-black uppercase tracking-widest text-sm">Foto do Comprovante / Etiqueta de Óleo</p>
+             <p className="text-white/40 text-[10px] mt-1 font-bold">Verifique se o hodômetro e a data coincidem com a viatura.</p>
+          </div>
+        </div>
+      )}
 
-        <button 
-          onClick={finalizarConferencia}
-          disabled={uploading || isSubmitting}
-          className={`w-full py-5 rounded-[1.5rem] font-black uppercase tracking-widest text-xs shadow-lg transition-all ${isSubmitting || uploading ? 'bg-slate-300 cursor-not-allowed' : 'bg-slate-900 text-white hover:bg-emerald-600'}`}
-        >
-          {isSubmitting ? 'Processando...' : uploading ? 'Aguarde a Foto...' : 'Finalizar e Liberar VTR'}
-        </button>
-      </div>
-    </div>
-  </div>
-)}
-      
-
-      {/* MODAL DE STATUS */}
+      {/* MODAL DE BLOQUEIO / STATUS */}
       {showLockModal && (
         <div className="fixed inset-0 bg-slate-900/90 backdrop-blur-md z-[60] flex items-center justify-center p-4">
           <div className="bg-white w-full max-w-sm rounded-[2.5rem] p-8 shadow-2xl animate-in zoom-in duration-300">
@@ -469,41 +421,17 @@ const finalizarConferencia = async () => {
               <div className={`p-4 rounded-full ${lockData.motivo === 'disponivel' ? 'bg-green-100 text-green-600' : 'bg-red-100 text-red-600'}`}>
                 {lockData.motivo === 'disponivel' ? <Unlock size={40} /> : <Lock size={40} />}
               </div>
-              
-              <h3 className="text-2xl font-black text-slate-800 uppercase tracking-tighter">
-                {lockData.motivo === 'disponivel' ? "Liberar VTR" : "Bloquear VTR"}
-              </h3>
-              <p className="text-xs font-bold text-slate-400 uppercase">{lockData.prefixo}</p>
-
+              <h3 className="text-2xl font-black text-slate-800 uppercase tracking-tighter">{lockData.motivo === 'disponivel' ? "Liberar VTR" : "Bloquear VTR"}</h3>
               {lockData.motivo !== 'disponivel' && (
-                <div className="w-full space-y-2 mt-4 text-left">
-                  <label className="text-[9px] font-black text-slate-400 uppercase px-1">Motivo do Bloqueio</label>
-                  <select 
-                    className="w-full p-4 bg-slate-50 border-2 border-slate-100 rounded-2xl font-bold text-xs uppercase"
-                    value={lockData.motivo}
-                    onChange={(e) => setLockData({...lockData, motivo: e.target.value})}
-                  >
-                    <option value="manutencao">Manutenção</option>
-                    <option value="incidente">Incidente/Avaria</option>
-                    <option value="pendencia_garageiro">Pendência de Limpeza</option>
-                  </select>
-                </div>
+                <select className="w-full p-4 bg-slate-50 border-2 border-slate-100 rounded-2xl font-bold text-xs uppercase" value={lockData.motivo} onChange={e => setLockData({...lockData, motivo: e.target.value})}>
+                  <option value="manutencao">Manutenção</option>
+                  <option value="incidente">Incidente/Avaria</option>
+                  <option value="pendencia_garageiro">Pendência de Limpeza</option>
+                </select>
               )}
-
               <div className="flex flex-col w-full gap-3 mt-6">
-                <button 
-                  onClick={confirmarAlteracaoStatus}
-                  disabled={isSubmitting}
-                  className={`w-full py-4 rounded-2xl font-black uppercase text-xs tracking-widest transition-all ${lockData.motivo === 'disponivel' ? 'bg-green-600 text-white' : 'bg-red-600 text-white'}`}
-                >
-                  {isSubmitting ? 'Salvando...' : 'Confirmar Alteração'}
-                </button>
-                <button 
-                  onClick={() => setShowLockModal(false)}
-                  className="w-full py-4 bg-slate-100 text-slate-400 rounded-2xl font-black uppercase text-xs tracking-widest"
-                >
-                  Voltar
-                </button>
+                <button onClick={confirmarAlteracaoStatus} disabled={isSubmitting} className="w-full py-4 bg-slate-900 text-white rounded-2xl font-black uppercase text-xs tracking-widest">Confirmar</button>
+                <button onClick={() => setShowLockModal(false)} className="w-full py-4 bg-slate-100 text-slate-400 rounded-2xl font-black uppercase text-xs tracking-widest">Cancelar</button>
               </div>
             </div>
           </div>
