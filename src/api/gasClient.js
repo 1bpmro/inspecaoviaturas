@@ -62,8 +62,12 @@ export const gasApi = {
   },
 
   addViatura: (dados) => gasApi.post('addViatura', dados),
-  alterarStatusViatura: (prefixo, novoStatus, info = {}) => 
-    gasApi.post('alterarStatusViatura', { prefixo, novoStatus, ...info }),
+ alterarStatusViatura: async (prefixo, novoStatus, info = {}) => {
+    const res = await gasApi.post('alterarStatusViatura', { prefixo, novoStatus, ...info });
+    // Pequena pausa de 500ms para o Google terminar o flush do Cache antes do próximo GET
+    await new Promise(r => setTimeout(r, 500));
+    return res;
+  },
   registrarManutencao: (dados) => gasApi.post('registrarManutencao', dados),
   baixarViatura: (prefixo, motivo) => gasApi.post('baixarViatura', { prefixo, motivo }),
   limparCache: () => gasApi.post('limparCache')
