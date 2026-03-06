@@ -3,6 +3,7 @@ import axios from 'axios';
 const GAS_URL = 'https://script.google.com/macros/s/AKfycbwFMqbY2FiDJfZcBxRWvgkqO79dMhy6rcf6149_uXzvBa8Jdm4pcpT8dVdfWo_KS_wY6Q/exec'; 
 
 export const gasApi = {
+  // Função genérica de post (mantida conforme seu padrão)
   post: async (action, payload = {}) => {
     const startTime = Date.now();
     try {
@@ -32,22 +33,29 @@ export const gasApi = {
     }
   },
 
+  // Atalho para manter compatibilidade com o dashboard que enviamos
+  doPost: (args) => gasApi.post(args.action, args.payload),
+
   login: (re, senha) => gasApi.post('login', { re, senha }),
   checkProfile: (re) => gasApi.post('checkProfile', { re }),
-  changePassword: (re, senhaAtual, novaSenha) => gasApi.post('changePassword', { re, senhaAtual, novaSenha }),
-
+  
+  // --- FUNÇÕES DE VISTORIA ---
   saveVistoria: (dados) => gasApi.post('saveVistoria', dados),
   getVistoriasPendentes: () => gasApi.post('getVistoriasPendentes'),
   
-  // CORREÇÃO: Delay de 1.5s para o Google Sheets sincronizar
+  // ESSA É A FUNÇÃO QUE FALTAVA PARA O COMANDANTE:
+  getHistoricoVistorias: () => gasApi.post('getHistoricoVistorias'),
+
   confirmarVistoriaGarageiro: async (dados) => {
     const res = await gasApi.post('confirmarVistoriaGarageiro', dados);
     await new Promise(r => setTimeout(r, 1500)); 
     return res;
   },
 
+  // --- GESTÃO DE FROTA ---
   getViaturas: () => gasApi.post('getViaturas'),
   addViatura: (dados) => gasApi.post('addViatura', dados),
+  updateViatura: (dados) => gasApi.post('updateViatura', dados), // Adicionado para edição
   baixarViatura: (prefixo, motivo) => gasApi.post('baixarViatura', { prefixo, motivo }),
   alterarStatusViatura: async (prefixo, novoStatus, info = {}) => {
     const res = await gasApi.post('alterarStatusViatura', { prefixo, novoStatus, ...info });
@@ -55,6 +63,7 @@ export const gasApi = {
     return res;
   },
 
+  // --- OUTROS ---
   buscarMilitar: (re) => gasApi.post('buscarMilitar', { re }),
   getEfetivoCompleto: () => gasApi.post('getEfetivoCompleto'),
   registrarManutencao: (dados) => gasApi.post('registrarManutencao', dados),
