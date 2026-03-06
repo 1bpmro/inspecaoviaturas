@@ -3,7 +3,7 @@ import { gasApi } from '../api/gasClient';
 import { useAuth } from '../lib/AuthContext';
 import { 
   Settings, LayoutDashboard, ArrowLeft, Menu, X, Plus, Search, 
-  Filter, Printer, Save, Edit2, FileText, Trash2, Loader2, 
+  Printer, Save, Edit2, Trash2, Loader2, 
   Database, Droplets, Eye, CheckCircle, Clock, AlertTriangle, ChevronRight
 } from 'lucide-react';
 
@@ -24,10 +24,9 @@ const AdminDashboard = ({ onBack }) => {
 
   const LISTA_CARROCERIAS = ['CAMBURÃO', 'CARROCERIA ABERTA', 'OSTENSIVA COMUM', 'ADMINISTRATIVA', 'OUTROS'];
 
-  // --- CARGA DE DADOS ---
   useEffect(() => { 
     loadData(); 
-    const interval = setInterval(loadData, 60000); // Atualiza a cada 1 min
+    const interval = setInterval(loadData, 60000);
     return () => clearInterval(interval);
   }, []);
 
@@ -40,7 +39,7 @@ const AdminDashboard = ({ onBack }) => {
       ]);
       
       if (resVtr.status === 'success') {
-        setViaturas(resVtr.data.filter(v => v.Status !== "FORA DE SERVIÇO (BAIXA)"));
+        setViaturas(resVtr.data.filter(v => (v.Status || v.STATUS) !== "FORA DE SERVIÇO (BAIXA)"));
       }
       if (resVist.status === 'success') {
         setVistoriasPendentes(resVist.data);
@@ -52,19 +51,17 @@ const AdminDashboard = ({ onBack }) => {
     }
   };
 
-  // --- LÓGICA DE FILTRO (A REGRA DO ACEITE) ---
-  // Só mostra se for Troca de Óleo E se o Garageiro ainda NÃO preencheu o RE dele
+  // Lógica de Pendências: Troca de óleo marcada mas sem RE do garageiro
   const pendenciasOleo = vistoriasPendentes.filter(v => 
-    v.troca_oleo === "SIM" && (!v.garageiro_re || v.garageiro_re === "" || v.garageiro_re === null)
+    v.troca_oleo === "SIM" && (!v.garageiro_re || v.garageiro_re === "")
   );
 
- const viaturasFiltradas = viaturas.filter(v => {
-  const prefixo = (v.Prefixo || v.prefixo || "").toString().toUpperCase();
-  const placa = (v.Placa || v.placa || "").toString().toUpperCase();
-  const busca = searchTerm.toUpperCase();
-
-  return prefixo.includes(busca) || placa.includes(busca);
-});
+  const viaturasFiltradas = viaturas.filter(v => {
+    const prefixo = (v.Prefixo || v.prefixo || "").toString().toUpperCase();
+    const placa = (v.Placa || v.placa || "").toString().toUpperCase();
+    const busca = searchTerm.toUpperCase();
+    return prefixo.includes(busca) || placa.includes(busca);
+  });
 
   const handleSaveViatura = async (e) => {
     e.preventDefault();
@@ -153,16 +150,8 @@ const AdminDashboard = ({ onBack }) => {
             {activeTab === 'frota' && (
               <button 
                 onClick={() => {
-                  onClick={() => {
-  setFormData({
-    id: '', // Importante manter a estrutura
-    prefixo: '', 
-    placa: '', 
-    modelo: '', 
-    tipoCarroceria: 'CAMBURÃO', 
-    isEditing: false
-  });
-  setIsAddingVtr(true);
+                  setFormData({ id: '', prefixo: '', placa: '', modelo: '', tipoCarroceria: 'CAMBURÃO', isEditing: false });
+                  setIsAddingVtr(true);
                 }} 
                 className="bg-slate-900 text-white px-5 py-3 rounded-2xl text-[10px] font-black uppercase flex items-center gap-2 hover:bg-amber-500 hover:text-slate-900 transition-all shadow-lg"
               >
@@ -180,7 +169,7 @@ const AdminDashboard = ({ onBack }) => {
               <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
                 <StatCard label="Total Frota Ativa" value={viaturas.length} color="blue" />
                 <StatCard label="Pendências de Óleo" value={pendenciasOleo.length} color="amber" />
-                <StatCard label="VTRs Indisponíveis" value={viaturas.filter(v => v.Status !== 'DISPONÍVEL' && v.Status !== 'OK').length} color="red" />
+                <StatCard label="VTRs Indisponíveis" value={viaturas.filter(v => (v.Status || v.STATUS) !== 'DISPONÍVEL' && (v.Status || v.STATUS) !== 'OK').length} color="red" />
               </div>
 
               <div className="bg-white rounded-[2.5rem] shadow-sm border border-slate-200 overflow-hidden">
@@ -204,11 +193,11 @@ const AdminDashboard = ({ onBack }) => {
                           <td className="p-5 font-black text-slate-800">{v.Prefixo || v.prefixo}</td>
                           <td className="p-5 font-bold text-slate-400">{v.Placa || v.placa}</td>
                           <td className="p-5">
-                            <span className={`text-[9px] font-black px-3 py-1 rounded-full uppercase ${(v.Status === 'DISPONÍVEL' || v.Status === 'OK') ? 'bg-emerald-100 text-emerald-700' : 'bg-red-100 text-red-700'}`}>
-                              {v.Status || 'S/ INFO'}
+                            <span className={`text-[9px] font-black px-3 py-1 rounded-full uppercase ${(v.Status === 'DISPONÍVEL' || v.Status === 'OK' || v.STATUS === 'DISPONÍVEL') ? 'bg-emerald-100 text-emerald-700' : 'bg-red-100 text-red-700'}`}>
+                              {v.Status || v.STATUS || 'S/ INFO'}
                             </span>
                           </td>
-                          <td className="p-5 text-[10px] font-bold text-slate-400 text-right">{v.DataHora || '--'}</td>
+                          <td className="p-5 text-[10px] font-bold text-slate-400 text-right">{v.DataHora || v.DATAHORA || '--'}</td>
                         </tr>
                       ))}
                     </tbody>
@@ -218,7 +207,7 @@ const AdminDashboard = ({ onBack }) => {
             </div>
           )}
 
-          {/* ABA 2: PENDÊNCIAS DE ÓLEO (A REGRA DO ACEITE) */}
+          {/* ABA 2: PENDÊNCIAS DE ÓLEO */}
           {activeTab === 'oleo' && (
             <div className="max-w-5xl mx-auto space-y-6 animate-in slide-in-from-right-4 duration-300">
               <div className="bg-amber-500 rounded-[2.5rem] p-8 text-slate-900 flex flex-col md:flex-row justify-between items-center gap-6 shadow-xl shadow-amber-500/20">
@@ -321,11 +310,11 @@ const AdminDashboard = ({ onBack }) => {
                             <button 
                               onClick={() => {
                                 setFormData({
-                                  ...v, 
+                                  id: v.id || '',
                                   prefixo: v.Prefixo || v.prefixo, 
                                   placa: v.Placa || v.placa, 
                                   modelo: v.Modelo || v.modelo,
-                                  tipoCarroceria: v.TipoCarroceria || 'CAMBURÃO',
+                                  tipoCarroceria: v.TipoCarroceria || v.tipocarroceria || 'CAMBURÃO',
                                   isEditing: true
                                 });
                                 setIsAddingVtr(true);
