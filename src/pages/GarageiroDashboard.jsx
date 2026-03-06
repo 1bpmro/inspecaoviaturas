@@ -55,13 +55,14 @@ const GarageiroDashboard = ({ onBack }) => {
   };
 
   const fetchData = async () => {
-    setLoading(true);
+  setLoading(true);
+  // Opcional: setVistorias([]); 
     try {
-      const [resVtr, resPend, resMot] = await Promise.all([
-        gasApi.getViaturas(), 
-        gasApi.getVistoriasPendentes(),
-        gasApi.getEfetivoCompleto()
-      ]);
+    const [resVtr, resPend, resMot] = await Promise.all([
+      gasApi.getViaturas(), 
+      gasApi.getVistoriasPendentes(), // O backend já limpa o cache aqui se você seguiu a dica anterior
+      gasApi.getEfetivoCompleto()
+    ]);
       
       if (resVtr.status === 'success') setViaturas(resVtr.data);
       
