@@ -351,11 +351,14 @@ useEffect(() => {
         <div className="fixed inset-0 bg-black/95 z-[100] flex flex-col p-4 animate-in fade-in duration-300">
           <button onClick={() => setViewingPhoto(null)} className="self-end text-white p-4 rounded-full"><X size={32} /></button>
           <div className="flex-1 flex items-center justify-center">
-           <img 
-  src={viewingPhoto.startsWith('data:') ? viewingPhoto : `data:image/jpeg;base64,${viewingPhoto}`} 
+          <img 
+  src={viewingPhoto.startsWith('http') ? viewingPhoto : (viewingPhoto.startsWith('data:') ? viewingPhoto : `data:image/jpeg;base64,${viewingPhoto}`)} 
   className="max-w-full max-h-full object-contain rounded-2xl" 
   alt="Evidência"
-  onError={(e) => { e.target.src = "https://placehold.co/600x400?text=Erro+na+Foto"; }}
+  onError={(e) => { 
+    console.error("Erro ao carregar imagem:", viewingPhoto);
+    e.target.src = "https://placehold.co/600x400?text=Erro+no+Link+do+Drive"; 
+  }}
 />
           </div>
         </div>
