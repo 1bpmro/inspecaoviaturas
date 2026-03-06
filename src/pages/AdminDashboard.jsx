@@ -5,7 +5,7 @@ import {
   Settings, LayoutDashboard, ArrowLeft, Menu, X, Plus, Search, 
   Printer, Save, Edit2, Trash2, Loader2, FileText,
   Database, Droplets, Eye, CheckCircle, Clock, AlertTriangle, 
-  ChevronRight, Filter, Download, BarChart3, Disc
+  Filter, Download, Disc, Calendar, Car
 } from 'lucide-react';
 
 const AdminDashboard = ({ onBack }) => {
@@ -15,278 +15,175 @@ const AdminDashboard = ({ onBack }) => {
   const [viaturas, setViaturas] = useState([]);
   const [vistorias, setVistorias] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [searchTerm, setSearchTerm] = useState('');
-  const [viewingPhoto, setViewingPhoto] = useState(null);
+  
+  // Filtros em Dropdown
+  const [filters, setFilters] = useState({ vtr: '', motorista: '', garageiro: '' });
+
+  // Cadastro Robusto
   const [isAddingVtr, setIsAddingVtr] = useState(false);
-
-  // Estados de Filtro para o Comandante
-  const [filters, setFilters] = useState({
-    viatura: '',
-    motorista: '',
-    garageiro: '',
-    dataInicio: '',
-    dataFim: ''
-  });
-
   const [formData, setFormData] = useState({
-    id: '', prefixo: '', placa: '', modelo: '', tipoCarroceria: 'CAMBURÃO', isEditing: false
+    id: '', prefixo: '', placa: '', modelo: '', ano: '', chassi: '', renavam: '',
+    odometro_atual: '', ultima_revisao: '', tipoCarroceria: 'CAMBURÃO', isEditing: false
   });
-
-  const LISTA_CARROCERIAS = ['CAMBURÃO', 'CARROCERIA ABERTA', 'OSTENSIVA COMUM', 'ADMINISTRATIVA', 'OUTROS'];
 
   useEffect(() => { 
     loadData(); 
-    const interval = setInterval(loadData, 60000);
-    return () => clearInterval(interval);
   }, []);
 
   const loadData = async () => {
     setLoading(true);
     try {
-      // Buscando vistorias completas para os relatórios "das antigas"
-      const [resVtr, resVist, resHist] = await Promise.all([
+      const [resVtr, resHist] = await Promise.all([
         gasApi.getViaturas(),
-        gasApi.getVistoriasPendentes(),
-        gasApi.getHistoricoVistorias ? gasApi.getHistoricoVistorias() : { data: [] }
+        gasApi.getHistoricoVistorias() // Assume-se que esta rota retorna o log completo
       ]);
-      
-      if (resVtr.status === 'success') {
-        setViaturas(resVtr.data.filter(v => (v.Status || v.STATUS) !== "FORA DE SERVIÇO (BAIXA)"));
-      }
-      // Unificando vistorias para análise de dados
-      setVistorias(resHist.data || []);
-    } catch (error) {
-      console.error("Erro administrativo:", error);
-    } finally {
-      setLoading(false);
-    }
+      if (resVtr.status === 'success') setViaturas(resVtr.data);
+      if (resHist.status === 'success') setVistorias(resHist.data);
+    } catch (e) { console.error(e); }
+    setLoading(false);
   };
 
-  // --- LÓGICA DE FILTROS DO COMANDANTE ---
-  const dadosFiltrados = useMemo(() => {
-    return vistorias.filter(item => {
-      const matchVtr = !filters.viatura || item.prefixo_vtr?.includes(filters.viatura);
-      const matchMot = !filters.motorista || item.motorista_nome?.toUpperCase().includes(filters.motorista.toUpperCase());
-      const matchGar = !filters.garageiro || item.garageiro_re?.includes(filters.garageiro);
-      return matchVtr && matchMot && matchGar;
-    });
-  }, [vistorias, filters]);
+  // --- LÓGICA DE FILTROS (DROPDOWNS DINÂMICOS) ---
+  const opcoesFiltro = useMemo(() => ({
+    vtrs: [...new Set(vistorias.map(v => v.prefixo_vtr))].sort(),
+    motoristas: [...new Set(vistorias.map(v => v.motorista_nome))].sort(),
+    garageiros: [...new Set(vistorias.map(v => v.garageiro_re))].filter(Boolean).sort()
+  }), [vistorias]);
 
-  // --- CÁLCULO DE DESGASTE DE PNEU (RODAGEM) ---
-  const calculoPneus = useMemo(() => {
-    const kmPorVtr = {};
-    dadosFiltrados.forEach(v => {
-      const pref = v.prefixo_vtr;
-      const km = parseInt(v.hodometro_saida || 0);
-      if(!kmPorVtr[pref]) kmPorVtr[pref] = { min: km, max: km };
-      kmPorVtr[pref].min = Math.min(kmPorVtr[pref].min, km);
-      kmPorVtr[pref].max = Math.max(kmPorVtr[pref].max, km);
-    });
-    return kmPorVtr;
-  }, [dadosFiltrados]);
-
-  const pendenciasOleo = vistorias.filter(v => 
-    v.troca_oleo === "SIM" && (!v.garageiro_re || v.garageiro_re === "")
+  const dadosFiltrados = vistorias.filter(v => 
+    (!filters.vtr || v.prefixo_vtr === filters.vtr) &&
+    (!filters.motorista || v.motorista_nome === filters.motorista) &&
+    (!filters.garageiro || v.garageiro_re === filters.garageiro)
   );
 
-  const handleSaveViatura = async (e) => {
-    e.preventDefault();
-    setLoading(true);
-    try {
-      const action = formData.isEditing ? 'updateViatura' : 'addViatura';
-      const res = await gasApi.doPost({ action, payload: formData });
-      if (res.status === 'success') {
-        setIsAddingVtr(false);
-        loadData();
-      }
-    } catch (err) {
-      alert("Falha na comunicação.");
-    } finally {
-      setLoading(false);
-    }
-  };
-
   return (
-    <div className="min-h-screen bg-slate-50 flex font-sans text-slate-900 overflow-hidden">
+    <div className="min-h-screen bg-slate-100 flex font-sans overflow-hidden">
       
-      {/* SIDEBAR ESTRATÉGICA */}
-      <aside className={`fixed inset-y-0 left-0 z-[200] w-72 bg-slate-950 text-white flex flex-col transition-transform duration-300 md:relative md:translate-x-0 ${isSidebarOpen ? 'translate-x-0' : '-translate-x-full'}`}>
-        <div className="p-8 border-b border-slate-900">
-          <div className="flex items-center gap-3">
-            <div className="bg-amber-500 p-2 rounded-xl text-slate-900">
-              <Settings size={22} className="animate-spin-slow"/>
-            </div>
-            <div>
-              <h1 className="font-black text-xl italic uppercase tracking-tighter">P4 COMMAND</h1>
-              <p className="text-[9px] font-black text-slate-500 uppercase tracking-widest">Inteligência de Frota</p>
-            </div>
-          </div>
+      {/* SIDEBAR */}
+      <aside className={`fixed inset-y-0 left-0 z-[200] w-72 bg-slate-950 text-white flex flex-col transition-transform md:relative md:translate-x-0 ${isSidebarOpen ? 'translate-x-0' : '-translate-x-full'}`}>
+        <div className="p-8 border-b border-slate-900 flex items-center gap-3">
+          <div className="bg-amber-500 p-2 rounded-lg text-slate-900"><Settings size={20}/></div>
+          <h1 className="font-black text-xl italic tracking-tighter">P4 ADMIN</h1>
         </div>
 
-        <nav className="flex-1 p-4 space-y-2 mt-4">
+        <nav className="flex-1 p-4 space-y-2">
           <MenuBtn active={activeTab === 'stats'} onClick={() => setActiveTab('stats')} icon={<LayoutDashboard size={18}/>} label="Dashboard" />
           <MenuBtn active={activeTab === 'reports'} onClick={() => setActiveTab('reports')} icon={<FileText size={18}/>} label="Relatórios Finais" />
-          <MenuBtn active={activeTab === 'frota'} onClick={() => setActiveTab('frota')} icon={<Database size={18}/>} label="Gestão de Frota" />
           <MenuBtn active={activeTab === 'pneus'} onClick={() => setActiveTab('pneus')} icon={<Disc size={18}/>} label="Controle de Rodagem" />
-          
-          <div className="pt-10 border-t border-slate-900 mt-6 px-4">
-            <button onClick={onBack} className="w-full flex items-center gap-3 p-4 text-slate-500 hover:text-white hover:bg-red-500/10 rounded-2xl text-[10px] font-black uppercase border border-slate-900 transition-all">
-              <ArrowLeft size={16}/> Sair do Painel
-            </button>
-          </div>
+          <MenuBtn active={activeTab === 'frota'} onClick={() => setActiveTab('frota')} icon={<Database size={18}/>} label="Gestão de Frota" />
+          <button onClick={onBack} className="w-full flex items-center gap-3 p-4 text-red-400 hover:bg-red-500/10 rounded-xl text-[10px] font-black uppercase mt-10 border border-red-500/20">
+            <ArrowLeft size={16}/> Sair
+          </button>
         </nav>
       </aside>
 
-      <main className="flex-1 flex flex-col min-w-0 h-screen">
-        <header className="bg-white h-20 border-b border-slate-200 flex items-center justify-between px-8 shrink-0">
-          <div className="flex items-center gap-4">
-            <button onClick={() => setIsSidebarOpen(true)} className="md:hidden p-3 bg-slate-100 rounded-xl"><Menu size={20} /></button>
-            <h2 className="font-black uppercase text-[10px] tracking-[0.3em] text-slate-400">
-              {activeTab === 'stats' ? 'Análise do Comandante' : 'Módulo Administrativo'}
-            </h2>
-          </div>
-          {loading && <Loader2 size={18} className="animate-spin text-amber-500" />}
+      <main className="flex-1 flex flex-col h-screen overflow-hidden">
+        <header className="bg-white h-20 border-b px-8 flex items-center justify-between">
+          <h2 className="font-black uppercase text-[11px] tracking-widest text-slate-400">{activeTab}</h2>
+          {loading && <Loader2 className="animate-spin text-amber-500" />}
         </header>
 
-        <section className="flex-1 overflow-y-auto p-4 md:p-8">
+        <section className="flex-1 overflow-y-auto p-8">
           
-          {/* ABA: DASHBOARD DO COMANDANTE */}
+          {/* ABA: DASHBOARD COM DROPDOWNS */}
           {activeTab === 'stats' && (
-            <div className="max-w-7xl mx-auto space-y-6">
-              {/* FILTROS DE INTELIGÊNCIA */}
-              <div className="bg-white p-6 rounded-[2rem] shadow-sm border border-slate-200 grid grid-cols-1 md:grid-cols-4 gap-4">
-                <div className="space-y-1">
-                  <label className="text-[9px] font-black text-slate-400 uppercase ml-2">Viatura</label>
-                  <div className="relative">
-                    <Search className="absolute left-4 top-3.5 text-slate-300" size={16}/>
-                    <input className="w-full bg-slate-50 border-none rounded-xl py-3 pl-11 text-xs font-bold" placeholder="Prefixo..." onChange={e => setFilters({...filters, viatura: e.target.value})} />
-                  </div>
-                </div>
-                <div className="space-y-1">
-                  <label className="text-[9px] font-black text-slate-400 uppercase ml-2">Motorista (RE/Nome)</label>
-                  <input className="w-full bg-slate-50 border-none rounded-xl py-3 px-4 text-xs font-bold" placeholder="Filtrar motorista..." onChange={e => setFilters({...filters, motorista: e.target.value})} />
-                </div>
-                <div className="space-y-1">
-                  <label className="text-[9px] font-black text-slate-400 uppercase ml-2">Garageiro</label>
-                  <input className="w-full bg-slate-50 border-none rounded-xl py-3 px-4 text-xs font-bold" placeholder="RE do garageiro..." onChange={e => setFilters({...filters, garageiro: e.target.value})} />
-                </div>
-                <div className="flex items-end">
-                  <button className="w-full bg-slate-900 text-white h-[46px] rounded-xl font-black text-[10px] uppercase flex items-center justify-center gap-2">
-                    <Filter size={14}/> Aplicar Filtros
-                  </button>
-                </div>
+            <div className="space-y-6">
+              <div className="bg-white p-6 rounded-3xl shadow-sm grid grid-cols-1 md:grid-cols-3 gap-4 border border-slate-200">
+                <SelectFilter label="Viatura" options={opcoesFiltro.vtrs} value={filters.vtr} onChange={v => setFilters({...filters, vtr: v})} />
+                <SelectFilter label="Motorista" options={opcoesFiltro.motoristas} value={filters.motorista} onChange={v => setFilters({...filters, motorista: v})} />
+                <SelectFilter label="Garageiro (RE)" options={opcoesFiltro.garageiros} value={filters.garageiro} onChange={v => setFilters({...filters, garageiro: v})} />
               </div>
-
+              
               <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-                <StatCard label="Atv. Recentes" value={dadosFiltrados.length} color="blue" />
-                <StatCard label="Alertas Óleo" value={pendenciasOleo.length} color="amber" />
-                <StatCard label="Frota Total" value={viaturas.length} color="blue" />
-                <StatCard label="KMs Rodados" value={Object.values(calculoPneus).reduce((a, b) => a + (b.max - b.min), 0)} color="red" />
-              </div>
-
-              {/* TABELA DE OPERAÇÕES EM TEMPO REAL */}
-              <div className="bg-white rounded-[2rem] border border-slate-200 overflow-hidden shadow-sm">
-                 <div className="p-6 border-b border-slate-50 flex justify-between items-center">
-                    <h3 className="text-xs font-black uppercase tracking-widest text-slate-400">Log de Movimentação Cross-Filter</h3>
-                    <button onClick={() => window.print()} className="p-2 hover:bg-slate-100 rounded-lg"><Printer size={18}/></button>
-                 </div>
-                 <div className="overflow-x-auto">
-                    <table className="w-full text-left">
-                      <thead className="bg-slate-50 text-[9px] font-black uppercase text-slate-400">
-                        <tr>
-                          <th className="p-5">Data/Hora</th>
-                          <th className="p-5">VTR</th>
-                          <th className="p-5">Motorista</th>
-                          <th className="p-5">KM Saída</th>
-                          <th className="p-5">Garageiro</th>
-                          <th className="p-5 text-right">Status</th>
-                        </tr>
-                      </thead>
-                      <tbody className="divide-y divide-slate-50 text-[11px] font-bold">
-                        {dadosFiltrados.slice(0, 20).map((item, i) => (
-                          <tr key={i} className="hover:bg-slate-50/50">
-                            <td className="p-5 text-slate-400">{item.data_hora}</td>
-                            <td className="p-5 font-black">{item.prefixo_vtr}</td>
-                            <td className="p-5">{item.motorista_nome}</td>
-                            <td className="p-5">{item.hodometro_saida} KM</td>
-                            <td className="p-5">{item.garageiro_re || '---'}</td>
-                            <td className="p-5 text-right">
-                               <span className="px-2 py-1 bg-emerald-100 text-emerald-700 rounded-md text-[9px]">REGISTRADO</span>
-                            </td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                 </div>
+                <StatCard label="Movimentações" value={dadosFiltrados.length} color="blue" />
+                <StatCard label="VTRs Ativas" value={viaturas.length} color="amber" />
+                <StatCard label="Alertas" value={vistorias.filter(v => v.nivel_oleo === 'BAIXO').length} color="red" />
+                <StatCard label="Média KM" value="---" color="blue" />
               </div>
             </div>
           )}
 
-          {/* ABA: CONTROLE DE PNEUS / RODAGEM */}
-          {activeTab === 'pneus' && (
-            <div className="max-w-5xl mx-auto animate-in fade-in">
-              <div className="bg-slate-900 rounded-[2.5rem] p-10 text-white mb-8">
-                <h3 className="text-2xl font-black italic uppercase">Desgaste de Rodagem (Pneus)</h3>
-                <p className="text-slate-400 text-xs mt-2 uppercase tracking-widest">Cálculo automático baseado na variação de KM entre vistorias</p>
+          {/* ABA: RELATÓRIOS FINAIS */}
+          {activeTab === 'reports' && (
+            <div className="bg-white rounded-3xl border shadow-sm overflow-hidden">
+              <div className="p-6 bg-slate-50 border-b flex justify-between items-center">
+                <h3 className="font-black text-xs uppercase text-slate-500">Relatório Consolidado de Vistorias</h3>
+                <button onClick={() => window.print()} className="bg-slate-900 text-white px-4 py-2 rounded-xl text-[10px] font-black flex items-center gap-2">
+                  <Printer size={14}/> IMPRIMIR P4
+                </button>
               </div>
+              <table className="w-full text-left">
+                <thead className="bg-slate-100 text-[9px] font-black uppercase">
+                  <tr>
+                    <th className="p-4">Data</th>
+                    <th className="p-4">Vtr</th>
+                    <th className="p-4">Motorista</th>
+                    <th className="p-4">RE Garageiro</th>
+                    <th className="p-4">KM Saída</th>
+                    <th className="p-4">Combustível</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y text-[11px] font-bold">
+                  {dadosFiltrados.map((v, i) => (
+                    <tr key={i} className="hover:bg-slate-50">
+                      <td className="p-4">{v.data_hora}</td>
+                      <td className="p-4">{v.prefixo_vtr}</td>
+                      <td className="p-4">{v.motorista_nome}</td>
+                      <td className="p-4">{v.garageiro_re}</td>
+                      <td className="p-4">{v.hodometro_saida}</td>
+                      <td className="p-4">{v.nivel_combustivel}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
 
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                {Object.entries(calculoPneus).map(([pref, dados]) => (
-                  <div key={pref} className="bg-white p-6 rounded-3xl border border-slate-200 shadow-sm flex items-center justify-between">
+          {/* ABA: CONTROLE DE RODAGEM (PNEUS) */}
+          {activeTab === 'pneus' && (
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+              {viaturas.map(v => {
+                const logs = vistorias.filter(l => l.prefixo_vtr === (v.Prefixo || v.prefixo));
+                const kmInicial = logs.length > 0 ? Math.min(...logs.map(l => l.hodometro_saida)) : 0;
+                const kmFinal = logs.length > 0 ? Math.max(...logs.map(l => l.hodometro_saida)) : 0;
+                const rodagem = kmFinal - kmInicial;
+                
+                return (
+                  <div key={v.id} className="bg-white p-6 rounded-3xl border flex justify-between items-center shadow-sm">
                     <div>
-                      <p className="text-[10px] font-black text-slate-400 uppercase">Prefixo</p>
-                      <p className="text-2xl font-black">{pref}</p>
+                      <span className="text-[10px] font-black text-slate-400 uppercase">VTR {v.Prefixo}</span>
+                      <p className="text-2xl font-black italic">{v.Placa}</p>
                     </div>
                     <div className="text-right">
-                      <p className="text-[10px] font-black text-emerald-500 uppercase">KM Rodado no Período</p>
-                      <p className="text-3xl font-black text-slate-800">{dados.max - dados.min} <span className="text-sm font-normal text-slate-400">KM</span></p>
-                      <div className="w-32 h-2 bg-slate-100 rounded-full mt-2 overflow-hidden">
-                        <div className="h-full bg-amber-500" style={{width: `${Math.min((dados.max - dados.min)/50, 100)}%`}}></div>
-                      </div>
+                      <p className="text-3xl font-black text-amber-500">{rodagem} KM</p>
+                      <p className="text-[9px] font-black uppercase text-slate-400">Rodados no Sistema</p>
                     </div>
                   </div>
-                ))}
-              </div>
+                );
+              })}
             </div>
           )}
 
-          {/* ABA: GESTÃO DE FROTA (CRUD) */}
+          {/* ABA: GESTÃO DE FROTA (CADASTRO ROBUSTO) */}
           {activeTab === 'frota' && (
-            <div className="max-w-6xl mx-auto space-y-6">
-              <div className="flex justify-between items-center">
-                 <div className="bg-white p-3 rounded-2xl border border-slate-200 flex-1 max-w-md flex items-center gap-3">
-                   <Search size={18} className="text-slate-300"/>
-                   <input className="bg-transparent border-none outline-none text-xs font-black uppercase w-full" placeholder="Buscar ativo..." value={searchTerm} onChange={e => setSearchTerm(e.target.value)} />
-                 </div>
-                 <button onClick={() => {setFormData({id:'', prefixo:'', placa:'', modelo:'', tipoCarroceria:'CAMBURÃO', isEditing:false}); setIsAddingVtr(true)}} className="bg-slate-900 text-white px-6 py-3 rounded-2xl font-black text-[10px] uppercase flex items-center gap-2">
-                   <Plus size={16}/> Nova VTR
-                 </button>
-              </div>
-
-              <div className="bg-white rounded-[2.5rem] border border-slate-200 overflow-hidden shadow-sm">
-                <table className="w-full text-left text-sm font-bold">
-                  <thead className="bg-slate-900 text-[9px] text-slate-500 uppercase font-black">
-                    <tr>
-                      <th className="p-6">Viatura</th>
-                      <th className="p-6">Placa / Modelo</th>
-                      <th className="p-6">Carroceria</th>
-                      <th className="p-6 text-center">Ações</th>
-                    </tr>
+            <div className="space-y-6">
+              <button onClick={() => {setFormData({isEditing:false}); setIsAddingVtr(true)}} className="bg-slate-900 text-white px-6 py-3 rounded-2xl font-black text-[10px] uppercase flex items-center gap-2 shadow-lg">
+                <Plus size={16}/> Cadastrar Viatura Completa
+              </button>
+              <div className="bg-white rounded-3xl border shadow-sm overflow-hidden">
+                <table className="w-full text-left">
+                  <thead className="bg-slate-900 text-white text-[9px] font-black uppercase">
+                    <tr><th className="p-5">Prefixo</th><th className="p-5">Placa</th><th className="p-5">Modelo/Ano</th><th className="p-5">Renavam/Chassi</th><th className="p-5 text-center">Ações</th></tr>
                   </thead>
-                  <tbody className="divide-y divide-slate-100">
-                    {viaturas.filter(v => v.Prefixo?.includes(searchTerm.toUpperCase())).map((v, i) => (
-                      <tr key={i} className="hover:bg-slate-50 transition-colors">
-                        <td className="p-6 text-xl font-black tracking-tighter">{v.Prefixo || v.prefixo}</td>
-                        <td className="p-6">
-                          <p className="text-slate-900">{v.Placa || v.placa}</p>
-                          <p className="text-[10px] text-slate-400 uppercase">{v.Modelo || v.modelo}</p>
-                        </td>
-                        <td className="p-6 text-[10px] uppercase font-black text-blue-600">{v.TipoCarroceria || 'PADRÃO'}</td>
-                        <td className="p-6 text-center">
-                           <div className="flex justify-center gap-2">
-                             <button onClick={() => {setFormData({...v, isEditing: true}); setIsAddingVtr(true)}} className="p-2 text-amber-500 hover:bg-amber-50 rounded-lg"><Edit2 size={16}/></button>
-                             <button className="p-2 text-red-300 hover:text-red-500"><Trash2 size={16}/></button>
-                           </div>
+                  <tbody className="divide-y font-bold text-xs">
+                    {viaturas.map((v, i) => (
+                      <tr key={i} className="hover:bg-slate-50">
+                        <td className="p-5 text-lg font-black">{v.Prefixo}</td>
+                        <td className="p-5">{v.Placa}</td>
+                        <td className="p-5">{v.Modelo} / {v.Ano}</td>
+                        <td className="p-5 text-slate-400">{v.Renavam} <br/> {v.Chassi}</td>
+                        <td className="p-5 text-center">
+                          <button onClick={() => {setFormData({...v, isEditing:true}); setIsAddingVtr(true)}} className="p-2 text-amber-500"><Edit2 size={16}/></button>
                         </td>
                       </tr>
                     ))}
@@ -298,22 +195,26 @@ const AdminDashboard = ({ onBack }) => {
         </section>
       </main>
 
-      {/* MODAL CADASTRO */}
+      {/* MODAL DE CADASTRO ROBUSTO */}
       {isAddingVtr && (
         <div className="fixed inset-0 bg-slate-950/90 z-[300] flex items-center justify-center p-4 backdrop-blur-sm">
-          <div className="bg-white w-full max-w-lg rounded-[3rem] shadow-2xl overflow-hidden">
+          <div className="bg-white w-full max-w-2xl rounded-[3rem] shadow-2xl overflow-hidden overflow-y-auto max-h-[90vh]">
             <div className="p-8 bg-slate-900 text-white flex justify-between items-center">
-              <h2 className="font-black uppercase italic tracking-tighter">{formData.isEditing ? 'Editar Ativo' : 'Novo Ativo'}</h2>
+              <h2 className="font-black uppercase italic tracking-tighter text-xl">Ficha Técnica do Ativo</h2>
               <button onClick={() => setIsAddingVtr(false)}><X/></button>
             </div>
-            <form onSubmit={handleSaveViatura} className="p-10 space-y-4">
-              <Input label="Prefixo" value={formData.prefixo} onChange={e => setFormData({...formData, prefixo: e.target.value.toUpperCase()})} />
-              <Input label="Placa" value={formData.placa} onChange={e => setFormData({...formData, placa: e.target.value.toUpperCase()})} />
-              <Input label="Modelo" value={formData.modelo} onChange={e => setFormData({...formData, modelo: e.target.value.toUpperCase()})} />
-              <select className="w-full p-4 bg-slate-50 border-none rounded-2xl font-black text-xs" value={formData.tipoCarroceria} onChange={e => setFormData({...formData, tipoCarroceria: e.target.value})}>
-                {LISTA_CARROCERIAS.map(c => <option key={c} value={c}>{c}</option>)}
-              </select>
-              <button className="w-full py-5 bg-slate-900 text-white rounded-3xl font-black uppercase text-xs mt-4">Salvar Dados</button>
+            <form className="p-10 grid grid-cols-2 gap-4">
+              <Input label="Prefixo (Ex: 01-123)" value={formData.prefixo} onChange={e => setFormData({...formData, prefixo: e.target.value})} />
+              <Input label="Placa" value={formData.placa} onChange={e => setFormData({...formData, placa: e.target.value})} />
+              <Input label="Modelo" value={formData.modelo} onChange={e => setFormData({...formData, modelo: e.target.value})} />
+              <Input label="Ano" value={formData.ano} onChange={e => setFormData({...formData, ano: e.target.value})} />
+              <Input label="Chassi" value={formData.chassi} onChange={e => setFormData({...formData, chassi: e.target.value})} />
+              <Input label="Renavam" value={formData.renavam} onChange={e => setFormData({...formData, renavam: e.target.value})} />
+              <Input label="Odômetro Atual" value={formData.odometro_atual} onChange={e => setFormData({...formData, odometro_atual: e.target.value})} />
+              <Input label="Última Revisão" type="date" value={formData.ultima_revisao} onChange={e => setFormData({...formData, ultima_revisao: e.target.value})} />
+              <div className="col-span-2">
+                <button className="w-full py-5 bg-amber-500 text-slate-900 rounded-3xl font-black uppercase text-xs mt-4 shadow-xl shadow-amber-500/20">Salvar na Base de Dados P4</button>
+              </div>
             </form>
           </div>
         </div>
@@ -322,15 +223,26 @@ const AdminDashboard = ({ onBack }) => {
   );
 };
 
+// Componentes Auxiliares
 const MenuBtn = ({ active, onClick, icon, label }) => (
   <button onClick={onClick} className={`w-full flex items-center gap-3 p-4 rounded-2xl text-[10px] font-black uppercase transition-all ${active ? 'bg-amber-500 text-slate-900 shadow-lg' : 'text-slate-500 hover:bg-slate-900 hover:text-white'}`}>
     {icon} {label}
   </button>
 );
 
+const SelectFilter = ({ label, options, value, onChange }) => (
+  <div className="space-y-1">
+    <label className="text-[9px] font-black text-slate-400 uppercase ml-2">{label}</label>
+    <select value={value} onChange={e => onChange(e.target.value)} className="w-full p-3 bg-slate-50 border-none rounded-xl text-xs font-bold outline-none ring-1 ring-slate-200">
+      <option value="">TODOS</option>
+      {options.map(opt => <option key={opt} value={opt}>{opt}</option>)}
+    </select>
+  </div>
+);
+
 const StatCard = ({ label, value, color }) => (
-  <div className={`bg-white p-6 rounded-[2rem] border-l-[8px] ${color === 'blue' ? 'border-blue-500' : color === 'amber' ? 'border-amber-500' : 'border-red-500'} shadow-sm border border-slate-200`}>
-    <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest">{label}</p>
+  <div className={`bg-white p-6 rounded-3xl border-l-[8px] ${color === 'blue' ? 'border-blue-500' : color === 'amber' ? 'border-amber-500' : 'border-red-500'} shadow-sm border border-slate-200`}>
+    <p className="text-[9px] font-black text-slate-400 uppercase">{label}</p>
     <p className="text-3xl font-black mt-1">{value}</p>
   </div>
 );
@@ -338,7 +250,7 @@ const StatCard = ({ label, value, color }) => (
 const Input = ({ label, ...props }) => (
   <div className="space-y-1">
     <label className="text-[9px] font-black text-slate-400 uppercase ml-2">{label}</label>
-    <input {...props} className="w-full bg-slate-50 border-none rounded-2xl p-4 text-xs font-bold focus:ring-2 ring-amber-500 outline-none" />
+    <input {...props} className="w-full bg-slate-50 border-none rounded-2xl p-4 text-xs font-bold outline-none ring-1 ring-slate-100 focus:ring-amber-500" />
   </div>
 );
 
