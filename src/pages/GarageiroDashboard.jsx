@@ -18,7 +18,7 @@ const GarageiroDashboard = ({ onBack }) => {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
   const [soundEnabled, setSoundEnabled] = useState(false);
-  
+  const [finalizadosLocal, setFinalizadosLocal] = useState([]);
   const audioRef = useRef(new Audio('https://assets.mixkit.co/active_storage/sfx/2869/2869-preview.mp3'));
   const prevItemsCount = useRef(0);
 
@@ -53,7 +53,7 @@ useEffect(() => {
   }
 }, [viewingPhoto]);
 
-  const fetchData = async () => {
+const fetchData = async () => {
     setLoading(true);
     try {
       const [resVtr, resPend, resMot] = await Promise.all([
@@ -63,13 +63,22 @@ useEffect(() => {
       ]);
       
       if (resVtr.status === 'success') setViaturas(resVtr.data);
-      if (resPend.status === 'success') {
-        if (soundEnabled && resPend.data.length > prevItemsCount.current) {
-          audioRef.current.play().catch(() => {});
-        }
-        prevItemsCount.current = resPend.data.length;
-        setVistorias(resPend.data);
-      }
+      
+     if (resPend.status === 'success') {
+  // Filtra usando o ID Único (mais seguro) ou o rowId
+  const vistoriasFiltradas = resPend.data.filter(v => {
+    const idUnico = v.id_manutencao || v.id_sistema || v.rowId;
+    return !finalizadosLocal.includes(idUnico);
+  });
+
+  if (soundEnabled && vistoriasFiltradas.length > prevItemsCount.current) {
+    audioRef.current.play().catch(() => {});
+  }
+  
+  prevItemsCount.current = vistoriasFiltradas.length;
+  setVistorias(vistoriasFiltradas);
+}
+
       if (resMot.status === 'success') setMotoristas(resMot.data);
     } catch (error) {
       console.error("Erro ao buscar dados:", error);
@@ -84,7 +93,7 @@ useEffect(() => {
     return () => clearInterval(interval);
   }, [soundEnabled]);
 
-const finalizarConferencia = async () => {
+  const finalizarConferencia = async () => {
     if (isSubmitting) return;
 
     // Validações básicas
@@ -96,16 +105,15 @@ const finalizarConferencia = async () => {
     if (precisaValidarOleo && !conf.oleoConfirmado) return alert("Confirme a troca de óleo visualmente.");
 
     setIsSubmitting(true);
-    
-    // Guardamos o ID antes de enviar para garantir a remoção da tela
     const rowIdParaRemover = selectedVtr.rowId;
 
     try {
       const res = await gasApi.confirmarVistoriaGarageiro({
-        origem: selectedVtr.origem,
-        rowId: rowIdParaRemover, // Usando a variável correta
-        id_vistoria: selectedVtr.id_sistema || selectedVtr.ID_SISTEMA || selectedVtr.id,
-        status_fisico: conf.avaria ? 'AVARIADA' : 'OK',
+  origem: selectedVtr.origem,
+  rowId: rowIdParaRemover, 
+  id_manutencao: selectedVtr.id_manutencao, // <--- ADICIONE ESTA LINHA IMPORTANTE
+  id_vistoria: selectedVtr.id_sistema || selectedVtr.ID_SISTEMA || selectedVtr.id,
+  status_fisico: conf.avaria ? 'AVARIADA' : 'OK',
         limpeza: `INT: ${conf.limpezaInterna ? 'C' : 'NC'} | EXT: ${conf.limpezaExterna ? 'C' : 'NC'}`,
         pertences: conf.pertences === 'SIM' ? `SIM: ${conf.detalhePertences}` : 'NÃO',
         obs_garageiro: conf.obs,
@@ -116,24 +124,28 @@ const finalizarConferencia = async () => {
         km_registro: selectedVtr.hodometro_oleo || selectedVtr.hodometro || selectedVtr.km 
       });
 
-      if (res.status === 'success') {
-        // Remove o card da tela IMEDIATAMENTE
-        setVistorias(prev => prev.filter(v => v.rowId !== rowIdParaRemover));
-        setShowModal(false);
+if (res.status === 'success') {
+  // Use o id_manutencao se existir, senão o rowId
+  const idParaLog = selectedVtr.id_manutencao || rowIdParaRemover;
+  
+  setFinalizadosLocal(prev => [...prev, idParaLog]);
+  setVistorias(prev => prev.filter(v => (v.id_manutencao || v.rowId) !== idParaLog));
+  
+  setShowModal(false);
         setConf({ 
           limpezaInterna: true, limpezaExterna: true, pertences: 'NÃO', 
           detalhePertences: '', motoristaConfirmado: true, novoMotoristaRE: '', 
           avaria: false, obs: '', oleoConfirmado: false 
         });
-        // Atualiza a lista geral após 1.5 segundos
-        setTimeout(fetchData, 1500);
+
+        // 3. Aguarda um pouco para o Google processar a planilha antes de atualizar
+        setTimeout(fetchData, 2000);
       } else {
-        // Se o Google responder 'error', ele cai aqui
-        alert("Erro no servidor: " + (res.message || "Tente novamente."));
+        alert("Erro ao salvar: " + (res.message || "Tente novamente."));
       }
     } catch (e) {
       console.error("Erro completo:", e);
-      alert("Erro de conexão com a planilha.");
+      alert("Erro de conexão com o servidor.");
     } finally {
       setIsSubmitting(false);
     }
