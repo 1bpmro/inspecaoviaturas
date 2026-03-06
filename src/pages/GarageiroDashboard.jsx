@@ -106,51 +106,55 @@ const GarageiroDashboard = ({ onBack }) => {
   };
 
   const finalizarConferencia = async () => {
-    if (isSubmitting) return;
+  if (isSubmitting) return;
 
-    // Validações apenas para Vistorias de Pátio
-    if (selectedVtr.origem === "VISTORIA") {
-      if (!conf.motoristaConfirmado && !conf.novoMotoristaRE) return alert("Selecione o motorista.");
-      if (conf.pertences === 'SIM' && !conf.detalhePertences) return alert("Descreva os pertences.");
-      if (conf.avaria && !fotoAvaria) return alert("Tire foto da avaria.");
-    }
-    
-    // Validação de óleo (comum a ambos se houver flag de óleo)
-    const precisaValidarOleo = selectedVtr.troca_oleo === "SIM" || selectedVtr.origem === "MANUTENCAO_AVULSA";
-    if (precisaValidarOleo && !conf.oleoConfirmado) return alert("Confirme a troca de óleo visualmente.");
+  // Validações de Pátio
+  if (selectedVtr.origem === "VISTORIA") {
+    if (!conf.motoristaConfirmado && !conf.novoMotoristaRE) return alert("Selecione o motorista.");
+    if (conf.pertences === 'SIM' && !conf.detalhePertences) return alert("Descreva os pertences.");
+    if (conf.avaria && !fotoAvaria) return alert("Tire foto da avaria.");
+  }
+  
+  // Validação de óleo
+  const precisaValidarOleo = selectedVtr.troca_oleo === "SIM" || selectedVtr.origem === "MANUTENCAO_AVULSA";
+  if (precisaValidarOleo && !conf.oleoConfirmado) return alert("Confirme a troca de óleo visualmente.");
 
-    setIsSubmitting(true);
-    try {
-      const res = await gasApi.confirmarVistoriaGarageiro({
-        origem: selectedVtr.origem, // Crucial para o backend saber onde salvar
-        rowId: selectedVtr.rowId,
-        id_vistoria: selectedVtr.id_sistema || selectedVtr.ID_SISTEMA,
-        status_fisico: conf.avaria ? 'AVARIADA' : 'OK',
-        limpeza: `INT: ${conf.limpezaInterna ? 'C' : 'NC'} | EXT: ${conf.limpezaExterna ? 'C' : 'NC'}`,
-        pertences: conf.pertences === 'SIM' ? `SIM: ${conf.detalhePertences}` : 'NÃO',
-        obs_garageiro: conf.obs,
-        garageiro_re: user.re,
-        foto_avaria: fotoAvaria,
-        motorista_confirmado: conf.motoristaConfirmado,
-        novo_motorista_re: conf.novoMotoristaRE
+  setIsSubmitting(true);
+  try {
+    const res = await gasApi.confirmarVistoriaGarageiro({
+      origem: selectedVtr.origem,
+      rowId: selectedVtr.rowId,
+      id_vistoria: selectedVtr.id_sistema || selectedVtr.ID_SISTEMA,
+      status_fisico: conf.avaria ? 'AVARIADA' : 'OK',
+      limpeza: `INT: ${conf.limpezaInterna ? 'C' : 'NC'} | EXT: ${conf.limpezaExterna ? 'C' : 'NC'}`,
+      pertences: conf.pertences === 'SIM' ? `SIM: ${conf.detalhePertences}` : 'NÃO',
+      obs_garageiro: conf.obs,
+      garageiro_re: user.re,
+      foto_avaria: fotoAvaria,
+      motorista_confirmado: conf.motoristaConfirmado,
+      novo_motorista_re: conf.novoMotoristaRE,
+      
+      // --- ADIÇÃO CRUCIAL PARA O ÓLEO ---
+      // Passa o KM que veio da vistoria para o backend poder atualizar o Painel
+      km_registro: selectedVtr.hodometro_oleo || selectedVtr.hodometro || selectedVtr.km 
+    });
+
+    if (res.status === 'success') {
+      setShowModal(false);
+      setFotoAvaria(null);
+      setConf({ 
+        limpezaInterna: true, limpezaExterna: true, pertences: 'NÃO', 
+        detalhePertences: '', motoristaConfirmado: true, novoMotoristaRE: '', 
+        avaria: false, obs: '', oleoConfirmado: false 
       });
-
-      if (res.status === 'success') {
-        setShowModal(false);
-        setFotoAvaria(null);
-        setConf({ 
-          limpezaInterna: true, limpezaExterna: true, pertences: 'NÃO', 
-          detalhePertences: '', motoristaConfirmado: true, novoMotoristaRE: '', 
-          avaria: false, obs: '', oleoConfirmado: false 
-        });
-        fetchData();
-      }
-    } catch (e) {
-      alert("Erro ao salvar.");
-    } finally {
-      setIsSubmitting(false);
+      fetchData(); // Isso aqui já limpa a tela do garageiro
     }
-  };
+  } catch (e) {
+    alert("Erro ao salvar.");
+  } finally {
+    setIsSubmitting(false);
+  }
+};
 
   const confirmarAlteracaoStatus = async () => {
     setIsSubmitting(true);
