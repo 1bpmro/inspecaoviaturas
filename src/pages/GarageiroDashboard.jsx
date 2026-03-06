@@ -48,21 +48,19 @@ const GarageiroDashboard = ({ onBack }) => {
 
   const calcularEspera = (timestamp) => {
     if (!timestamp) return null;
-    // Tenta converter strings de data formatadas pelo GAS de volta para objeto Date se necessário
     const dateObj = typeof timestamp === 'string' && timestamp.includes('/') ? new Date() : new Date(timestamp);
     const diff = Math.floor((new Date() - dateObj) / 60000);
     return diff >= 0 ? diff : 0;
   };
 
   const fetchData = async () => {
-  setLoading(true);
-  // Opcional: setVistorias([]); 
+    setLoading(true);
     try {
-    const [resVtr, resPend, resMot] = await Promise.all([
-      gasApi.getViaturas(), 
-      gasApi.getVistoriasPendentes(), // O backend já limpa o cache aqui se você seguiu a dica anterior
-      gasApi.getEfetivoCompleto()
-    ]);
+      const [resVtr, resPend, resMot] = await Promise.all([
+        gasApi.getViaturas(), 
+        gasApi.getVistoriasPendentes(),
+        gasApi.getEfetivoCompleto()
+      ]);
       
       if (resVtr.status === 'success') setViaturas(resVtr.data);
       
@@ -107,55 +105,50 @@ const GarageiroDashboard = ({ onBack }) => {
   };
 
   const finalizarConferencia = async () => {
-  if (isSubmitting) return;
+    if (isSubmitting) return;
 
-  // Validações de Pátio
-  if (selectedVtr.origem === "VISTORIA") {
-    if (!conf.motoristaConfirmado && !conf.novoMotoristaRE) return alert("Selecione o motorista.");
-    if (conf.pertences === 'SIM' && !conf.detalhePertences) return alert("Descreva os pertences.");
-    if (conf.avaria && !fotoAvaria) return alert("Tire foto da avaria.");
-  }
-  
-  // Validação de óleo
-  const precisaValidarOleo = selectedVtr.troca_oleo === "SIM" || selectedVtr.origem === "MANUTENCAO_AVULSA";
-  if (precisaValidarOleo && !conf.oleoConfirmado) return alert("Confirme a troca de óleo visualmente.");
-
-  setIsSubmitting(true);
-  try {
-    const res = await gasApi.confirmarVistoriaGarageiro({
-      origem: selectedVtr.origem,
-      rowId: selectedVtr.rowId,
-      id_vistoria: selectedVtr.id_sistema || selectedVtr.ID_SISTEMA,
-      status_fisico: conf.avaria ? 'AVARIADA' : 'OK',
-      limpeza: `INT: ${conf.limpezaInterna ? 'C' : 'NC'} | EXT: ${conf.limpezaExterna ? 'C' : 'NC'}`,
-      pertences: conf.pertences === 'SIM' ? `SIM: ${conf.detalhePertences}` : 'NÃO',
-      obs_garageiro: conf.obs,
-      garageiro_re: user.re,
-      foto_avaria: fotoAvaria,
-      motorista_confirmado: conf.motoristaConfirmado,
-      novo_motorista_re: conf.novoMotoristaRE,
-      
-      // --- ADIÇÃO CRUCIAL PARA O ÓLEO ---
-      // Passa o KM que veio da vistoria para o backend poder atualizar o Painel
-      km_registro: selectedVtr.hodometro_oleo || selectedVtr.hodometro || selectedVtr.km 
-    });
-
-    if (res.status === 'success') {
-      setShowModal(false);
-      setFotoAvaria(null);
-      setConf({ 
-        limpezaInterna: true, limpezaExterna: true, pertences: 'NÃO', 
-        detalhePertences: '', motoristaConfirmado: true, novoMotoristaRE: '', 
-        avaria: false, obs: '', oleoConfirmado: false 
-      });
-      fetchData(); // Isso aqui já limpa a tela do garageiro
+    if (selectedVtr.origem === "VISTORIA") {
+      if (!conf.motoristaConfirmado && !conf.novoMotoristaRE) return alert("Selecione o motorista.");
+      if (conf.pertences === 'SIM' && !conf.detalhePertences) return alert("Descreva os pertences.");
+      if (conf.avaria && !fotoAvaria) return alert("Tire foto da avaria.");
     }
-  } catch (e) {
-    alert("Erro ao salvar.");
-  } finally {
-    setIsSubmitting(false);
-  }
-};
+    
+    const precisaValidarOleo = selectedVtr.troca_oleo === "SIM" || selectedVtr.origem === "MANUTENCAO_AVULSA";
+    if (precisaValidarOleo && !conf.oleoConfirmado) return alert("Confirme a troca de óleo visualmente.");
+
+    setIsSubmitting(true);
+    try {
+      const res = await gasApi.confirmarVistoriaGarageiro({
+        origem: selectedVtr.origem,
+        rowId: selectedVtr.rowId,
+        id_vistoria: selectedVtr.id_sistema || selectedVtr.ID_SISTEMA,
+        status_fisico: conf.avaria ? 'AVARIADA' : 'OK',
+        limpeza: `INT: ${conf.limpezaInterna ? 'C' : 'NC'} | EXT: ${conf.limpezaExterna ? 'C' : 'NC'}`,
+        pertences: conf.pertences === 'SIM' ? `SIM: ${conf.detalhePertences}` : 'NÃO',
+        obs_garageiro: conf.obs,
+        garageiro_re: user.re,
+        foto_avaria: fotoAvaria,
+        motorista_confirmado: conf.motoristaConfirmado,
+        novo_motorista_re: conf.novoMotoristaRE,
+        km_registro: selectedVtr.hodometro_oleo || selectedVtr.hodometro || selectedVtr.km 
+      });
+
+      if (res.status === 'success') {
+        setShowModal(false);
+        setFotoAvaria(null);
+        setConf({ 
+          limpezaInterna: true, limpezaExterna: true, pertences: 'NÃO', 
+          detalhePertences: '', motoristaConfirmado: true, novoMotoristaRE: '', 
+          avaria: false, obs: '', oleoConfirmado: false 
+        });
+        fetchData();
+      }
+    } catch (e) {
+      alert("Erro ao salvar.");
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
 
   const confirmarAlteracaoStatus = async () => {
     setIsSubmitting(true);
@@ -258,9 +251,6 @@ const GarageiroDashboard = ({ onBack }) => {
                         <span className="inline-flex items-center gap-1 bg-amber-100 text-amber-700 px-2 py-1 rounded-lg text-[9px] font-black uppercase w-fit">
                           <Droplets size={12} /> Troca de Óleo Efetuada
                         </span>
-                        {isOleoInstantaneo && (
-                          <p className="text-[9px] font-bold text-amber-600 uppercase italic">Registro instantâneo via app</p>
-                        )}
                       </div>
                     )}
                   </div>
@@ -281,7 +271,6 @@ const GarageiroDashboard = ({ onBack }) => {
           </div>
         )}
 
-        {/* TAB FROTA - Sem alterações para não quebrar */}
         {tab === 'frota' && (
           <div className="space-y-4">
             <div className="relative">
@@ -337,7 +326,7 @@ const GarageiroDashboard = ({ onBack }) => {
         )}
       </main>
 
-      {/* MODAL DE CONFERÊNCIA INTEGRADO */}
+      {/* MODAL DE CONFERÊNCIA */}
       {showModal && selectedVtr && (
         <div className="fixed inset-0 bg-slate-900/80 backdrop-blur-sm z-50 flex items-center justify-center p-4">
           <div className="bg-white w-full max-w-lg rounded-[2.5rem] shadow-2xl overflow-hidden flex flex-col max-h-[90vh]">
@@ -352,7 +341,6 @@ const GarageiroDashboard = ({ onBack }) => {
             </div>
 
             <div className="p-6 space-y-5 overflow-y-auto">
-              {/* LÓGICA DO ÓLEO - Usando a chave padronizada foto_evidencia */}
               {(selectedVtr.troca_oleo === "SIM" || selectedVtr.origem === "MANUTENCAO_AVULSA") && (
                 <div className="bg-amber-50 border-2 border-amber-200 rounded-3xl p-5 space-y-4">
                   <div className="flex justify-between items-start">
@@ -362,16 +350,15 @@ const GarageiroDashboard = ({ onBack }) => {
                       </h4>
                       <p className="text-[10px] text-amber-700 font-bold mt-1">HODÔMETRO: {selectedVtr.hodometro_oleo || selectedVtr.km || 'N/I'} KM</p>
                     </div>
-                   {/* AQUI ESTÁ A FOTO: Tenta várias fontes se foto_evidencia falhar */}
-{(selectedVtr.foto_evidencia || selectedVtr.foto_oleo || selectedVtr.foto) && (
-  <button 
-    onClick={() => setViewingPhoto(selectedVtr.foto_evidencia || selectedVtr.foto_oleo || selectedVtr.foto)}
-    className="bg-white border-2 border-amber-200 p-3 rounded-xl text-amber-600 hover:bg-amber-100 transition-all shadow-md flex items-center gap-2 min-w-fit"
-  >
-    <Eye size={24} />
-    <span className="text-[10px] font-black uppercase">Ver Foto</span>
-  </button>
-)}
+                    {(selectedVtr.foto_evidencia || selectedVtr.foto_oleo || selectedVtr.foto) && (
+                      <button 
+                        onClick={() => setViewingPhoto(selectedVtr.foto_evidencia || selectedVtr.foto_oleo || selectedVtr.foto)}
+                        className="bg-white border-2 border-amber-200 p-3 rounded-xl text-amber-600 hover:bg-amber-100 transition-all shadow-md flex items-center gap-2 min-w-fit"
+                      >
+                        <Eye size={24} />
+                        <span className="text-[10px] font-black uppercase">Ver Foto</span>
+                      </button>
+                    )}
                   </div>
                   
                   <button 
@@ -385,7 +372,6 @@ const GarageiroDashboard = ({ onBack }) => {
                 </div>
               )}
 
-              {/* SE FOR UMA VISTORIA DE PÁTIO, MOSTRA O RESTANTE DO FORMULÁRIO */}
               {selectedVtr.origem === "VISTORIA" ? (
                 <>
                   <div className="bg-slate-50 p-4 rounded-3xl border-2 border-slate-100">
@@ -427,12 +413,9 @@ const GarageiroDashboard = ({ onBack }) => {
                   <textarea className="w-full bg-slate-50 border-2 border-slate-100 rounded-2xl p-4 text-xs font-bold uppercase" placeholder="OBSERVAÇÕES ADICIONAIS..." value={conf.obs} onChange={e => setConf({...conf, obs: e.target.value})} />
                 </>
               ) : (
-                /* SE FOR APENAS ALERTA DE ÓLEO AVULSO */
                 <div className="py-6 text-center space-y-3 bg-slate-50 rounded-3xl border-2 border-dashed border-slate-200">
                   <Wrench size={40} className="mx-auto text-slate-300" />
-                  <p className="text-xs font-bold text-slate-500 uppercase px-6">
-                    Manutenção preventiva em serviço. Valide as informações acima para remover o alerta.
-                  </p>
+                  <p className="text-xs font-bold text-slate-500 uppercase px-6">Manutenção preventiva em serviço. Valide as informações acima para remover o alerta.</p>
                 </div>
               )}
 
@@ -458,7 +441,7 @@ const GarageiroDashboard = ({ onBack }) => {
         </div>
       )}
 
-      {/* MODAL DE BLOQUEIO - Sem alterações para não quebrar */}
+      {/* MODAL DE BLOQUEIO */}
       {showLockModal && (
         <div className="fixed inset-0 bg-slate-900/90 backdrop-blur-md z-[60] flex items-center justify-center p-4">
           <div className="bg-white w-full max-w-sm rounded-[2.5rem] p-8 shadow-2xl animate-in zoom-in duration-300">
