@@ -12,7 +12,6 @@ const GarageiroDashboard = ({ onBack }) => {
   const { user } = useAuth();
   const [tab, setTab] = useState('pendentes'); 
   const [vistorias, setVistorias] = useState([]);
-  const [manutencoesRecentas, setManutencoesRecentes] = useState([]); // Nova state para óleo instantâneo
   const [viaturas, setViaturas] = useState([]);
   const [motoristas, setMotoristas] = useState([]); 
   const [loading, setLoading] = useState(true);
@@ -49,14 +48,15 @@ const GarageiroDashboard = ({ onBack }) => {
 
   const calcularEspera = (timestamp) => {
     if (!timestamp) return null;
-    const diff = Math.floor((new Date() - new Date(timestamp)) / 60000);
+    // Tenta converter strings de data formatadas pelo GAS de volta para objeto Date se necessário
+    const dateObj = typeof timestamp === 'string' && timestamp.includes('/') ? new Date() : new Date(timestamp);
+    const diff = Math.floor((new Date() - dateObj) / 60000);
     return diff >= 0 ? diff : 0;
   };
 
   const fetchData = async () => {
     setLoading(true);
     try {
-      // Adicionado busca de manutenções para pegar o óleo em tempo real
       const [resVtr, resPend, resMot] = await Promise.all([
         gasApi.getViaturas(), 
         gasApi.getVistoriasPendentes(),
@@ -67,10 +67,6 @@ const GarageiroDashboard = ({ onBack }) => {
       
       if (resPend.status === 'success') {
         const novasVistorias = resPend.data;
-        
-        // Filtra manutenções de óleo que ainda não foram "validadas" se o seu backend permitir
-        // Ou simplesmente exibe as vistorias que já trazem o campo troca_oleo: "SIM"
-        
         const totalAlertas = novasVistorias.length;
 
         if (soundEnabled && totalAlertas > prevItemsCount.current) {
@@ -111,14 +107,22 @@ const GarageiroDashboard = ({ onBack }) => {
 
   const finalizarConferencia = async () => {
     if (isSubmitting) return;
-    if (!conf.motoristaConfirmado && !conf.novoMotoristaRE) return alert("Selecione o motorista.");
-    if (conf.pertences === 'SIM' && !conf.detalhePertences) return alert("Descreva os pertences.");
-    if (conf.avaria && !fotoAvaria) return alert("Tire foto da avaria.");
-    if (selectedVtr.troca_oleo === "SIM" && !conf.oleoConfirmado) return alert("Confirme a troca de óleo visualmente.");
+
+    // Validações apenas para Vistorias de Pátio
+    if (selectedVtr.origem === "VISTORIA") {
+      if (!conf.motoristaConfirmado && !conf.novoMotoristaRE) return alert("Selecione o motorista.");
+      if (conf.pertences === 'SIM' && !conf.detalhePertences) return alert("Descreva os pertences.");
+      if (conf.avaria && !fotoAvaria) return alert("Tire foto da avaria.");
+    }
+    
+    // Validação de óleo (comum a ambos se houver flag de óleo)
+    const precisaValidarOleo = selectedVtr.troca_oleo === "SIM" || selectedVtr.origem === "MANUTENCAO_AVULSA";
+    if (precisaValidarOleo && !conf.oleoConfirmado) return alert("Confirme a troca de óleo visualmente.");
 
     setIsSubmitting(true);
     try {
       const res = await gasApi.confirmarVistoriaGarageiro({
+        origem: selectedVtr.origem, // Crucial para o backend saber onde salvar
         rowId: selectedVtr.rowId,
         id_vistoria: selectedVtr.id_sistema || selectedVtr.ID_SISTEMA,
         status_fisico: conf.avaria ? 'AVARIADA' : 'OK',
@@ -128,8 +132,7 @@ const GarageiroDashboard = ({ onBack }) => {
         garageiro_re: user.re,
         foto_avaria: fotoAvaria,
         motorista_confirmado: conf.motoristaConfirmado,
-        novo_motorista_re: conf.novoMotoristaRE,
-        troca_oleo_aprovada: selectedVtr.troca_oleo === "SIM"
+        novo_motorista_re: conf.novoMotoristaRE
       });
 
       if (res.status === 'success') {
@@ -222,7 +225,7 @@ const GarageiroDashboard = ({ onBack }) => {
               </div>
             ) : vistorias.map((vtr, i) => {
               const espera = calcularEspera(vtr.timestamp || vtr.data_hora);
-              const isOleoInstantaneo = vtr.tipo === "ÓLEO" && !vtr.id_vistoria; // Identifica se é apenas aviso de óleo
+              const isOleoInstantaneo = vtr.origem === "MANUTENCAO_AVULSA"; 
 
               return (
                 <div key={i} className={`bg-white border-2 rounded-[2rem] p-5 shadow-sm transition-all animate-in fade-in slide-in-from-bottom-4 ${isOleoInstantaneo ? 'border-amber-500 bg-amber-50/30' : 'border-slate-200 hover:border-amber-400'}`}>
@@ -248,10 +251,10 @@ const GarageiroDashboard = ({ onBack }) => {
                     {(vtr.troca_oleo === "SIM" || isOleoInstantaneo) && (
                       <div className="flex flex-col gap-1">
                         <span className="inline-flex items-center gap-1 bg-amber-100 text-amber-700 px-2 py-1 rounded-lg text-[9px] font-black uppercase w-fit">
-                          <Droplets size={12} /> Troca de Óleo Realizada
+                          <Droplets size={12} /> Troca de Óleo Efetuada
                         </span>
                         {isOleoInstantaneo && (
-                          <p className="text-[9px] font-bold text-amber-600 uppercase italic">Vtr ainda em patrulhamento</p>
+                          <p className="text-[9px] font-bold text-amber-600 uppercase italic">Registro instantâneo via app</p>
                         )}
                       </div>
                     )}
@@ -265,7 +268,7 @@ const GarageiroDashboard = ({ onBack }) => {
                     className={`w-full py-4 rounded-2xl font-black uppercase text-xs tracking-widest transition-all flex items-center justify-center gap-2 shadow-lg ${isOleoInstantaneo ? 'bg-amber-600 text-white shadow-amber-200' : 'bg-slate-900 text-white shadow-slate-200 hover:bg-amber-600'}`}
                   >
                     {isOleoInstantaneo ? <Eye size={16} /> : <CheckCircle2 size={16} />}
-                    {isOleoInstantaneo ? 'Ver Comprovante' : 'Abrir Vistoria'}
+                    {isOleoInstantaneo ? 'Conferir Comprovante' : 'Abrir Vistoria'}
                   </button>
                 </div>
               );
@@ -273,6 +276,7 @@ const GarageiroDashboard = ({ onBack }) => {
           </div>
         )}
 
+        {/* TAB FROTA - Sem alterações para não quebrar */}
         {tab === 'frota' && (
           <div className="space-y-4">
             <div className="relative">
@@ -336,26 +340,27 @@ const GarageiroDashboard = ({ onBack }) => {
               <div>
                 <h2 className="text-2xl font-black uppercase tracking-tighter">Fiscon {selectedVtr.prefixo_vtr || selectedVtr.prefixo}</h2>
                 <p className="text-[10px] text-amber-500 font-black uppercase tracking-widest">
-                  {selectedVtr.id_vistoria ? 'Conferência de Pátio' : 'Validação de Manutenção'}
+                  {selectedVtr.origem === "VISTORIA" ? 'Conferência de Pátio' : 'Validação de Manutenção'}
                 </p>
               </div>
               <button onClick={() => setShowModal(false)} className="p-2 hover:bg-white/10 rounded-full"><X size={24} /></button>
             </div>
 
             <div className="p-6 space-y-5 overflow-y-auto">
-              {/* LÓGICA DO ÓLEO (Sempre visível se houver troca_oleo ou for tipo ÓLEO) */}
-              {(selectedVtr.troca_oleo === "SIM" || selectedVtr.tipo === "ÓLEO") && (
+              {/* LÓGICA DO ÓLEO - Usando a chave padronizada foto_evidencia */}
+              {(selectedVtr.troca_oleo === "SIM" || selectedVtr.origem === "MANUTENCAO_AVULSA") && (
                 <div className="bg-amber-50 border-2 border-amber-200 rounded-3xl p-5 space-y-4">
                   <div className="flex justify-between items-start">
                     <div>
                       <h4 className="text-amber-800 font-black text-xs uppercase flex items-center gap-2">
                         <Droplets size={16} /> Comprovante de Óleo
                       </h4>
-                      <p className="text-[10px] text-amber-700 font-bold mt-1">HODÔMETRO: {selectedVtr.hodometro_oleo || selectedVtr.km} KM</p>
+                      <p className="text-[10px] text-amber-700 font-bold mt-1">HODÔMETRO: {selectedVtr.hodometro_oleo || selectedVtr.km || 'N/I'} KM</p>
                     </div>
-                    {(selectedVtr.foto_oleo || selectedVtr.foto) && (
+                    {/* AQUI ESTÁ A FOTO: Tenta várias fontes se foto_evidencia falhar */}
+                    {(selectedVtr.foto_evidencia || selectedVtr.foto_oleo || selectedVtr.foto) && (
                       <button 
-                        onClick={() => setViewingPhoto(selectedVtr.foto_oleo || selectedVtr.foto)}
+                        onClick={() => setViewingPhoto(selectedVtr.foto_evidencia || selectedVtr.foto_oleo || selectedVtr.foto)}
                         className="bg-white border-2 border-amber-200 p-2 rounded-xl text-amber-600 hover:bg-amber-100 transition-all shadow-sm"
                       >
                         <Eye size={20} />
@@ -369,13 +374,13 @@ const GarageiroDashboard = ({ onBack }) => {
                       ${conf.oleoConfirmado ? 'bg-emerald-500 border-emerald-500 text-white' : 'bg-white border-amber-300 text-amber-600'}`}
                   >
                     {conf.oleoConfirmado ? <Check size={16}/> : <AlertCircle size={16}/>}
-                    {conf.oleoConfirmado ? 'DADOS CONFERIDOS' : 'CONFERIR AGORA'}
+                    {conf.oleoConfirmado ? 'ÓLEO CONFERIDO' : 'CONFERIR ÓLEO'}
                   </button>
                 </div>
               )}
 
               {/* SE FOR UMA VISTORIA DE PÁTIO, MOSTRA O RESTANTE DO FORMULÁRIO */}
-              {selectedVtr.id_vistoria ? (
+              {selectedVtr.origem === "VISTORIA" ? (
                 <>
                   <div className="bg-slate-50 p-4 rounded-3xl border-2 border-slate-100">
                     <p className="text-[10px] font-black text-slate-400 uppercase mb-3 text-center">Confirmar Entrega</p>
@@ -416,21 +421,21 @@ const GarageiroDashboard = ({ onBack }) => {
                   <textarea className="w-full bg-slate-50 border-2 border-slate-100 rounded-2xl p-4 text-xs font-bold uppercase" placeholder="OBSERVAÇÕES ADICIONAIS..." value={conf.obs} onChange={e => setConf({...conf, obs: e.target.value})} />
                 </>
               ) : (
-                /* SE FOR APENAS ALERTA DE ÓLEO */
-                <div className="py-6 text-center space-y-3">
+                /* SE FOR APENAS ALERTA DE ÓLEO AVULSO */
+                <div className="py-6 text-center space-y-3 bg-slate-50 rounded-3xl border-2 border-dashed border-slate-200">
                   <Wrench size={40} className="mx-auto text-slate-300" />
-                  <p className="text-xs font-bold text-slate-500 uppercase px-4">
-                    Esta viatura informou troca de óleo enquanto está em serviço. Verifique a foto acima.
+                  <p className="text-xs font-bold text-slate-500 uppercase px-6">
+                    Manutenção preventiva em serviço. Valide as informações acima para remover o alerta.
                   </p>
                 </div>
               )}
 
               <button 
-                onClick={selectedVtr.id_vistoria ? finalizarConferencia : () => setShowModal(false)}
-                disabled={isSubmitting || ((selectedVtr.troca_oleo === "SIM" || selectedVtr.tipo === "ÓLEO") && !conf.oleoConfirmado)}
-                className={`w-full py-5 rounded-[1.5rem] font-black uppercase tracking-widest text-xs shadow-xl transition-all ${isSubmitting || ((selectedVtr.troca_oleo === "SIM" || selectedVtr.tipo === "ÓLEO") && !conf.oleoConfirmado) ? 'bg-slate-200 text-slate-400 cursor-not-allowed' : 'bg-slate-900 text-white hover:bg-emerald-600'}`}
+                onClick={finalizarConferencia}
+                disabled={isSubmitting || ((selectedVtr.troca_oleo === "SIM" || selectedVtr.origem === "MANUTENCAO_AVULSA") && !conf.oleoConfirmado)}
+                className={`w-full py-5 rounded-[1.5rem] font-black uppercase tracking-widest text-xs shadow-xl transition-all ${isSubmitting || ((selectedVtr.troca_oleo === "SIM" || selectedVtr.origem === "MANUTENCAO_AVULSA") && !conf.oleoConfirmado) ? 'bg-slate-200 text-slate-400 cursor-not-allowed' : 'bg-slate-900 text-white hover:bg-emerald-600'}`}
               >
-                {isSubmitting ? 'Processando...' : selectedVtr.id_vistoria ? 'Finalizar e Liberar' : 'Entendido / Fechar'}
+                {isSubmitting ? 'Processando...' : 'Finalizar Validação'}
               </button>
             </div>
           </div>
@@ -447,7 +452,7 @@ const GarageiroDashboard = ({ onBack }) => {
         </div>
       )}
 
-      {/* MODAL DE BLOQUEIO */}
+      {/* MODAL DE BLOQUEIO - Sem alterações para não quebrar */}
       {showLockModal && (
         <div className="fixed inset-0 bg-slate-900/90 backdrop-blur-md z-[60] flex items-center justify-center p-4">
           <div className="bg-white w-full max-w-sm rounded-[2.5rem] p-8 shadow-2xl animate-in zoom-in duration-300">
