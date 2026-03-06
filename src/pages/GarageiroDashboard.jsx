@@ -84,25 +84,27 @@ useEffect(() => {
     return () => clearInterval(interval);
   }, [soundEnabled]);
 
-  const finalizarConferencia = async () => {
+const finalizarConferencia = async () => {
     if (isSubmitting) return;
 
+    // Validações básicas
     if (selectedVtr.origem === "VISTORIA") {
       if (!conf.motoristaConfirmado && !conf.novoMotoristaRE) return alert("Selecione o motorista.");
-      if (conf.pertences === 'SIM' && !conf.detalhePertences) return alert("Descreva os pertences.");
-      if (conf.avaria && !fotoAvaria) return alert("Tire foto da avaria.");
     }
     
     const precisaValidarOleo = selectedVtr.troca_oleo === "SIM" || selectedVtr.origem === "MANUTENCAO_AVULSA";
     if (precisaValidarOleo && !conf.oleoConfirmado) return alert("Confirme a troca de óleo visualmente.");
 
     setIsSubmitting(true);
+    
+    // Guardamos o ID antes de enviar para garantir a remoção da tela
+    const rowIdParaRemover = selectedVtr.rowId;
+
     try {
-      const rowIdParaRemover = selectedVtr.rowId;
       const res = await gasApi.confirmarVistoriaGarageiro({
         origem: selectedVtr.origem,
-        rowId: selectedVtr.rowId,
-        id_vistoria: selectedVtr.id_sistema || selectedVtr.ID_SISTEMA,
+        rowId: rowIdParaRemover, // Usando a variável correta
+        id_vistoria: selectedVtr.id_sistema || selectedVtr.ID_SISTEMA || selectedVtr.id,
         status_fisico: conf.avaria ? 'AVARIADA' : 'OK',
         limpeza: `INT: ${conf.limpezaInterna ? 'C' : 'NC'} | EXT: ${conf.limpezaExterna ? 'C' : 'NC'}`,
         pertences: conf.pertences === 'SIM' ? `SIM: ${conf.detalhePertences}` : 'NÃO',
@@ -115,20 +117,23 @@ useEffect(() => {
       });
 
       if (res.status === 'success') {
-        // CORREÇÃO: Limpeza imediata do estado local (faz o card sumir na hora)
-        ssetVistorias(prev => prev.filter(v => v.rowId !== rowIdParaRemover));
+        // Remove o card da tela IMEDIATAMENTE
+        setVistorias(prev => prev.filter(v => v.rowId !== rowIdParaRemover));
         setShowModal(false);
-        setFotoAvaria(null);
         setConf({ 
           limpezaInterna: true, limpezaExterna: true, pertences: 'NÃO', 
           detalhePertences: '', motoristaConfirmado: true, novoMotoristaRE: '', 
           avaria: false, obs: '', oleoConfirmado: false 
         });
-        // Refresh silencioso em 1 segundo
-        setTimeout(fetchData, 1000);
+        // Atualiza a lista geral após 1.5 segundos
+        setTimeout(fetchData, 1500);
+      } else {
+        // Se o Google responder 'error', ele cai aqui
+        alert("Erro no servidor: " + (res.message || "Tente novamente."));
       }
     } catch (e) {
-      alert("Erro ao salvar.");
+      console.error("Erro completo:", e);
+      alert("Erro de conexão com a planilha.");
     } finally {
       setIsSubmitting(false);
     }
