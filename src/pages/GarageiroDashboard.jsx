@@ -3,8 +3,8 @@ import { gasApi } from '../api/gasClient';
 import { useAuth } from '../lib/AuthContext';
 import { 
   Car, CheckCircle2, AlertTriangle, Clock, RefreshCw,
-  Search, ShieldCheck, Lock, Unlock, History, Camera, User, X, 
-  AlertCircle, ChevronDown, Inbox, Droplets, Eye, Check, Volume2, VolumeX,
+  Search, ShieldCheck, Lock, Unlock, Camera, User, X, 
+  AlertCircle, Inbox, Droplets, Eye, Check, Volume2, VolumeX,
   Wrench
 } from 'lucide-react';
 
@@ -27,30 +27,22 @@ const GarageiroDashboard = ({ onBack }) => {
   const [viewingPhoto, setViewingPhoto] = useState(null);
   
   const [conf, setConf] = useState({ 
-    limpezaInterna: true,
-    limpezaExterna: true,
-    pertences: 'NÃO',
-    detalhePertences: '',
-    motoristaConfirmado: true, 
-    novoMotoristaRE: '',
-    avaria: false, 
-    obs: '',
-    oleoConfirmado: false
+    limpezaInterna: true, limpezaExterna: true, pertences: 'NÃO',
+    detalhePertences: '', motoristaConfirmado: true, novoMotoristaRE: '',
+    avaria: false, obs: '', oleoConfirmado: false
   });
   
   const [fotoAvaria, setFotoAvaria] = useState(null);
-  const [uploading, setUploading] = useState(false);
-
   const [showLockModal, setShowLockModal] = useState(false);
-  const [lockData, setLockData] = useState({ 
-    prefixo: '', motivo: 'manutencao', detalhes: '', re_responsavel: '' 
-  });
+  const [lockData, setLockData] = useState({ prefixo: '', motivo: 'manutencao', detalhes: '', re_responsavel: '' });
 
   const calcularEspera = (timestamp) => {
     if (!timestamp) return null;
-    const dateObj = typeof timestamp === 'string' && timestamp.includes('/') ? new Date() : new Date(timestamp);
-    const diff = Math.floor((new Date() - dateObj) / 60000);
-    return diff >= 0 ? diff : 0;
+    try {
+      const dateObj = new Date(timestamp);
+      const diff = Math.floor((new Date() - dateObj) / 60000);
+      return diff >= 0 ? diff : 0;
+    } catch(e) { return 0; }
   };
 
   const fetchData = async () => {
@@ -63,19 +55,13 @@ const GarageiroDashboard = ({ onBack }) => {
       ]);
       
       if (resVtr.status === 'success') setViaturas(resVtr.data);
-      
       if (resPend.status === 'success') {
-        const novasVistorias = resPend.data;
-        const totalAlertas = novasVistorias.length;
-
-        if (soundEnabled && totalAlertas > prevItemsCount.current) {
-          audioRef.current.play().catch(e => console.log("Erro ao tocar som:", e));
+        if (soundEnabled && resPend.data.length > prevItemsCount.current) {
+          audioRef.current.play().catch(() => {});
         }
-        
-        prevItemsCount.current = totalAlertas;
-        setVistorias(novasVistorias);
+        prevItemsCount.current = resPend.data.length;
+        setVistorias(resPend.data);
       }
-      
       if (resMot.status === 'success') setMotoristas(resMot.data);
     } catch (error) {
       console.error("Erro ao buscar dados:", error);
@@ -89,20 +75,6 @@ const GarageiroDashboard = ({ onBack }) => {
     const interval = setInterval(fetchData, 30000);
     return () => clearInterval(interval);
   }, [soundEnabled]);
-
-  const handleFileChange = async (e) => {
-    const file = e.target.files[0];
-    if (!file) return;
-    setUploading(true);
-    try {
-      const res = await gasApi.uploadFoto(file); 
-      if (res.status === 'success') setFotoAvaria(res.url);
-    } catch (err) {
-      alert("Falha ao processar foto.");
-    } finally {
-      setUploading(false);
-    }
-  };
 
   const finalizarConferencia = async () => {
     if (isSubmitting) return;
@@ -118,6 +90,7 @@ const GarageiroDashboard = ({ onBack }) => {
 
     setIsSubmitting(true);
     try {
+      const rowIdParaRemover = selectedVtr.rowId;
       const res = await gasApi.confirmarVistoriaGarageiro({
         origem: selectedVtr.origem,
         rowId: selectedVtr.rowId,
@@ -134,6 +107,8 @@ const GarageiroDashboard = ({ onBack }) => {
       });
 
       if (res.status === 'success') {
+        // CORREÇÃO: Limpeza imediata do estado local (faz o card sumir na hora)
+        setVistorias(prev => prev.filter(v => v.rowId !== rowIdParaRemover));
         setShowModal(false);
         setFotoAvaria(null);
         setConf({ 
@@ -141,7 +116,8 @@ const GarageiroDashboard = ({ onBack }) => {
           detalhePertences: '', motoristaConfirmado: true, novoMotoristaRE: '', 
           avaria: false, obs: '', oleoConfirmado: false 
         });
-        fetchData();
+        // Refresh silencioso em 1 segundo
+        setTimeout(fetchData, 1000);
       }
     } catch (e) {
       alert("Erro ao salvar.");
@@ -157,17 +133,12 @@ const GarageiroDashboard = ({ onBack }) => {
       if (lockData.motivo === 'manutencao') statusFinal = "MANUTENÇÃO";
       if (lockData.motivo === 'incidente') statusFinal = "BAIXADA (INCIDENTE)";
       if (lockData.motivo === 'pendencia_garageiro') statusFinal = "PENDÊNCIA PÁTIO";
-
       const res = await gasApi.alterarStatusViatura(lockData.prefixo, statusFinal, lockData);
       if (res.status === 'success') {
         setShowLockModal(false);
         fetchData();
       }
-    } catch (e) {
-      alert("Erro de comunicação.");
-    } finally {
-      setIsSubmitting(false);
-    }
+    } catch (e) { alert("Erro de comunicação."); } finally { setIsSubmitting(false); }
   };
 
   return (
@@ -189,9 +160,6 @@ const GarageiroDashboard = ({ onBack }) => {
               className={`p-2 rounded-xl flex items-center gap-2 transition-all ${soundEnabled ? 'bg-emerald-500 text-white' : 'bg-slate-800 text-slate-400'}`}
             >
               {soundEnabled ? <Volume2 size={20} /> : <VolumeX size={20} />}
-              <span className="text-[10px] font-black uppercase hidden sm:block">
-                {soundEnabled ? 'Alerta Ligado' : 'Som Desligado'}
-              </span>
             </button>
             <button onClick={fetchData} className={`p-2 rounded-full ${loading ? 'animate-spin text-amber-500' : 'text-slate-400'}`}><RefreshCw size={20} /></button>
           </div>
@@ -201,14 +169,10 @@ const GarageiroDashboard = ({ onBack }) => {
       <nav className="bg-white border-b border-slate-200 sticky top-0 z-10">
         <div className="max-w-6xl mx-auto flex">
           <button onClick={() => setTab('pendentes')} className={`flex-1 p-4 text-xs font-black uppercase transition-all border-b-2 ${tab === 'pendentes' ? 'border-amber-500 text-amber-600 bg-amber-50/50' : 'border-transparent text-slate-400'}`}>
-            <span className="flex items-center justify-center gap-2">
-              <Clock size={16} /> Conferência ({vistorias.length})
-            </span>
+            <Clock size={16} className="inline mr-2"/> Conferência ({vistorias.length})
           </button>
           <button onClick={() => setTab('frota')} className={`flex-1 p-4 text-xs font-black uppercase transition-all border-b-2 ${tab === 'frota' ? 'border-amber-500 text-amber-600 bg-amber-50/50' : 'border-transparent text-slate-400'}`}>
-            <span className="flex items-center justify-center gap-2">
-              <Car size={16} /> Frota Total ({viaturas.length})
-            </span>
+            <Car size={16} className="inline mr-2"/> Frota Total ({viaturas.length})
           </button>
         </div>
       </nav>
@@ -219,50 +183,29 @@ const GarageiroDashboard = ({ onBack }) => {
             {vistorias.length === 0 ? (
               <div className="col-span-full py-20 flex flex-col items-center justify-center bg-white rounded-[2.5rem] border-2 border-dashed border-slate-200">
                 <Inbox size={48} className="text-slate-200 mb-2" />
-                <p className="text-slate-400 font-black uppercase text-xs">Aguardando novos check-ins...</p>
+                <p className="text-slate-400 font-black uppercase text-xs">Pátio Limpo</p>
               </div>
             ) : vistorias.map((vtr, i) => {
               const espera = calcularEspera(vtr.timestamp || vtr.data_hora);
               const isOleoInstantaneo = vtr.origem === "MANUTENCAO_AVULSA"; 
-
               return (
-                <div key={i} className={`bg-white border-2 rounded-[2rem] p-5 shadow-sm transition-all animate-in fade-in slide-in-from-bottom-4 ${isOleoInstantaneo ? 'border-amber-500 bg-amber-50/30' : 'border-slate-200 hover:border-amber-400'}`}>
+                <div key={i} className={`bg-white border-2 rounded-[2rem] p-5 shadow-sm ${isOleoInstantaneo ? 'border-amber-500 bg-amber-50/30' : 'border-slate-200'}`}>
                   <div className="flex justify-between items-start mb-4">
                     <span className="text-3xl font-black text-slate-900 tracking-tighter">{vtr.prefixo_vtr || vtr.prefixo}</span>
                     <div className="text-right">
                       <span className={`${isOleoInstantaneo ? 'bg-amber-500 text-white' : 'bg-blue-100 text-blue-700'} px-3 py-1 rounded-full text-[9px] font-black uppercase`}>
                         {isOleoInstantaneo ? 'ALERTA ÓLEO' : 'Pátio'}
                       </span>
-                      {espera !== null && (
-                        <p className={`text-[10px] font-black mt-1 ${espera > 10 ? 'text-red-500 animate-pulse' : 'text-slate-400'}`}>
-                          HÁ {espera} MIN
-                        </p>
-                      )}
+                      {espera !== null && <p className="text-[10px] font-black mt-1 text-slate-400">{espera} MIN</p>}
                     </div>
                   </div>
-                  
-                  <div className="space-y-2 mb-6">
-                    <p className="text-xs font-bold text-slate-500 uppercase flex items-center gap-1">
-                      <User size={12} /> {vtr.motorista_nome || vtr.responsavel_re || "S/ INF"}
-                    </p>
-                    
-                    {(vtr.troca_oleo === "SIM" || isOleoInstantaneo) && (
-                      <div className="flex flex-col gap-1">
-                        <span className="inline-flex items-center gap-1 bg-amber-100 text-amber-700 px-2 py-1 rounded-lg text-[9px] font-black uppercase w-fit">
-                          <Droplets size={12} /> Troca de Óleo Efetuada
-                        </span>
-                      </div>
-                    )}
-                  </div>
-
+                  <p className="text-xs font-bold text-slate-500 uppercase flex items-center gap-1 mb-6">
+                    <User size={12} /> {vtr.motorista_nome || vtr.responsavel_re || "S/ INF"}
+                  </p>
                   <button 
-                    onClick={() => { 
-                      setSelectedVtr(vtr); 
-                      setShowModal(true); 
-                    }} 
-                    className={`w-full py-4 rounded-2xl font-black uppercase text-xs tracking-widest transition-all flex items-center justify-center gap-2 shadow-lg ${isOleoInstantaneo ? 'bg-amber-600 text-white shadow-amber-200' : 'bg-slate-900 text-white shadow-slate-200 hover:bg-amber-600'}`}
+                    onClick={() => { setSelectedVtr(vtr); setShowModal(true); }} 
+                    className={`w-full py-4 rounded-2xl font-black uppercase text-xs shadow-lg ${isOleoInstantaneo ? 'bg-amber-600 text-white' : 'bg-slate-900 text-white'}`}
                   >
-                    {isOleoInstantaneo ? <Eye size={16} /> : <CheckCircle2 size={16} />}
                     {isOleoInstantaneo ? 'Conferir Comprovante' : 'Abrir Vistoria'}
                   </button>
                 </div>
@@ -277,42 +220,34 @@ const GarageiroDashboard = ({ onBack }) => {
               <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" size={18} />
               <input 
                 type="text" 
-                placeholder="FILTRAR POR PREFIXO OU PLACA..." 
-                className="w-full p-5 pl-12 bg-white border-2 border-slate-200 rounded-3xl font-black text-xs uppercase outline-none focus:border-amber-500 transition-all shadow-sm"
+                placeholder="FILTRAR PREFIXO..." 
+                className="w-full p-5 pl-12 bg-white border-2 border-slate-200 rounded-3xl font-black text-xs uppercase outline-none"
                 value={searchTerm}
                 onChange={(e) => setSearchTerm(e.target.value)}
               />
             </div>
-            
             <div className="bg-white rounded-[2rem] shadow-sm overflow-hidden border border-slate-200">
               <table className="w-full text-left text-xs md:text-sm">
-                <thead className="bg-slate-50 border-b border-slate-200">
-                  <tr>
-                    <th className="p-4 font-black uppercase text-slate-500 tracking-widest text-[10px]">Viatura</th>
-                    <th className="p-4 font-black uppercase text-slate-500 tracking-widest text-[10px]">Situação</th>
-                    <th className="p-4 font-black uppercase text-slate-500 tracking-widest text-[10px] text-right">Ação</th>
-                  </tr>
-                </thead>
                 <tbody className="divide-y divide-slate-100 font-bold uppercase">
                   {viaturas.filter(v => (v.Prefixo || v.prefixo || "").toLowerCase().includes(searchTerm.toLowerCase())).map((v, i) => {
                     const s = (v.Status || v.status || "").toString().toUpperCase();
                     const isDisp = s.includes("DISPON") || s === "OK";
                     return (
-                      <tr key={i} className="hover:bg-slate-50 transition-colors">
+                      <tr key={i} className="hover:bg-slate-50">
                         <td className="p-4">
                           <p className="font-black text-slate-800">{v.Prefixo || v.prefixo}</p>
                           <p className="text-[10px] text-slate-400">{v.Placa || v.placa}</p>
                         </td>
                         <td className="p-4">
                           <span className={`text-[9px] font-black px-2 py-1 rounded-md ${isDisp ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'}`}>
-                             {s || "S/ INF"}
+                             {s}
                           </span>
                         </td>
                         <td className="p-4 text-right">
                           <button onClick={() => {
                             setLockData({ prefixo: v.Prefixo || v.prefixo, motivo: isDisp ? 'manutencao' : 'disponivel', re_responsavel: user.re });
                             setShowLockModal(true);
-                          }} className="p-2 text-slate-400 hover:text-amber-600 transition-colors">
+                          }} className="p-2 text-slate-400">
                              {isDisp ? <Unlock size={18} /> : <Lock size={18} />}
                           </button>
                         </td>
@@ -332,10 +267,8 @@ const GarageiroDashboard = ({ onBack }) => {
           <div className="bg-white w-full max-w-lg rounded-[2.5rem] shadow-2xl overflow-hidden flex flex-col max-h-[90vh]">
             <div className="bg-slate-900 p-6 text-white flex justify-between items-center">
               <div>
-                <h2 className="text-2xl font-black uppercase tracking-tighter">Fiscon {selectedVtr.prefixo_vtr || selectedVtr.prefixo}</h2>
-                <p className="text-[10px] text-amber-500 font-black uppercase tracking-widest">
-                  {selectedVtr.origem === "VISTORIA" ? 'Conferência de Pátio' : 'Validação de Manutenção'}
-                </p>
+                <h2 className="text-2xl font-black uppercase tracking-tighter">{selectedVtr.prefixo_vtr || selectedVtr.prefixo}</h2>
+                <p className="text-[10px] text-amber-500 font-black uppercase">Validação</p>
               </div>
               <button onClick={() => setShowModal(false)} className="p-2 hover:bg-white/10 rounded-full"><X size={24} /></button>
             </div>
@@ -353,20 +286,17 @@ const GarageiroDashboard = ({ onBack }) => {
                     {(selectedVtr.foto_evidencia || selectedVtr.foto_oleo || selectedVtr.foto) && (
                       <button 
                         onClick={() => setViewingPhoto(selectedVtr.foto_evidencia || selectedVtr.foto_oleo || selectedVtr.foto)}
-                        className="bg-white border-2 border-amber-200 p-3 rounded-xl text-amber-600 hover:bg-amber-100 transition-all shadow-md flex items-center gap-2 min-w-fit"
+                        className="bg-white border-2 border-amber-200 p-3 rounded-xl text-amber-600 hover:bg-amber-100 shadow-md"
                       >
                         <Eye size={24} />
-                        <span className="text-[10px] font-black uppercase">Ver Foto</span>
                       </button>
                     )}
                   </div>
-                  
                   <button 
                     onClick={() => setConf({...conf, oleoConfirmado: !conf.oleoConfirmado})}
-                    className={`w-full py-4 rounded-2xl font-black text-[10px] uppercase transition-all flex items-center justify-center gap-2 border-2 
+                    className={`w-full py-4 rounded-2xl font-black text-[10px] uppercase border-2 transition-all
                       ${conf.oleoConfirmado ? 'bg-emerald-500 border-emerald-500 text-white' : 'bg-white border-amber-300 text-amber-600'}`}
                   >
-                    {conf.oleoConfirmado ? <Check size={16}/> : <AlertCircle size={16}/>}
                     {conf.oleoConfirmado ? 'ÓLEO CONFERIDO' : 'CONFERIR ÓLEO'}
                   </button>
                 </div>
@@ -377,52 +307,27 @@ const GarageiroDashboard = ({ onBack }) => {
                   <div className="bg-slate-50 p-4 rounded-3xl border-2 border-slate-100">
                     <p className="text-[10px] font-black text-slate-400 uppercase mb-3 text-center">Confirmar Entrega</p>
                     <div className="flex gap-2">
-                      <button onClick={() => setConf({...conf, motoristaConfirmado: true})} className={`flex-1 py-3 rounded-2xl font-black text-[10px] uppercase ${conf.motoristaConfirmado ? 'bg-amber-500 text-slate-900 shadow-md' : 'bg-white text-slate-300 border border-slate-100'}`}>SIM, É O {selectedVtr.motorista_nome?.split(' ')[0]}</button>
-                      <button onClick={() => setConf({...conf, motoristaConfirmado: false})} className={`flex-1 py-3 rounded-2xl font-black text-[10px] uppercase ${!conf.motoristaConfirmado ? 'bg-red-600 text-white shadow-md' : 'bg-white text-slate-300 border border-slate-100'}`}>NÃO É ELE</button>
+                      <button onClick={() => setConf({...conf, motoristaConfirmado: true})} className={`flex-1 py-3 rounded-2xl font-black text-[10px] uppercase ${conf.motoristaConfirmado ? 'bg-amber-500 text-slate-900 shadow-md' : 'bg-white text-slate-300'}`}>SIM</button>
+                      <button onClick={() => setConf({...conf, motoristaConfirmado: false})} className={`flex-1 py-3 rounded-2xl font-black text-[10px] uppercase ${!conf.motoristaConfirmado ? 'bg-red-600 text-white shadow-md' : 'bg-white text-slate-300'}`}>NÃO</button>
                     </div>
-                    {!conf.motoristaConfirmado && (
-                      <select className="w-full mt-3 p-4 bg-white border-2 border-red-100 rounded-2xl font-bold text-xs" value={conf.novoMotoristaRE} onChange={e => setConf({...conf, novoMotoristaRE: e.target.value})}>
-                        <option value="">QUEM ESTÁ ENTREGANDO?</option>
-                        {motoristas.map((m, idx) => <option key={idx} value={m.re}>{m.patente} {m.nome}</option>)}
-                      </select>
-                    )}
                   </div>
-
                   <div className="grid grid-cols-2 gap-3">
-                    <button onClick={() => setConf({...conf, limpezaInterna: !conf.limpezaInterna})} className={`p-4 rounded-3xl border-2 font-black text-[10px] uppercase transition-all ${conf.limpezaInterna ? 'bg-emerald-50 border-emerald-500 text-emerald-700' : 'bg-slate-50 border-transparent text-slate-400'}`}>INT: {conf.limpezaInterna ? 'LIMPO' : 'SUJO'}</button>
-                    <button onClick={() => setConf({...conf, limpezaExterna: !conf.limpezaExterna})} className={`p-4 rounded-3xl border-2 font-black text-[10px] uppercase transition-all ${conf.limpezaExterna ? 'bg-emerald-50 border-emerald-500 text-emerald-700' : 'bg-slate-50 border-transparent text-slate-400'}`}>EXT: {conf.limpezaExterna ? 'LIMPO' : 'SUJO'}</button>
+                    <button onClick={() => setConf({...conf, limpezaInterna: !conf.limpezaInterna})} className={`p-4 rounded-3xl border-2 font-black text-[10px] uppercase ${conf.limpezaInterna ? 'bg-emerald-50 border-emerald-500 text-emerald-700' : 'bg-slate-50 text-slate-400'}`}>INT: {conf.limpezaInterna ? 'LIMPO' : 'SUJO'}</button>
+                    <button onClick={() => setConf({...conf, limpezaExterna: !conf.limpezaExterna})} className={`p-4 rounded-3xl border-2 font-black text-[10px] uppercase ${conf.limpezaExterna ? 'bg-emerald-50 border-emerald-500 text-emerald-700' : 'bg-slate-50 text-slate-400'}`}>EXT: {conf.limpezaExterna ? 'LIMPO' : 'SUJO'}</button>
                   </div>
-
-                  <div className="grid grid-cols-2 gap-3">
-                    <select className={`p-4 rounded-3xl border-2 font-black text-[10px] uppercase ${conf.pertences === 'SIM' ? 'bg-amber-50 border-amber-500 text-amber-700' : 'bg-slate-50 border-transparent text-slate-400'}`} value={conf.pertences} onChange={e => setConf({...conf, pertences: e.target.value})}>
-                      <option value="NÃO">SEM PERTENCES</option>
-                      <option value="SIM">HÁ PERTENCES</option>
-                    </select>
-                    <button onClick={() => setConf({...conf, avaria: !conf.avaria})} className={`p-4 rounded-3xl border-2 font-black text-[10px] uppercase ${conf.avaria ? 'bg-red-50 border-red-500 text-red-700' : 'bg-slate-50 border-transparent text-slate-400'}`}>AVARIAS: {conf.avaria ? 'SIM' : 'NÃO'}</button>
-                  </div>
-
-                  {conf.pertences === 'SIM' && <input type="text" placeholder="O QUE FOI ESQUECIDO?" className="w-full p-4 bg-amber-50 border-2 border-amber-200 rounded-2xl font-bold text-xs" value={conf.detalhePertences} onChange={e => setConf({...conf, detalhePertences: e.target.value})} />}
-
-                  {conf.avaria && (
-                    <div className="p-4 bg-red-50 border-2 border-dashed border-red-200 rounded-2xl flex flex-col items-center gap-3">
-                      {fotoAvaria ? <img src={fotoAvaria} className="h-24 rounded-lg" alt="Dano" /> : <Camera size={32} className="text-red-300" />}
-                      <label className="bg-red-600 text-white px-4 py-2 rounded-xl font-black text-[10px] cursor-pointer uppercase">Tirar Foto da Avaria <input type="file" accept="image/*" capture="environment" className="hidden" onChange={handleFileChange} /></label>
-                    </div>
-                  )}
-
-                  <textarea className="w-full bg-slate-50 border-2 border-slate-100 rounded-2xl p-4 text-xs font-bold uppercase" placeholder="OBSERVAÇÕES ADICIONAIS..." value={conf.obs} onChange={e => setConf({...conf, obs: e.target.value})} />
+                  <textarea className="w-full bg-slate-50 border-2 border-slate-100 rounded-2xl p-4 text-xs font-bold uppercase" placeholder="OBS..." value={conf.obs} onChange={e => setConf({...conf, obs: e.target.value})} />
                 </>
               ) : (
                 <div className="py-6 text-center space-y-3 bg-slate-50 rounded-3xl border-2 border-dashed border-slate-200">
                   <Wrench size={40} className="mx-auto text-slate-300" />
-                  <p className="text-xs font-bold text-slate-500 uppercase px-6">Manutenção preventiva em serviço. Valide as informações acima para remover o alerta.</p>
+                  <p className="text-xs font-bold text-slate-500 uppercase px-6">Manutenção Preventiva</p>
                 </div>
               )}
 
               <button 
                 onClick={finalizarConferencia}
                 disabled={isSubmitting || ((selectedVtr.troca_oleo === "SIM" || selectedVtr.origem === "MANUTENCAO_AVULSA") && !conf.oleoConfirmado)}
-                className={`w-full py-5 rounded-[1.5rem] font-black uppercase tracking-widest text-xs shadow-xl transition-all ${isSubmitting || ((selectedVtr.troca_oleo === "SIM" || selectedVtr.origem === "MANUTENCAO_AVULSA") && !conf.oleoConfirmado) ? 'bg-slate-200 text-slate-400 cursor-not-allowed' : 'bg-slate-900 text-white hover:bg-emerald-600'}`}
+                className={`w-full py-5 rounded-[1.5rem] font-black uppercase text-xs shadow-xl transition-all ${isSubmitting ? 'bg-slate-200' : 'bg-slate-900 text-white hover:bg-emerald-600'}`}
               >
                 {isSubmitting ? 'Processando...' : 'Finalizar Validação'}
               </button>
@@ -431,12 +336,17 @@ const GarageiroDashboard = ({ onBack }) => {
         </div>
       )}
 
-      {/* VISUALIZADOR DE FOTO */}
+      {/* VISUALIZADOR DE FOTO CORRIGIDO */}
       {viewingPhoto && (
         <div className="fixed inset-0 bg-black/95 z-[100] flex flex-col p-4 animate-in fade-in duration-300">
-          <button onClick={() => setViewingPhoto(null)} className="self-end text-white p-4 hover:bg-white/10 rounded-full transition-all"><X size={32} /></button>
+          <button onClick={() => setViewingPhoto(null)} className="self-end text-white p-4 rounded-full"><X size={32} /></button>
           <div className="flex-1 flex items-center justify-center">
-            <img src={viewingPhoto} className="max-w-full max-h-full object-contain rounded-2xl shadow-2xl border-2 border-white/20" alt="Comprovante" />
+            <img 
+              src={viewingPhoto.startsWith('data:') ? viewingPhoto : `data:image/jpeg;base64,${viewingPhoto}`} 
+              className="max-w-full max-h-full object-contain rounded-2xl shadow-2xl" 
+              alt="Comprovante" 
+              onError={(e) => { e.target.src = "https://placehold.co/600x400?text=Erro+na+Foto"; }}
+            />
           </div>
         </div>
       )}
@@ -444,22 +354,12 @@ const GarageiroDashboard = ({ onBack }) => {
       {/* MODAL DE BLOQUEIO */}
       {showLockModal && (
         <div className="fixed inset-0 bg-slate-900/90 backdrop-blur-md z-[60] flex items-center justify-center p-4">
-          <div className="bg-white w-full max-w-sm rounded-[2.5rem] p-8 shadow-2xl animate-in zoom-in duration-300">
+          <div className="bg-white w-full max-w-sm rounded-[2.5rem] p-8 shadow-2xl">
             <div className="flex flex-col items-center text-center space-y-4">
-              <div className={`p-4 rounded-full ${lockData.motivo === 'disponivel' ? 'bg-green-100 text-green-600' : 'bg-red-100 text-red-600'}`}>
-                {lockData.motivo === 'disponivel' ? <Unlock size={40} /> : <Lock size={40} />}
-              </div>
-              <h3 className="text-2xl font-black text-slate-800 uppercase tracking-tighter">{lockData.motivo === 'disponivel' ? "Liberar VTR" : "Bloquear VTR"}</h3>
-              {lockData.motivo !== 'disponivel' && (
-                <select className="w-full p-4 bg-slate-50 border-2 border-slate-100 rounded-2xl font-bold text-xs uppercase" value={lockData.motivo} onChange={e => setLockData({...lockData, motivo: e.target.value})}>
-                  <option value="manutencao">Manutenção</option>
-                  <option value="incidente">Incidente/Avaria</option>
-                  <option value="pendencia_garageiro">Pendência de Limpeza</option>
-                </select>
-              )}
+              <h3 className="text-2xl font-black text-slate-800 uppercase">{lockData.motivo === 'disponivel' ? "Liberar VTR" : "Bloquear VTR"}</h3>
               <div className="flex flex-col w-full gap-3 mt-6">
-                <button onClick={confirmarAlteracaoStatus} disabled={isSubmitting} className="w-full py-4 bg-slate-900 text-white rounded-2xl font-black uppercase text-xs tracking-widest">Confirmar</button>
-                <button onClick={() => setShowLockModal(false)} className="w-full py-4 bg-slate-100 text-slate-400 rounded-2xl font-black uppercase text-xs tracking-widest">Cancelar</button>
+                <button onClick={confirmarAlteracaoStatus} className="w-full py-4 bg-slate-900 text-white rounded-2xl font-black uppercase text-xs">Confirmar</button>
+                <button onClick={() => setShowLockModal(false)} className="w-full py-4 bg-slate-100 text-slate-400 rounded-2xl font-black uppercase text-xs">Cancelar</button>
               </div>
             </div>
           </div>
