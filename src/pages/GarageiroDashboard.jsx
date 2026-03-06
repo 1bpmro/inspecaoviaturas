@@ -362,15 +362,16 @@ const GarageiroDashboard = ({ onBack }) => {
                       </h4>
                       <p className="text-[10px] text-amber-700 font-bold mt-1">HODÔMETRO: {selectedVtr.hodometro_oleo || selectedVtr.km || 'N/I'} KM</p>
                     </div>
-                    {/* AQUI ESTÁ A FOTO: Tenta várias fontes se foto_evidencia falhar */}
-                    {(selectedVtr.foto_evidencia || selectedVtr.foto_oleo || selectedVtr.foto) && (
-                      <button 
-                        onClick={() => setViewingPhoto(selectedVtr.foto_evidencia || selectedVtr.foto_oleo || selectedVtr.foto)}
-                        className="bg-white border-2 border-amber-200 p-2 rounded-xl text-amber-600 hover:bg-amber-100 transition-all shadow-sm"
-                      >
-                        <Eye size={20} />
-                      </button>
-                    )}
+                   {/* AQUI ESTÁ A FOTO: Tenta várias fontes se foto_evidencia falhar */}
+{(selectedVtr.foto_evidencia || selectedVtr.foto_oleo || selectedVtr.foto) && (
+  <button 
+    onClick={() => setViewingPhoto(selectedVtr.foto_evidencia || selectedVtr.foto_oleo || selectedVtr.foto)}
+    className="bg-white border-2 border-amber-200 p-3 rounded-xl text-amber-600 hover:bg-amber-100 transition-all shadow-md flex items-center gap-2 min-w-fit"
+  >
+    <Eye size={24} />
+    <span className="text-[10px] font-black uppercase">Ver Foto</span>
+  </button>
+)}
                   </div>
                   
                   <button 
