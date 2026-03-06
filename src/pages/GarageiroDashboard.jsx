@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { gasApi } from '../api/gasClient';
 import { useAuth } from '../lib/AuthContext';
 import { 
-  Car, CheckCircle2, AlertTriangle, Clock, RefreshCw,
+  Car, CheckCircle2, Clock, RefreshCw,
   Search, ShieldCheck, Lock, Unlock, Camera, User, X, 
   AlertCircle, Inbox, Droplets, Eye, Check, Volume2, VolumeX,
   Wrench
@@ -36,13 +36,19 @@ const GarageiroDashboard = ({ onBack }) => {
   const [showLockModal, setShowLockModal] = useState(false);
   const [lockData, setLockData] = useState({ prefixo: '', motivo: 'manutencao', detalhes: '', re_responsavel: '' });
 
+  // --- RASTREADOR DE FOTO (DEBUG) ---
+  useEffect(() => {
+    if (viewingPhoto) {
+      console.log("%c[RASTREADOR] Dados da Foto:", "color: #fbbf24; font-weight: bold; background: #000; padding: 2px 5px;");
+      console.log("Início da string:", viewingPhoto.substring(0, 50));
+    }
+  }, [viewingPhoto]);
+
   const calcularEspera = (timestamp) => {
     if (!timestamp) return null;
-    try {
-      const dateObj = new Date(timestamp);
-      const diff = Math.floor((new Date() - dateObj) / 60000);
-      return diff >= 0 ? diff : 0;
-    } catch(e) { return 0; }
+    const dateObj = new Date(timestamp);
+    const diff = Math.floor((new Date() - dateObj) / 60000);
+    return diff >= 0 ? diff : 0;
   };
 
   const fetchData = async () => {
@@ -82,15 +88,12 @@ const GarageiroDashboard = ({ onBack }) => {
     if (selectedVtr.origem === "VISTORIA") {
       if (!conf.motoristaConfirmado && !conf.novoMotoristaRE) return alert("Selecione o motorista.");
       if (conf.pertences === 'SIM' && !conf.detalhePertences) return alert("Descreva os pertences.");
-      if (conf.avaria && !fotoAvaria) return alert("Tire foto da avaria.");
     }
     
-    const precisaValidarOleo = selectedVtr.troca_oleo === "SIM" || selectedVtr.origem === "MANUTENCAO_AVULSA";
-    if (precisaValidarOleo && !conf.oleoConfirmado) return alert("Confirme a troca de óleo visualmente.");
-
     setIsSubmitting(true);
+    const currentId = selectedVtr.rowId;
+
     try {
-      const rowIdParaRemover = selectedVtr.rowId;
       const res = await gasApi.confirmarVistoriaGarageiro({
         origem: selectedVtr.origem,
         rowId: selectedVtr.rowId,
@@ -107,8 +110,8 @@ const GarageiroDashboard = ({ onBack }) => {
       });
 
       if (res.status === 'success') {
-        // CORREÇÃO: Limpeza imediata do estado local (faz o card sumir na hora)
-        setVistorias(prev => prev.filter(v => v.rowId !== rowIdParaRemover));
+        // REMOVE O CARD NA HORA
+        setVistorias(prev => prev.filter(v => v.rowId !== currentId));
         setShowModal(false);
         setFotoAvaria(null);
         setConf({ 
@@ -116,8 +119,7 @@ const GarageiroDashboard = ({ onBack }) => {
           detalhePertences: '', motoristaConfirmado: true, novoMotoristaRE: '', 
           avaria: false, obs: '', oleoConfirmado: false 
         });
-        // Refresh silencioso em 1 segundo
-        setTimeout(fetchData, 1000);
+        setTimeout(fetchData, 1200);
       }
     } catch (e) {
       alert("Erro ao salvar.");
@@ -131,14 +133,12 @@ const GarageiroDashboard = ({ onBack }) => {
     try {
       let statusFinal = "DISPONÍVEL";
       if (lockData.motivo === 'manutencao') statusFinal = "MANUTENÇÃO";
-      if (lockData.motivo === 'incidente') statusFinal = "BAIXADA (INCIDENTE)";
-      if (lockData.motivo === 'pendencia_garageiro') statusFinal = "PENDÊNCIA PÁTIO";
       const res = await gasApi.alterarStatusViatura(lockData.prefixo, statusFinal, lockData);
       if (res.status === 'success') {
         setShowLockModal(false);
         fetchData();
       }
-    } catch (e) { alert("Erro de comunicação."); } finally { setIsSubmitting(false); }
+    } catch (e) { alert("Erro."); } finally { setIsSubmitting(false); }
   };
 
   return (
@@ -146,188 +146,114 @@ const GarageiroDashboard = ({ onBack }) => {
       <header className="bg-slate-900 text-white p-4 shadow-xl border-b-4 border-amber-500">
         <div className="max-w-6xl mx-auto flex justify-between items-center">
           <div className="flex items-center gap-3">
-            <button onClick={onBack} className="p-2 hover:bg-slate-800 rounded-lg transition-colors"><X size={20} /></button>
+            <button onClick={onBack} className="p-2 hover:bg-slate-800 rounded-lg"><X size={20} /></button>
             <div className="bg-amber-500 p-2 rounded-lg text-slate-900"><ShieldCheck size={24} /></div>
             <div>
-              <h1 className="font-black uppercase tracking-tighter text-lg leading-none">Fiscalização de Pátio</h1>
-              <p className="text-[10px] font-bold text-amber-500 uppercase tracking-widest">1º BPM - Rondon</p>
+              <h1 className="font-black uppercase tracking-tighter text-lg leading-none">Pátio</h1>
             </div>
           </div>
-          
-          <div className="flex items-center gap-2">
-            <button 
-              onClick={() => setSoundEnabled(!soundEnabled)}
-              className={`p-2 rounded-xl flex items-center gap-2 transition-all ${soundEnabled ? 'bg-emerald-500 text-white' : 'bg-slate-800 text-slate-400'}`}
-            >
-              {soundEnabled ? <Volume2 size={20} /> : <VolumeX size={20} />}
-            </button>
-            <button onClick={fetchData} className={`p-2 rounded-full ${loading ? 'animate-spin text-amber-500' : 'text-slate-400'}`}><RefreshCw size={20} /></button>
-          </div>
+          <button onClick={fetchData} className={`p-2 ${loading ? 'animate-spin text-amber-500' : ''}`}><RefreshCw size={20} /></button>
         </div>
       </header>
 
-      <nav className="bg-white border-b border-slate-200 sticky top-0 z-10">
+      <nav className="bg-white border-b border-slate-200">
         <div className="max-w-6xl mx-auto flex">
-          <button onClick={() => setTab('pendentes')} className={`flex-1 p-4 text-xs font-black uppercase transition-all border-b-2 ${tab === 'pendentes' ? 'border-amber-500 text-amber-600 bg-amber-50/50' : 'border-transparent text-slate-400'}`}>
-            <Clock size={16} className="inline mr-2"/> Conferência ({vistorias.length})
+          <button onClick={() => setTab('pendentes')} className={`flex-1 p-4 text-xs font-black uppercase ${tab === 'pendentes' ? 'border-b-2 border-amber-500 text-amber-600' : 'text-slate-400'}`}>
+            Conferência ({vistorias.length})
           </button>
-          <button onClick={() => setTab('frota')} className={`flex-1 p-4 text-xs font-black uppercase transition-all border-b-2 ${tab === 'frota' ? 'border-amber-500 text-amber-600 bg-amber-50/50' : 'border-transparent text-slate-400'}`}>
-            <Car size={16} className="inline mr-2"/> Frota Total ({viaturas.length})
+          <button onClick={() => setTab('frota')} className={`flex-1 p-4 text-xs font-black uppercase ${tab === 'frota' ? 'border-b-2 border-amber-500 text-amber-600' : 'text-slate-400'}`}>
+            Frota ({viaturas.length})
           </button>
         </div>
       </nav>
 
       <main className="p-4 max-w-6xl mx-auto w-full flex-1">
-        {tab === 'pendentes' && (
+        {tab === 'pendentes' ? (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
             {vistorias.length === 0 ? (
-              <div className="col-span-full py-20 flex flex-col items-center justify-center bg-white rounded-[2.5rem] border-2 border-dashed border-slate-200">
+              <div className="col-span-full py-20 flex flex-col items-center bg-white rounded-[2rem] border-2 border-dashed">
                 <Inbox size={48} className="text-slate-200 mb-2" />
                 <p className="text-slate-400 font-black uppercase text-xs">Pátio Limpo</p>
               </div>
-            ) : vistorias.map((vtr, i) => {
-              const espera = calcularEspera(vtr.timestamp || vtr.data_hora);
-              const isOleoInstantaneo = vtr.origem === "MANUTENCAO_AVULSA"; 
-              return (
-                <div key={i} className={`bg-white border-2 rounded-[2rem] p-5 shadow-sm ${isOleoInstantaneo ? 'border-amber-500 bg-amber-50/30' : 'border-slate-200'}`}>
-                  <div className="flex justify-between items-start mb-4">
-                    <span className="text-3xl font-black text-slate-900 tracking-tighter">{vtr.prefixo_vtr || vtr.prefixo}</span>
-                    <div className="text-right">
-                      <span className={`${isOleoInstantaneo ? 'bg-amber-500 text-white' : 'bg-blue-100 text-blue-700'} px-3 py-1 rounded-full text-[9px] font-black uppercase`}>
-                        {isOleoInstantaneo ? 'ALERTA ÓLEO' : 'Pátio'}
-                      </span>
-                      {espera !== null && <p className="text-[10px] font-black mt-1 text-slate-400">{espera} MIN</p>}
-                    </div>
-                  </div>
-                  <p className="text-xs font-bold text-slate-500 uppercase flex items-center gap-1 mb-6">
-                    <User size={12} /> {vtr.motorista_nome || vtr.responsavel_re || "S/ INF"}
-                  </p>
-                  <button 
-                    onClick={() => { setSelectedVtr(vtr); setShowModal(true); }} 
-                    className={`w-full py-4 rounded-2xl font-black uppercase text-xs shadow-lg ${isOleoInstantaneo ? 'bg-amber-600 text-white' : 'bg-slate-900 text-white'}`}
-                  >
-                    {isOleoInstantaneo ? 'Conferir Comprovante' : 'Abrir Vistoria'}
-                  </button>
+            ) : vistorias.map((vtr, i) => (
+              <div key={i} className="bg-white border-2 rounded-[2rem] p-5 shadow-sm">
+                <div className="flex justify-between items-start mb-4">
+                  <span className="text-3xl font-black text-slate-900 tracking-tighter">{vtr.prefixo_vtr || vtr.prefixo}</span>
+                  <span className="bg-blue-100 text-blue-700 px-3 py-1 rounded-full text-[9px] font-black uppercase">Pátio</span>
                 </div>
-              );
-            })}
+                <button 
+                  onClick={() => { setSelectedVtr(vtr); setShowModal(true); }} 
+                  className="w-full py-4 bg-slate-900 text-white rounded-2xl font-black uppercase text-xs shadow-lg"
+                >
+                  Abrir Vistoria
+                </button>
+              </div>
+            ))}
           </div>
-        )}
-
-        {tab === 'frota' && (
-          <div className="space-y-4">
-            <div className="relative">
-              <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" size={18} />
-              <input 
+        ) : (
+            <div className="space-y-4">
+               <input 
                 type="text" 
-                placeholder="FILTRAR PREFIXO..." 
-                className="w-full p-5 pl-12 bg-white border-2 border-slate-200 rounded-3xl font-black text-xs uppercase outline-none"
+                placeholder="BUSCAR VTR..." 
+                className="w-full p-4 bg-white border-2 rounded-3xl font-black text-xs uppercase"
                 value={searchTerm}
                 onChange={(e) => setSearchTerm(e.target.value)}
               />
-            </div>
-            <div className="bg-white rounded-[2rem] shadow-sm overflow-hidden border border-slate-200">
-              <table className="w-full text-left text-xs md:text-sm">
-                <tbody className="divide-y divide-slate-100 font-bold uppercase">
-                  {viaturas.filter(v => (v.Prefixo || v.prefixo || "").toLowerCase().includes(searchTerm.toLowerCase())).map((v, i) => {
-                    const s = (v.Status || v.status || "").toString().toUpperCase();
-                    const isDisp = s.includes("DISPON") || s === "OK";
-                    return (
-                      <tr key={i} className="hover:bg-slate-50">
-                        <td className="p-4">
-                          <p className="font-black text-slate-800">{v.Prefixo || v.prefixo}</p>
-                          <p className="text-[10px] text-slate-400">{v.Placa || v.placa}</p>
-                        </td>
-                        <td className="p-4">
-                          <span className={`text-[9px] font-black px-2 py-1 rounded-md ${isDisp ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'}`}>
-                             {s}
-                          </span>
-                        </td>
+              <div className="bg-white rounded-[2rem] shadow-sm overflow-hidden border">
+                <table className="w-full text-left text-xs">
+                  <tbody>
+                    {viaturas.filter(v => (v.Prefixo || v.prefixo || "").toLowerCase().includes(searchTerm.toLowerCase())).map((v, i) => (
+                      <tr key={i} className="border-b">
+                        <td className="p-4 font-black">{v.Prefixo || v.prefixo}</td>
                         <td className="p-4 text-right">
                           <button onClick={() => {
-                            setLockData({ prefixo: v.Prefixo || v.prefixo, motivo: isDisp ? 'manutencao' : 'disponivel', re_responsavel: user.re });
+                            setLockData({ prefixo: v.Prefixo || v.prefixo, motivo: 'manutencao' });
                             setShowLockModal(true);
-                          }} className="p-2 text-slate-400">
-                             {isDisp ? <Unlock size={18} /> : <Lock size={18} />}
-                          </button>
+                          }} className="p-2 text-slate-400"><Lock size={18} /></button>
                         </td>
                       </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
             </div>
-          </div>
         )}
       </main>
 
       {/* MODAL DE CONFERÊNCIA */}
       {showModal && selectedVtr && (
         <div className="fixed inset-0 bg-slate-900/80 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-          <div className="bg-white w-full max-w-lg rounded-[2.5rem] shadow-2xl overflow-hidden flex flex-col max-h-[90vh]">
+          <div className="bg-white w-full max-w-lg rounded-[2.5rem] shadow-2xl flex flex-col max-h-[90vh]">
             <div className="bg-slate-900 p-6 text-white flex justify-between items-center">
-              <div>
-                <h2 className="text-2xl font-black uppercase tracking-tighter">{selectedVtr.prefixo_vtr || selectedVtr.prefixo}</h2>
-                <p className="text-[10px] text-amber-500 font-black uppercase">Validação</p>
-              </div>
+              <h2 className="text-2xl font-black uppercase">{selectedVtr.prefixo_vtr || selectedVtr.prefixo}</h2>
               <button onClick={() => setShowModal(false)} className="p-2 hover:bg-white/10 rounded-full"><X size={24} /></button>
             </div>
 
             <div className="p-6 space-y-5 overflow-y-auto">
-              {(selectedVtr.troca_oleo === "SIM" || selectedVtr.origem === "MANUTENCAO_AVULSA") && (
-                <div className="bg-amber-50 border-2 border-amber-200 rounded-3xl p-5 space-y-4">
-                  <div className="flex justify-between items-start">
-                    <div>
-                      <h4 className="text-amber-800 font-black text-xs uppercase flex items-center gap-2">
-                        <Droplets size={16} /> Comprovante de Óleo
-                      </h4>
-                      <p className="text-[10px] text-amber-700 font-bold mt-1">HODÔMETRO: {selectedVtr.hodometro_oleo || selectedVtr.km || 'N/I'} KM</p>
-                    </div>
-                    {(selectedVtr.foto_evidencia || selectedVtr.foto_oleo || selectedVtr.foto) && (
-                      <button 
-                        onClick={() => setViewingPhoto(selectedVtr.foto_evidencia || selectedVtr.foto_oleo || selectedVtr.foto)}
-                        className="bg-white border-2 border-amber-200 p-3 rounded-xl text-amber-600 hover:bg-amber-100 shadow-md"
-                      >
-                        <Eye size={24} />
-                      </button>
-                    )}
-                  </div>
+              {(selectedVtr.foto_evidencia || selectedVtr.foto_oleo || selectedVtr.foto) && (
+                <div className="bg-amber-50 border-2 border-amber-200 rounded-3xl p-5 flex justify-between items-center">
+                  <span className="text-[10px] font-black text-amber-800 uppercase">Comprovante de Óleo</span>
                   <button 
-                    onClick={() => setConf({...conf, oleoConfirmado: !conf.oleoConfirmado})}
-                    className={`w-full py-4 rounded-2xl font-black text-[10px] uppercase border-2 transition-all
-                      ${conf.oleoConfirmado ? 'bg-emerald-500 border-emerald-500 text-white' : 'bg-white border-amber-300 text-amber-600'}`}
+                    onClick={() => setViewingPhoto(selectedVtr.foto_evidencia || selectedVtr.foto_oleo || selectedVtr.foto)}
+                    className="bg-white border-2 border-amber-200 p-3 rounded-xl text-amber-600"
                   >
-                    {conf.oleoConfirmado ? 'ÓLEO CONFERIDO' : 'CONFERIR ÓLEO'}
+                    <Eye size={24} />
                   </button>
                 </div>
               )}
 
-              {selectedVtr.origem === "VISTORIA" ? (
-                <>
-                  <div className="bg-slate-50 p-4 rounded-3xl border-2 border-slate-100">
-                    <p className="text-[10px] font-black text-slate-400 uppercase mb-3 text-center">Confirmar Entrega</p>
-                    <div className="flex gap-2">
-                      <button onClick={() => setConf({...conf, motoristaConfirmado: true})} className={`flex-1 py-3 rounded-2xl font-black text-[10px] uppercase ${conf.motoristaConfirmado ? 'bg-amber-500 text-slate-900 shadow-md' : 'bg-white text-slate-300'}`}>SIM</button>
-                      <button onClick={() => setConf({...conf, motoristaConfirmado: false})} className={`flex-1 py-3 rounded-2xl font-black text-[10px] uppercase ${!conf.motoristaConfirmado ? 'bg-red-600 text-white shadow-md' : 'bg-white text-slate-300'}`}>NÃO</button>
-                    </div>
-                  </div>
-                  <div className="grid grid-cols-2 gap-3">
-                    <button onClick={() => setConf({...conf, limpezaInterna: !conf.limpezaInterna})} className={`p-4 rounded-3xl border-2 font-black text-[10px] uppercase ${conf.limpezaInterna ? 'bg-emerald-50 border-emerald-500 text-emerald-700' : 'bg-slate-50 text-slate-400'}`}>INT: {conf.limpezaInterna ? 'LIMPO' : 'SUJO'}</button>
-                    <button onClick={() => setConf({...conf, limpezaExterna: !conf.limpezaExterna})} className={`p-4 rounded-3xl border-2 font-black text-[10px] uppercase ${conf.limpezaExterna ? 'bg-emerald-50 border-emerald-500 text-emerald-700' : 'bg-slate-50 text-slate-400'}`}>EXT: {conf.limpezaExterna ? 'LIMPO' : 'SUJO'}</button>
-                  </div>
-                  <textarea className="w-full bg-slate-50 border-2 border-slate-100 rounded-2xl p-4 text-xs font-bold uppercase" placeholder="OBS..." value={conf.obs} onChange={e => setConf({...conf, obs: e.target.value})} />
-                </>
-              ) : (
-                <div className="py-6 text-center space-y-3 bg-slate-50 rounded-3xl border-2 border-dashed border-slate-200">
-                  <Wrench size={40} className="mx-auto text-slate-300" />
-                  <p className="text-xs font-bold text-slate-500 uppercase px-6">Manutenção Preventiva</p>
+              <div className="bg-slate-50 p-4 rounded-3xl border-2">
+                <p className="text-[10px] font-black text-slate-400 uppercase text-center mb-3">Conferir Limpeza</p>
+                <div className="grid grid-cols-2 gap-3">
+                  <button onClick={() => setConf({...conf, limpezaInterna: !conf.limpezaInterna})} className={`p-4 rounded-3xl border-2 font-black text-[10px] uppercase ${conf.limpezaInterna ? 'bg-emerald-50 border-emerald-500' : ''}`}>INT: {conf.limpezaInterna ? 'LIMPO' : 'SUJO'}</button>
+                  <button onClick={() => setConf({...conf, limpezaExterna: !conf.limpezaExterna})} className={`p-4 rounded-3xl border-2 font-black text-[10px] uppercase ${conf.limpezaExterna ? 'bg-emerald-50 border-emerald-500' : ''}`}>EXT: {conf.limpezaExterna ? 'LIMPO' : 'SUJO'}</button>
                 </div>
-              )}
+              </div>
 
               <button 
                 onClick={finalizarConferencia}
-                disabled={isSubmitting || ((selectedVtr.troca_oleo === "SIM" || selectedVtr.origem === "MANUTENCAO_AVULSA") && !conf.oleoConfirmado)}
-                className={`w-full py-5 rounded-[1.5rem] font-black uppercase text-xs shadow-xl transition-all ${isSubmitting ? 'bg-slate-200' : 'bg-slate-900 text-white hover:bg-emerald-600'}`}
+                disabled={isSubmitting}
+                className="w-full py-5 bg-slate-900 text-white rounded-[1.5rem] font-black uppercase text-xs"
               >
                 {isSubmitting ? 'Processando...' : 'Finalizar Validação'}
               </button>
@@ -336,32 +262,17 @@ const GarageiroDashboard = ({ onBack }) => {
         </div>
       )}
 
-      {/* VISUALIZADOR DE FOTO CORRIGIDO */}
+      {/* VISUALIZADOR DE FOTO */}
       {viewingPhoto && (
-        <div className="fixed inset-0 bg-black/95 z-[100] flex flex-col p-4 animate-in fade-in duration-300">
-          <button onClick={() => setViewingPhoto(null)} className="self-end text-white p-4 rounded-full"><X size={32} /></button>
+        <div className="fixed inset-0 bg-black/95 z-[100] flex flex-col p-4">
+          <button onClick={() => setViewingPhoto(null)} className="self-end text-white p-4"><X size={32} /></button>
           <div className="flex-1 flex items-center justify-center">
             <img 
               src={viewingPhoto.startsWith('data:') ? viewingPhoto : `data:image/jpeg;base64,${viewingPhoto}`} 
-              className="max-w-full max-h-full object-contain rounded-2xl shadow-2xl" 
-              alt="Comprovante" 
+              className="max-w-full max-h-full object-contain rounded-2xl" 
+              alt="Evidência" 
               onError={(e) => { e.target.src = "https://placehold.co/600x400?text=Erro+na+Foto"; }}
             />
-          </div>
-        </div>
-      )}
-
-      {/* MODAL DE BLOQUEIO */}
-      {showLockModal && (
-        <div className="fixed inset-0 bg-slate-900/90 backdrop-blur-md z-[60] flex items-center justify-center p-4">
-          <div className="bg-white w-full max-w-sm rounded-[2.5rem] p-8 shadow-2xl">
-            <div className="flex flex-col items-center text-center space-y-4">
-              <h3 className="text-2xl font-black text-slate-800 uppercase">{lockData.motivo === 'disponivel' ? "Liberar VTR" : "Bloquear VTR"}</h3>
-              <div className="flex flex-col w-full gap-3 mt-6">
-                <button onClick={confirmarAlteracaoStatus} className="w-full py-4 bg-slate-900 text-white rounded-2xl font-black uppercase text-xs">Confirmar</button>
-                <button onClick={() => setShowLockModal(false)} className="w-full py-4 bg-slate-100 text-slate-400 rounded-2xl font-black uppercase text-xs">Cancelar</button>
-              </div>
-            </div>
           </div>
         </div>
       )}
