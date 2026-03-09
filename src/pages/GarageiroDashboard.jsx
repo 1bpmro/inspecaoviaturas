@@ -36,34 +36,25 @@ const GarageiroDashboard = ({ onBack }) => {
   const [showLockModal, setShowLockModal] = useState(false);
   const [lockData, setLockData] = useState({ prefixo: '', motivo: 'manutencao', detalhes: '', re_responsavel: '' });
 
-// 1. FILTRO DE MOTORISTAS (BUSCANDO DENTRO DA STRING DO NOME)
-const motoristasFiltrados = motoristas.filter(m => {
-  // Pega o nome vindo do banco (ajuste 'Nome' para 'nome' se necessário)
-  const nomeCompleto = (m.Nome || m.nome || "").toUpperCase().trim();
+  // 1. EFEITO INICIAL PARA CARREGAR DADOS
+  useEffect(() => {
+    fetchData();
+    const interval = setInterval(fetchData, 30000); // Auto-refresh a cada 30s
+    return () => clearInterval(interval);
+  }, []);
 
-  // Se o nome estiver vazio, remove da lista
-  if (!nomeCompleto) return false;
+  // 2. FILTRO DE MOTORISTAS (REGRAS DE NEGÓCIO)
+  const motoristasFiltrados = motoristas.filter(m => {
+    const nomeCompleto = (m.Nome || m.nome || "").toUpperCase().trim();
+    if (!nomeCompleto || nomeCompleto.includes("ADMIN")) return false;
 
-  // Se for Admin, remove
-  if (nomeCompleto.includes("ADMIN")) return false;
+    const termosProibidos = [
+      /PVSA/i, /TEN(\s?|\.)?CEL/i, /MAJ/i, /CAP/i,
+      /[12](°|º|\.)?\s?TEN/i, /ASPIRANTE/i, /SUBTENENTE/i, /\bST\b/i
+    ];
 
-  // Lista de termos que, se encontrados em QUALQUER parte do nome, bloqueiam o registro
-  const termosProibidos = [
-    /PVSA/i,
-    /TEN(\s?|\.)?CEL/i,    // Pega "TEN CEL", "TENCEL", "TEN.CEL"
-    /MAJ/i,
-    /CAP/i,
-    /[12](°|º|\.)?\s?TEN/i, // Pega "1° TEN", "1.TEN", "2ºTEN"
-    /ASPIRANTE/i,
-    /SUBTENENTE/i,
-    /\bST\b/i               // Pega "ST" isolado (evita nomes que tenham 'st' no meio)
-  ];
-
-  // Se o nome der "match" com qualquer um dos termos acima, retorna FALSE (filtra para fora)
-  const ehOficial = termosProibidos.some(regex => regex.test(nomeCompleto));
-
-  return !ehOficial;
-});
+    return !termosProibidos.some(regex => regex.test(nomeCompleto));
+  });
 
   const handleFileChange = (e) => {
     const file = e.target.files[0];
@@ -113,9 +104,7 @@ const motoristasFiltrados = motoristas.filter(m => {
           if (prefixo && (status.includes("AGUARDANDO") || status.includes("PATIO"))) {
             const jaExiste = listaFinal.some(p => (p?.prefixo_vtr || p?.prefixo) === prefixo);
             if (!jaExiste) {
-              // GARANTINDO QUE O rowId NÃO SEJA NaN
               const validRowId = vtr.rowId || vtr.ID || vtr.id || prefixo;
-              
               listaFinal.push({
                 prefixo: prefixo,
                 prefixo_vtr: prefixo,
@@ -129,7 +118,6 @@ const motoristasFiltrados = motoristas.filter(m => {
           }
         });
 
-        // Filtragem para não mostrar o que já foi finalizado localmente
         const filtradas = listaFinal.filter(v => {
           if (!v) return false;
           const id = v.id_manutencao || v.id_sistema || v.rowId || v.prefixo;
@@ -144,86 +132,97 @@ const motoristasFiltrados = motoristas.filter(m => {
         setVistorias(filtradas);
       }
     } catch (error) {
-      console.error("Erro crítico na sincronização:", error);
+      console.error("Erro na sincronização:", error);
     } finally {
       setLoading(false);
     }
   };
 
- const finalizarConferencia = async () => {
-  if (isSubmitting) return;
+  const finalizarConferencia = async () => {
+    if (isSubmitting) return;
 
-  // Validações de segurança
-  if (selectedVtr.origem === "VISTORIA" && !conf.motoristaConfirmado && !conf.novoMotoristaRE) {
-    return alert("Selecione o motorista que está entregando a VTR.");
-  }
-  
-  const precisaValidarOleo = selectedVtr.troca_oleo === "SIM" || selectedVtr.origem === "MANUTENCAO_AVULSA";
-  if (precisaValidarOleo && !conf.oleoConfirmado) return alert("Confirme a troca de óleo visualmente.");
-  if (conf.avaria && !fotoAvaria) return alert("É obrigatório anexar uma foto para registrar a avaria.");
+    if (selectedVtr.origem === "VISTORIA" && !conf.motoristaConfirmado && !conf.novoMotoristaRE) {
+      return alert("Selecione o motorista que está entregando a VTR.");
+    }
+    
+    const precisaValidarOleo = selectedVtr.troca_oleo === "SIM" || selectedVtr.origem === "MANUTENCAO_AVULSA";
+    if (precisaValidarOleo && !conf.oleoConfirmado) return alert("Confirme a troca de óleo visualmente.");
+    if (conf.avaria && !fotoAvaria) return alert("É obrigatório anexar uma foto para registrar a avaria.");
 
-  setIsSubmitting(true);
-  
-  const idParaRemover = selectedVtr.id_manutencao || selectedVtr.id_sistema || selectedVtr.rowId || selectedVtr.prefixo;
-  const prefixoVtr = (selectedVtr.prefixo_vtr || selectedVtr.prefixo || "").toString().toUpperCase();
+    setIsSubmitting(true);
+    const idParaRemover = selectedVtr.id_manutencao || selectedVtr.id_sistema || selectedVtr.rowId || selectedVtr.prefixo;
+    const prefixoVtr = (selectedVtr.prefixo_vtr || selectedVtr.prefixo || "").toString().toUpperCase();
 
-  try {
-    // 1. PREPARAÇÃO DO PAYLOAD
-    const payload = {
-      origem: selectedVtr.origem,
-      prefixo: prefixoVtr,
-      rowId: !isNaN(parseInt(selectedVtr.rowId)) ? selectedVtr.rowId : null,
-      id_manutencao: selectedVtr.id_manutencao,
-      id_vistoria: selectedVtr.id_sistema || selectedVtr.id,
-      status_fisico: conf.avaria ? 'AVARIADA' : 'OK',
-      limpeza: `INT: ${conf.limpezaInterna ? 'C' : 'NC'} | EXT: ${conf.limpezaExterna ? 'C' : 'NC'}`,
-      pertences: conf.pertences === 'SIM' ? `SIM: ${conf.detalhePertences}` : 'NÃO',
-      obs_garageiro: conf.obs,
-      garageiro_re: user.re,
-      foto_avaria: fotoAvaria,
-      motorista_confirmado: conf.motoristaConfirmado,
-      novo_motorista_re: conf.novoMotoristaRE,
-      km_registro: selectedVtr.hodometro_oleo || selectedVtr.hodometro || selectedVtr.km 
-    };
+    try {
+      const payload = {
+        origem: selectedVtr.origem,
+        prefixo: prefixoVtr,
+        rowId: !isNaN(parseInt(selectedVtr.rowId)) ? selectedVtr.rowId : null,
+        id_manutencao: selectedVtr.id_manutencao,
+        id_vistoria: selectedVtr.id_sistema || selectedVtr.id,
+        status_fisico: conf.avaria ? 'AVARIADA' : 'OK',
+        limpeza: `INT: ${conf.limpezaInterna ? 'C' : 'NC'} | EXT: ${conf.limpezaExterna ? 'C' : 'NC'}`,
+        pertences: conf.pertences === 'SIM' ? `SIM: ${conf.detalhePertences}` : 'NÃO',
+        obs_garageiro: conf.obs,
+        garageiro_re: user.re,
+        foto_avaria: fotoAvaria,
+        motorista_confirmado: conf.motoristaConfirmado,
+        novo_motorista_re: conf.novoMotoristaRE,
+        km_registro: selectedVtr.hodometro_oleo || selectedVtr.hodometro || selectedVtr.km 
+      };
 
-    // 2. ENVIAR CONFERÊNCIA PARA O LOG/HISTÓRICO
-    const res = await gasApi.confirmarVistoriaGarageiro(payload);
+      const res = await gasApi.confirmarVistoriaGarageiro(payload);
 
-    if (res.status === 'success') {
-      
-      // 3. ATUALIZAR STATUS DA VTR NO BANCO (De Aguardando para Disponível)
-      // Passamos um objeto de log para o histórico de status também
-      await gasApi.alterarStatusViatura(prefixoVtr, "DISPONÍVEL", {
-        motivo: 'disponivel',
-        detalhes: 'Liberação automática via conferência de pátio',
+      if (res.status === 'success') {
+        await gasApi.alterarStatusViatura(prefixoVtr, "DISPONÍVEL", {
+          motivo: 'disponivel',
+          detalhes: 'Liberação via pátio',
+          re_responsavel: user.re
+        });
+
+        setFinalizadosLocal(prev => [...prev, idParaRemover]);
+        setShowModal(false);
+        setConf({ 
+          limpezaInterna: true, limpezaExterna: true, pertences: 'NÃO', 
+          detalhePertences: '', motoristaConfirmado: true, novoMotoristaRE: '', 
+          avaria: false, obs: '', oleoConfirmado: false 
+        });
+        setFotoAvaria(null);
+        setTimeout(fetchData, 1000);
+      } else {
+        alert("Erro: " + (res.message || "Tente novamente."));
+      }
+    } catch (e) {
+      alert("Erro de conexão.");
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  const confirmarAlteracaoStatus = async () => {
+    if (isSubmitting) return;
+    setIsSubmitting(true);
+    try {
+      const novoStatus = lockData.motivo === 'disponivel' ? 'DISPONÍVEL' : 'MANUTENÇÃO';
+      const res = await gasApi.alterarStatusViatura(lockData.prefixo, novoStatus, {
+        motivo: lockData.motivo,
+        detalhes: lockData.detalhes || 'Alteração manual via painel garageiro',
         re_responsavel: user.re
       });
 
-      // Feedback visual e limpeza local
-      setFinalizadosLocal(prev => [...prev, idParaRemover]);
-      setShowModal(false);
-      
-      // Reset do formulário
-      setConf({ 
-        limpezaInterna: true, limpezaExterna: true, pertences: 'NÃO', 
-        detalhePertences: '', motoristaConfirmado: true, novoMotoristaRE: '', 
-        avaria: false, obs: '', oleoConfirmado: false 
-      });
-      setFotoAvaria(null);
-      
-      // Refresh nos dados gerais para garantir sincronia
-      setTimeout(fetchData, 1000);
-    } else {
-      alert("Erro ao salvar conferência: " + (res.message || "Tente novamente."));
+      if (res.status === 'success') {
+        setShowLockModal(false);
+        fetchData();
+      } else {
+        alert("Erro ao alterar status.");
+      }
+    } catch (e) {
+      alert("Erro de conexão.");
+    } finally {
+      setIsSubmitting(false);
     }
-  } catch (e) {
-    console.error("Erro no processo de finalização:", e);
-    alert("Erro de conexão com o servidor.");
-  } finally {
-    setIsSubmitting(false);
-  }
-};
-  
+  };
+
   return (
     <div className="min-h-screen bg-slate-100 flex flex-col font-sans">
       <header className="bg-slate-900 text-white p-4 shadow-xl border-b-4 border-amber-500">
@@ -332,12 +331,13 @@ const motoristasFiltrados = motoristas.filter(m => {
         )}
       </main>
 
+      {/* MODAL PRINCIPAL DE CONFERÊNCIA */}
       {showModal && selectedVtr && (
         <div className="fixed inset-0 bg-slate-900/90 backdrop-blur-md z-50 flex items-center justify-center p-4 overflow-y-auto">
           <div className="bg-white w-full max-w-lg rounded-[3rem] shadow-2xl overflow-hidden flex flex-col my-auto max-h-[95vh]">
             <div className="bg-slate-900 p-6 text-white flex justify-between items-center shrink-0">
               <div className="flex items-center gap-4">
-                <div className="w-12 h-12 bg-amber-500 rounded-2xl flex items-center justify-center text-slate-900 font-black text-xl">{selectedVtr.prefixo.slice(-2)}</div>
+                <div className="w-12 h-12 bg-amber-500 rounded-2xl flex items-center justify-center text-slate-900 font-black text-xl">{(selectedVtr.prefixo || "").toString().slice(-2)}</div>
                 <div>
                   <h2 className="text-2xl font-black uppercase tracking-tighter leading-none">{selectedVtr.prefixo}</h2>
                   <p className="text-[10px] text-amber-500 font-bold uppercase mt-1 tracking-widest">Procedimento de Pátio</p>
@@ -442,6 +442,7 @@ const motoristasFiltrados = motoristas.filter(m => {
         </div>
       )}
 
+      {/* VISUALIZADOR DE FOTO EM TELA CHEIA */}
       {viewingPhoto && (
         <div className="fixed inset-0 bg-black/95 z-[100] flex flex-col p-4">
           <button onClick={() => setViewingPhoto(null)} className="self-end text-white p-4 hover:bg-white/10 rounded-full transition-colors"><X size={32} /></button>
@@ -451,6 +452,7 @@ const motoristasFiltrados = motoristas.filter(m => {
         </div>
       )}
 
+      {/* MODAL DE BLOQUEIO/LIBERAÇÃO MANUAL */}
       {showLockModal && (
         <div className="fixed inset-0 bg-slate-900/90 backdrop-blur-md z-[60] flex items-center justify-center p-4">
           <div className="bg-white w-full max-w-sm rounded-[3rem] p-8 shadow-2xl">
@@ -459,9 +461,12 @@ const motoristasFiltrados = motoristas.filter(m => {
                 {lockData.motivo === 'disponivel' ? <Unlock size={40} /> : <Lock size={40} />}
               </div>
               <h3 className="text-2xl font-black text-slate-800 uppercase tracking-tighter">{lockData.motivo === 'disponivel' ? "Liberar VTR" : "Bloquear VTR"}</h3>
+              <p className="text-xs font-bold text-slate-500 uppercase">Deseja alterar o status da viatura {lockData.prefixo}?</p>
               <div className="flex flex-col w-full gap-3">
-                <button onClick={confirmarAlteracaoStatus} disabled={isSubmitting} className="w-full py-4 bg-slate-900 text-white rounded-2xl font-black uppercase text-xs shadow-lg">Confirmar</button>
-                <button onClick={() => setShowLockModal(false)} className="w-full py-4 bg-slate-100 text-slate-400 rounded-2xl font-black uppercase text-xs">Sair</button>
+                <button onClick={confirmarAlteracaoStatus} disabled={isSubmitting} className="w-full py-4 bg-slate-900 text-white rounded-2xl font-black uppercase text-xs shadow-lg disabled:opacity-50">
+                  {isSubmitting ? 'Processando...' : 'Confirmar'}
+                </button>
+                <button onClick={() => setShowLockModal(false)} className="w-full py-4 bg-slate-100 text-slate-400 rounded-2xl font-black uppercase text-xs">Cancelar</button>
               </div>
             </div>
           </div>
