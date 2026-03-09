@@ -74,130 +74,183 @@ const GarageiroDashboard = ({ onBack }) => {
     } catch(e) { return 0; }
   };
 
-  const fetchData = async () => {
-    setLoading(true);
-    try {
-      const [resVtr, resPend, resMot] = await Promise.all([
-        gasApi.getViaturas(), 
-        gasApi.getVistoriasPendentes(),
-        gasApi.getEfetivoCompleto()
-      ]);
-      
-      let frotaGeral = [];
-      if (resVtr?.status === 'success' && Array.isArray(resVtr.data)) {
-        frotaGeral = resVtr.data;
-        setViaturas(frotaGeral);
-      }
-
-      if (resMot?.status === 'success' && Array.isArray(resMot.data)) {
-        setMotoristas(resMot.data);
-      }
-
-      if (resPend?.status === 'success' && Array.isArray(resPend.data)) {
-        let listaFinal = [...resPend.data];
-
-        frotaGeral.forEach(vtr => {
-          if (!vtr) return;
-          const status = (vtr.Status || vtr.status || "").toUpperCase();
-          const prefixo = vtr.Prefixo || vtr.prefixo;
-
-          if (prefixo && (status.includes("AGUARDANDO") || status.includes("PATIO"))) {
-            const jaExiste = listaFinal.some(p => (p?.prefixo_vtr || p?.prefixo) === prefixo);
-            if (!jaExiste) {
-              const validRowId = vtr.rowId || vtr.ID || vtr.id || prefixo;
-              listaFinal.push({
-                prefixo: prefixo,
-                prefixo_vtr: prefixo,
-                motorista_nome: vtr.UltimoMotoristaNome || vtr.Motorista || "S/ INF",
-                origem: "VISTORIA", 
-                timestamp: new Date().toISOString(),
-                rowId: validRowId, 
-                troca_oleo: (vtr.Status === "TROCA DE ÓLEO" || vtr.oleo_pendente === "SIM") ? "SIM" : "NÃO"
-              });
-            }
-          }
-        });
-
-        const filtradas = listaFinal.filter(v => {
-          if (!v) return false;
-          const id = v.id_manutencao || v.id_sistema || v.rowId || v.prefixo;
-          return id && !finalizadosLocal.includes(id);
-        });
-
-        if (soundEnabled && filtradas.length > prevItemsCount.current) {
-          audioRef.current.play().catch(() => {});
-        }
-        
-        prevItemsCount.current = filtradas.length;
-        setVistorias(filtradas);
-      }
-    } catch (error) {
-      console.error("Erro na sincronização:", error);
-    } finally {
-      setLoading(false);
+const fetchData = async () => {
+  setLoading(true);
+  try {
+    const [resVtr, resPend, resMot] = await Promise.all([
+      gasApi.getViaturas(),           // Traz os dados da guia PAINEL / PATRIMÔNIO
+      gasApi.getVistoriasPendentes(), // Traz os dados da guia do Mês (ex: 03-2026)
+      gasApi.getEfetivoCompleto()
+    ]);
+    
+    let frotaGeral = [];
+    if (resVtr?.status === 'success' && Array.isArray(resVtr.data)) {
+      frotaGeral = resVtr.data;
+      setViaturas(frotaGeral);
     }
-  };
 
-  const finalizarConferencia = async () => {
-    if (isSubmitting) return;
+    if (resMot?.status === 'success' && Array.isArray(resMot.data)) {
+      setMotoristas(resMot.data);
+    }
 
-    if (selectedVtr.origem === "VISTORIA" && !conf.motoristaConfirmado && !conf.novoMotoristaRE) {
-      return alert("Selecione o motorista que está entregando a VTR.");
+    // LISTA QUE O GARAGEIRO VAI ENXERGAR
+    let listaFinal = [];
+
+    // 1. REGRA DA GUIA DO MÊS (resPend)
+    // Se você quiser que o garageiro NÃO veja vistorias de ENTRADA vindas diretamente 
+    // da guia mensal (porque ele vai ler pelo Status do Painel), filtramos aqui:
+    if (resPend?.status === 'success' && Array.isArray(resPend.data)) {
+      // Filtramos para remover qualquer coisa que já tenha sido marcada como ENTRADA na guia mensal
+      // Isso evita que apareçam dois cards para a mesma viatura.
+      const vistoriasMesFiltradas = resPend.data.filter(v => 
+        (v.tipo_vistoria || v.tipo || "").toUpperCase() !== "ENTRADA"
+      );
+      listaFinal = [...vistoriasMesFiltradas];
+    }
+
+    // 2. REGRA DA COLUNA STATUS (Guia PAINEL / PATRIMÔNIO)
+    // Esta é a fonte de verdade para o garageiro saber quem está no pátio.
+    frotaGeral.forEach(vtr => {
+      if (!vtr) return;
+      const statusVtr = (vtr.Status || vtr.status || "").toUpperCase().trim();
+      const prefixo = vtr.Prefixo || vtr.prefixo;
+
+      // Status que acionam a presença da VTR na tela do garageiro
+      const statusAlvo = [
+        "AGUARDANDO CONFERÊNCIA", 
+        "PÁTIO", 
+        "AGUARDANDO PÁTIO",
+        "ENTRADA REGISTRADA",
+        "EM CONFERÊNCIA"
+      ];
+
+      if (prefixo && statusAlvo.includes(statusVtr)) {
+        // Verifica se já não adicionamos essa VTR pela lista da guia mensal
+        const jaExiste = listaFinal.some(p => (p?.prefixo_vtr || p?.prefixo) === prefixo);
+        
+        if (!jaExiste) {
+          listaFinal.push({
+            prefixo: prefixo,
+            prefixo_vtr: prefixo,
+            motorista_nome: vtr.UltimoMotoristaNome || vtr.Motorista || "S/ INF",
+            origem: "STATUS_PAINEL", 
+            timestamp: vtr.DataHoraUltimaAtualizacao || new Date().toISOString(),
+            rowId: vtr.rowId || vtr.ID || prefixo,
+            // Mantém a regra do óleo baseada no status ou coluna específica
+            troca_oleo: (statusVtr === "TROCA DE ÓLEO" || vtr.oleo_pendente === "SIM") ? "SIM" : "NÃO"
+          });
+        }
+      }
+    });
+
+    // 3. FILTRO FINAL (Remover o que já foi finalizado localmente nesta sessão)
+    const filtradas = listaFinal.filter(v => {
+      if (!v) return false;
+      const id = v.id_manutencao || v.id_sistema || v.rowId || v.prefixo;
+      return id && !finalizadosLocal.includes(id);
+    });
+
+    // Feedback sonoro para novas viaturas no pátio
+    if (soundEnabled && filtradas.length > prevItemsCount.current) {
+      audioRef.current.play().catch(() => {});
     }
     
-    const precisaValidarOleo = selectedVtr.troca_oleo === "SIM" || selectedVtr.origem === "MANUTENCAO_AVULSA";
-    if (precisaValidarOleo && !conf.oleoConfirmado) return alert("Confirme a troca de óleo visualmente.");
-    if (conf.avaria && !fotoAvaria) return alert("É obrigatório anexar uma foto para registrar a avaria.");
+    prevItemsCount.current = filtradas.length;
+    setVistorias(filtradas);
 
-    setIsSubmitting(true);
-    const idParaRemover = selectedVtr.id_manutencao || selectedVtr.id_sistema || selectedVtr.rowId || selectedVtr.prefixo;
-    const prefixoVtr = (selectedVtr.prefixo_vtr || selectedVtr.prefixo || "").toString().toUpperCase();
+  } catch (error) {
+    console.error("Erro crítico na sincronização do Garageiro:", error);
+  } finally {
+    setLoading(false);
+  }
+};
+  
 
-    try {
-      const payload = {
-        origem: selectedVtr.origem,
-        prefixo: prefixoVtr,
-        rowId: !isNaN(parseInt(selectedVtr.rowId)) ? selectedVtr.rowId : null,
-        id_manutencao: selectedVtr.id_manutencao,
-        id_vistoria: selectedVtr.id_sistema || selectedVtr.id,
-        status_fisico: conf.avaria ? 'AVARIADA' : 'OK',
-        limpeza: `INT: ${conf.limpezaInterna ? 'C' : 'NC'} | EXT: ${conf.limpezaExterna ? 'C' : 'NC'}`,
-        pertences: conf.pertences === 'SIM' ? `SIM: ${conf.detalhePertences}` : 'NÃO',
-        obs_garageiro: conf.obs,
-        garageiro_re: user.re,
-        foto_avaria: fotoAvaria,
-        motorista_confirmado: conf.motoristaConfirmado,
-        novo_motorista_re: conf.novoMotoristaRE,
-        km_registro: selectedVtr.hodometro_oleo || selectedVtr.hodometro || selectedVtr.km 
-      };
+ const finalizarConferencia = async () => {
+  if (isSubmitting) return;
 
-      const res = await gasApi.confirmarVistoriaGarageiro(payload);
+  // 1. VALIDAÇÃO DE MOTORISTA
+  // Ajustado para aceitar tanto a origem "VISTORIA" quanto "STATUS_PAINEL"
+  const isVistoriaOuPainel = ["VISTORIA", "STATUS_PAINEL"].includes(selectedVtr.origem);
+  
+  if (isVistoriaOuPainel && !conf.motoristaConfirmado && !conf.novoMotoristaRE) {
+    return alert("Por favor, selecione ou confirme o motorista que está entregando a viatura.");
+  }
+  
+  // 2. VALIDAÇÃO DE ÓLEO E AVARIAS
+  const precisaValidarOleo = selectedVtr.troca_oleo === "SIM" || selectedVtr.origem === "MANUTENCAO_AVULSA";
+  if (precisaValidarOleo && !conf.oleoConfirmado) {
+    return alert("Confirme a troca de óleo visualmente antes de finalizar.");
+  }
+  
+  if (conf.avaria && !fotoAvaria) {
+    return alert("É obrigatório anexar uma foto para registrar a avaria detectada.");
+  }
 
-      if (res.status === 'success') {
-        await gasApi.alterarStatusViatura(prefixoVtr, "DISPONÍVEL", {
-          motivo: 'disponivel',
-          detalhes: 'Liberação via pátio',
-          re_responsavel: user.re
-        });
+  setIsSubmitting(true);
 
-        setFinalizadosLocal(prev => [...prev, idParaRemover]);
-        setShowModal(false);
-        setConf({ 
-          limpezaInterna: true, limpezaExterna: true, pertences: 'NÃO', 
-          detalhePertences: '', motoristaConfirmado: true, novoMotoristaRE: '', 
-          avaria: false, obs: '', oleoConfirmado: false 
-        });
-        setFotoAvaria(null);
-        setTimeout(fetchData, 1000);
-      } else {
-        alert("Erro: " + (res.message || "Tente novamente."));
-      }
-    } catch (e) {
-      alert("Erro de conexão.");
-    } finally {
-      setIsSubmitting(false);
+  // Identificadores para controle de UI e API
+  const idParaRemover = selectedVtr.id_manutencao || selectedVtr.id_sistema || selectedVtr.rowId || selectedVtr.prefixo;
+  const prefixoVtr = (selectedVtr.prefixo_vtr || selectedVtr.prefixo || "").toString().toUpperCase();
+
+  try {
+    const payload = {
+      origem: selectedVtr.origem, // "STATUS_PAINEL" ou "VISTORIA"
+      prefixo: prefixoVtr,
+      // Garante o envio do rowId (importante para atualizar a guia PATRIMÔNIO)
+      rowId: !isNaN(parseInt(selectedVtr.rowId)) ? parseInt(selectedVtr.rowId) : selectedVtr.rowId,
+      id_manutencao: selectedVtr.id_manutencao,
+      id_vistoria: selectedVtr.id_sistema || selectedVtr.id,
+      status_fisico: conf.avaria ? 'AVARIADA' : 'OK',
+      limpeza: `INT: ${conf.limpezaInterna ? 'C' : 'NC'} | EXT: ${conf.limpezaExterna ? 'C' : 'NC'}`,
+      pertences: conf.pertences === 'SIM' ? `SIM: ${conf.detalhePertences}` : 'NÃO',
+      obs_garageiro: conf.obs,
+      garageiro_re: user.re,
+      foto_avaria: fotoAvaria,
+      motorista_confirmado: conf.motoristaConfirmado,
+      novo_motorista_re: conf.novoMotoristaRE,
+      // Coleta o KM disponível em qualquer uma das fontes de dados
+      km_registro: selectedVtr.hodometro_oleo || selectedVtr.hodometro || selectedVtr.km || selectedVtr.Km 
+    };
+
+    // 1º Passo: Salva o log de conferência do garageiro e processa no banco
+    const res = await gasApi.confirmarVistoriaGarageiro(payload);
+
+    if (res.status === 'success') {
+      // 2º Passo: Força a atualização do Status na guia PAINEL/PATRIMÔNIO para DISPONÍVEL
+      // Se a origem for STATUS_PAINEL, o Apps Script usará o rowId para ser cirúrgico na atualização.
+      await gasApi.alterarStatusViatura(prefixoVtr, "DISPONÍVEL", {
+        motivo: 'disponivel',
+        detalhes: 'Liberação via pátio (Garageiro)',
+        re_responsavel: user.re,
+        rowId: payload.rowId // Passamos o rowId também para a alteração de status
+      });
+
+      // 3º Passo: Feedback na UI e Reset de Estado
+      setFinalizadosLocal(prev => [...prev, idParaRemover]);
+      setShowModal(false);
+      
+      // Limpa o formulário para a próxima conferência
+      setConf({ 
+        limpezaInterna: true, limpezaExterna: true, pertences: 'NÃO', 
+        detalhePertences: '', motoristaConfirmado: true, novoMotoristaRE: '', 
+        avaria: false, obs: '', oleoConfirmado: false 
+      });
+      setFotoAvaria(null);
+
+      // Refresh nos dados após 1.5s para garantir que o Google Sheets processou as duas chamadas
+      setTimeout(fetchData, 1500);
+      
+    } else {
+      alert("Erro ao salvar conferência: " + (res.message || "Tente novamente."));
     }
-  };
+  } catch (e) {
+    console.error("Erro na finalização:", e);
+    alert("Erro de conexão com o servidor. Verifique sua internet.");
+  } finally {
+    setIsSubmitting(false);
+  }
+};
 
   const confirmarAlteracaoStatus = async () => {
     if (isSubmitting) return;
