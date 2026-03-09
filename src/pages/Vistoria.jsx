@@ -56,10 +56,9 @@ const ModalTrocaOleo = ({ isOpen, onClose, vtr, kmEntrada, user }) => {
 
   useEffect(() => {
     if (isOpen) {
-      console.log("[Oleo] Modal aberto para VTR:", vtr?.Prefixo || vtr?.PREFIXO);
       setDadosOleo(prev => ({ ...prev, km_troca: kmEntrada || '' }));
     }
-  }, [isOpen, kmEntrada, vtr]);
+  }, [isOpen, kmEntrada]);
 
   if (!isOpen || !vtr) return null;
 
@@ -124,7 +123,8 @@ const ModalTrocaOleo = ({ isOpen, onClose, vtr, kmEntrada, user }) => {
                 const file = e.target.files[0]; if (!file) return;
                 setUploading(true);
                 try {
-                  const compressed = await imageCompression(file, { maxSizeMB: 0.2, maxWidthOrHeight: 1024 });
+                  const options = { maxSizeMB: 0.2, maxWidthOrHeight: 800, useWebWorker: true };
+                  const compressed = await imageCompression(file, options);
                   const reader = new FileReader();
                   reader.readAsDataURL(compressed);
                   reader.onloadend = () => {
@@ -141,7 +141,7 @@ const ModalTrocaOleo = ({ isOpen, onClose, vtr, kmEntrada, user }) => {
 
         <div className="flex gap-2 pt-2">
           <button onClick={onClose} className="flex-1 font-black text-slate-400 uppercase text-xs">Sair</button>
-          <button onClick={handleSalvar} disabled={loading || uploading} className="flex-[2] bg-orange-500 text-white p-4 rounded-2xl font-black shadow-lg shadow-orange-200 active:scale-95 transition-all">
+          <button onClick={handleSalvar} disabled={loading || uploading} className="flex-[2] bg-orange-500 text-white p-4 rounded-2xl font-black shadow-lg active:scale-95 transition-all">
             {loading ? <Loader2 className="animate-spin mx-auto"/> : "CONFIRMAR"}
           </button>
         </div>
@@ -164,11 +164,8 @@ const Vistoria = ({ onBack, frotaInicial = [] }) => {
   const [kmReferencia, setKmReferencia] = useState(0);
   const [modalOleoOpen, setModalOleoOpen] = useState(false);
   
-  // NOVO: Estado para controlar se os campos manuais devem abrir
   const [reNaoEncontrado, setReNaoEncontrado] = useState({
-    motorista: false,
-    comandante: false,
-    patrulheiro: false
+    motorista: false, comandante: false, patrulheiro: false
   });
 
   const [formData, setFormData] = useState({
@@ -182,17 +179,33 @@ const Vistoria = ({ onBack, frotaInicial = [] }) => {
 
   const [checklist, setChecklist] = useState({});
 
-  const toStr = useCallback((val) => (val !== undefined && val !== null ? String(val) : ''), []);
+  const toStr = useCallback((val) => (val !== undefined && val !== null ? String(val).trim() : ''), []);
 
   const vtrSelecionada = useMemo(() => {
     return viaturas.find(v => toStr(v.Prefixo || v.PREFIXO) === toStr(formData.prefixo_vtr));
   }, [formData.prefixo_vtr, viaturas, toStr]);
 
+  // Lógica de Troca de Óleo
   const precisaTrocaOleo = useMemo(() => {
     if (!vtrSelecionada || tipoVistoria !== 'ENTRADA') return false;
-    const kmTroca = Number(vtrSelecionada.ProximaTrocaOleo || vtrSelecionada.PROXIMA_TROCA) || 0;
+    const getV = (key) => vtrSelecionada[key] || vtrSelecionada[key.toUpperCase()] || '';
+    
+    const kmUltimaTroca = Number(getV('KM_UltimaTroca')) || 0;
+    const dataUltimaTrocaStr = getV('Data_UltimaTroca');
     const kmAtual = Number(formData.hodometro) || 0;
-    return kmAtual > 0 && (kmTroca - kmAtual <= 500);
+
+    if (kmAtual === 0) return false;
+    if (!kmUltimaTroca) return true;
+
+    const diferencaKM = kmAtual - kmUltimaTroca;
+    if (diferencaKM >= 9950) return true;
+
+    if (dataUltimaTrocaStr) {
+      const dataUltima = new Date(dataUltimaTrocaStr);
+      const diffInDays = Math.floor((new Date() - dataUltima) / (1000 * 60 * 60 * 24));
+      if (diffInDays >= 170) return true;
+    }
+    return false;
   }, [vtrSelecionada, formData.hodometro, tipoVistoria]);
 
   const viaturasFiltradas = useMemo(() => {
@@ -205,7 +218,9 @@ const Vistoria = ({ onBack, frotaInicial = [] }) => {
 
   const kmInvalido = useMemo(() => {
     const kmAtual = Number(formData.hodometro);
-    return tipoVistoria === 'SAÍDA' && kmAtual > 0 && kmAtual <= kmReferencia;
+    if (!kmAtual || !kmReferencia) return false;
+    // Na saída, o KM deve ser maior ou igual ao de entrada registrado
+    return tipoVistoria === 'SAÍDA' && kmAtual < kmReferencia;
   }, [formData.hodometro, kmReferencia, tipoVistoria]);
 
   const isFormIncompleto = useMemo(() => {
@@ -222,11 +237,13 @@ const Vistoria = ({ onBack, frotaInicial = [] }) => {
     );
   }, [formData, kmInvalido]);
 
+  // Inicializa checklist conforme o tipo
   useEffect(() => {
     const todosItens = tipoVistoria === 'ENTRADA' ? GRUPOS_ENTRADA.flatMap(g => g.itens) : ITENS_SAIDA;
     setChecklist(todosItens.reduce((acc, item) => ({ ...acc, [item]: 'OK' }), {}));
   }, [tipoVistoria]);
 
+  // Sincronização Inicial
   useEffect(() => {
     let isMounted = true;
     const sincronizarDados = async () => {
@@ -251,19 +268,24 @@ const Vistoria = ({ onBack, frotaInicial = [] }) => {
     setFormData(prev => ({ ...prev, [`${cargo}_re`]: reLimpo }));
 
     if (reLimpo.length >= 4) {
-      const reParaBusca = (reLimpo.length <= 6 && !reLimpo.startsWith("1000")) ? "1000" + reLimpo : reLimpo;
-      const militar = efetivoLocal.find(m => toStr(m.re) === reParaBusca || toStr(m.re) === reLimpo);
+      const reBuscaCurto = reLimpo.padStart(6, '0');
+      const reBuscaLongo = reLimpo.startsWith('1000') ? reLimpo : '1000' + reLimpo;
+
+      const militar = efetivoLocal.find(m => 
+        toStr(m.re) === reLimpo || 
+        toStr(m.re) === reBuscaCurto || 
+        toStr(m.re) === reBuscaLongo
+      );
       
       if (militar) {
         setFormData(prev => ({
           ...prev,
           [`${cargo}_re`]: toStr(militar.re),
-          [`${cargo}_nome`]: `${militar.patente} ${militar.nome}`,
+          [`${cargo}_nome`]: `${militar.patente} ${militar.nome}`.trim(),
           [`${cargo}_unidade`]: militar.unidade || '1º BPM'
         }));
         setReNaoEncontrado(prev => ({ ...prev, [cargo]: false }));
       } else {
-        // Se não encontrou, limpa os campos antigos e ativa a edição manual
         setFormData(prev => ({ ...prev, [`${cargo}_nome`]: '', [`${cargo}_unidade`]: '' }));
         setReNaoEncontrado(prev => ({ ...prev, [cargo]: true }));
       }
@@ -275,32 +297,15 @@ const Vistoria = ({ onBack, frotaInicial = [] }) => {
   const handleVtrChange = (prefixo) => {
     const vtr = viaturas.find(v => toStr(v.Prefixo || v.PREFIXO) === toStr(prefixo));
     if (!vtr) {
-      setFormData(prev => ({ 
-        ...prev, prefixo_vtr: '', placa_vtr: '', hodometro: '',
-        motorista_nome: '', comandante_nome: '', patrulheiro_nome: '' 
-      }));
+      setFormData(prev => ({ ...prev, prefixo_vtr: '', placa_vtr: '', hodometro: '' }));
       return;
     }
 
-    const getV = (key) => vtr[key] || vtr[key.toUpperCase()] || vtr[key.toLowerCase()] || '';
+    const getV = (key) => vtr[key] || vtr[key.toUpperCase()] || '';
     const ultKM = getV('UltimoKM');
     setKmReferencia(Number(ultKM) || 0);
 
     if (tipoVistoria === 'SAÍDA') {
-      const buscarNomeNoEfetivo = (re) => {
-        if (!re) return '';
-        const reLimpo = toStr(re).replace(/\D/g, '');
-        const reParaBusca = (reLimpo.length <= 6 && !reLimpo.startsWith("1000")) ? "1000" + reLimpo : reLimpo;
-        const m = efetivoLocal.find(mil => toStr(mil.re) === reParaBusca || toStr(mil.re) === reLimpo);
-        return m ? `${m.patente} ${m.nome}` : '';
-      };
-
-      const res = {
-        motorista: toStr(getV('UltimoMotoristaRE')),
-        comandante: toStr(getV('UltimoComandanteRE')),
-        patrulheiro: toStr(getV('UltimoPatrulheiroRE'))
-      };
-
       setFormData(prev => ({
         ...prev,
         prefixo_vtr: toStr(vtr.Prefixo || vtr.PREFIXO),
@@ -308,12 +313,12 @@ const Vistoria = ({ onBack, frotaInicial = [] }) => {
         tipo_servico: toStr(getV('UltimoTipoServico')),
         servico_detalhe: toStr(getV('UltimoServicoDetalhe')),
         hodometro: toStr(ultKM),
-        motorista_re: res.motorista,
-        comandante_re: res.comandante,
-        patrulheiro_re: res.patrulheiro,
-        motorista_nome: toStr(getV('UltimoMotoristaNome')) || buscarNomeNoEfetivo(res.motorista),
-        comandante_nome: toStr(getV('UltimoComandanteNome')) || buscarNomeNoEfetivo(res.comandante),
-        patrulheiro_nome: toStr(getV('UltimoPatrulheiroNome')) || buscarNomeNoEfetivo(res.patrulheiro),
+        motorista_re: toStr(getV('UltimoMotoristaRE')),
+        comandante_re: toStr(getV('UltimoComandanteRE')),
+        patrulheiro_re: toStr(getV('UltimoPatrulheiroRE')),
+        motorista_nome: toStr(getV('UltimoMotoristaNome')),
+        comandante_nome: toStr(getV('UltimoComandanteNome')),
+        patrulheiro_nome: toStr(getV('UltimoPatrulheiroNome')),
       }));
     } else {
       setFormData(prev => ({
@@ -321,16 +326,15 @@ const Vistoria = ({ onBack, frotaInicial = [] }) => {
         prefixo_vtr: toStr(vtr.Prefixo || vtr.PREFIXO),
         placa_vtr: toStr(vtr.Placa || vtr.PLACA),
         hodometro: '',
-        motorista_re: '', motorista_nome: '', motorista_unidade: '',
-        comandante_re: '', comandante_nome: '', comandante_unidade: '',
-        patrulheiro_re: '', patrulheiro_nome: '', patrulheiro_unidade: ''
+        motorista_re: '', motorista_nome: '', comandante_re: '', comandante_nome: '',
+        patrulheiro_re: '', patrulheiro_nome: '', tipo_servico: '', servico_detalhe: ''
       }));
       setReNaoEncontrado({ motorista: false, comandante: false, patrulheiro: false });
     }
   };
 
   const handleFinalizar = async () => {
-    if (temAvaria && fotos.length === 0) return alert("Atenção: É obrigatório anexar fotos das avarias.");
+    if (temAvaria && fotos.length === 0) return alert("É obrigatório anexar fotos das avarias.");
     if (!window.confirm("Confirmar o envio da vistoria?")) return;
     
     setLoading(true);
@@ -364,7 +368,7 @@ const Vistoria = ({ onBack, frotaInicial = [] }) => {
   };
 
   const CardGuarnicao = ({ compacto = false }) => (
-    <div className={`${compacto ? 'bg-slate-800 p-3 rounded-2xl' : 'bg-slate-900 p-5 rounded-3xl'} mb-4 border-b-4 border-blue-600 shadow-inner`}>
+    <div className={`${compacto ? 'bg-slate-800 p-3 rounded-2xl' : 'bg-slate-900 p-5 rounded-3xl'} mb-4 border-b-4 border-blue-600 shadow-inner transition-all`}>
       <div className={`flex items-center gap-2 border-b border-white/10 ${compacto ? 'mb-2 pb-1' : 'mb-4 pb-2'}`}>
         <Users className="text-blue-400" size={compacto ? 14 : 18} />
         <span className={`${compacto ? 'text-[8px]' : 'text-[10px]'} font-black text-white tracking-widest uppercase`}>Guarnição</span>
@@ -388,7 +392,7 @@ const Vistoria = ({ onBack, frotaInicial = [] }) => {
     <div className="min-h-screen bg-slate-50 pb-10 text-slate-900 font-sans">
       <header className="bg-slate-900 text-white p-5 sticky top-0 z-50 border-b-4 border-blue-900 shadow-md">
         <div className="max-w-xl mx-auto flex items-center justify-between">
-          <button onClick={onBack} className="p-2 bg-white/10 rounded-full hover:bg-white/20"><ArrowLeft size={24}/></button>
+          <button onClick={onBack} className="p-2 bg-white/10 rounded-full hover:bg-white/20 transition-colors"><ArrowLeft size={24}/></button>
           <div className="text-center">
             <h1 className="font-black text-[10px] tracking-widest opacity-50 uppercase">1º BPM - Rondon</h1>
             <p className="text-xs font-bold text-blue-400 uppercase">Vistoria de Viatura</p>
@@ -399,8 +403,8 @@ const Vistoria = ({ onBack, frotaInicial = [] }) => {
 
       <main className="max-w-xl mx-auto p-4 space-y-6">
         <div className="flex bg-slate-200 p-1 rounded-2xl shadow-inner">
-          <button onClick={() => setTipoVistoria('ENTRADA')} className={`flex-1 py-3 rounded-xl font-black text-[10px] transition-all ${tipoVistoria === 'ENTRADA' ? 'bg-green-600 text-white shadow-lg' : 'text-slate-500'}`}>ENTRADA</button>
-          <button onClick={() => setTipoVistoria('SAÍDA')} className={`flex-1 py-3 rounded-xl font-black text-[10px] transition-all ${tipoVistoria === 'SAÍDA' ? 'bg-orange-500 text-white shadow-lg' : 'text-slate-500'}`}>SAÍDA</button>
+          <button onClick={() => { setTipoVistoria('ENTRADA'); setStep(1); }} className={`flex-1 py-3 rounded-xl font-black text-[10px] transition-all ${tipoVistoria === 'ENTRADA' ? 'bg-green-600 text-white shadow-lg' : 'text-slate-500'}`}>ENTRADA</button>
+          <button onClick={() => { setTipoVistoria('SAÍDA'); setStep(1); }} className={`flex-1 py-3 rounded-xl font-black text-[10px] transition-all ${tipoVistoria === 'SAÍDA' ? 'bg-orange-500 text-white shadow-lg' : 'text-slate-500'}`}>SAÍDA</button>
         </div>
 
         {step === 1 ? (
@@ -434,7 +438,7 @@ const Vistoria = ({ onBack, frotaInicial = [] }) => {
               <div className="grid grid-cols-2 gap-3">
                 <div className="relative">
                   <input type="number" className={`vtr-input w-full ${kmInvalido ? '!border-red-500 !bg-red-50' : ''}`} placeholder="KM" value={formData.hodometro} onChange={(e) => setFormData({...formData, hodometro: e.target.value})} />
-                  {kmInvalido && <span className="absolute -bottom-4 left-2 text-[8px] text-red-600 font-bold uppercase">KM inválido!</span>}
+                  {kmInvalido && <span className="absolute -bottom-4 left-2 text-[8px] text-red-600 font-bold uppercase">KM abaixo do inicial!</span>}
                 </div>
                 <select className="vtr-input" value={formData.videomonitoramento} onChange={(e) => setFormData({...formData, videomonitoramento: e.target.value})}>
                   <option value="">VIDEOMONITORAMENTO</option>
@@ -448,7 +452,7 @@ const Vistoria = ({ onBack, frotaInicial = [] }) => {
                 <button onClick={() => setModalOleoOpen(true)} className="w-full bg-orange-50 border-2 border-orange-500 p-4 rounded-2xl flex items-center justify-between group shadow-sm active:scale-[0.98] transition-all">
                   <div className="flex items-center gap-3">
                     <Wrench className="text-orange-500 animate-bounce" size={20} />
-                    <div className="text-left text-[10px] font-black text-orange-700 uppercase">Troca de Óleo Próxima ou Atrasada</div>
+                    <div className="text-left text-[10px] font-black text-orange-700 uppercase leading-none">Troca de Óleo Próxima ou Atrasada</div>
                   </div>
                   <Plus size={16} className="text-orange-500" />
                 </button>
@@ -464,8 +468,6 @@ const Vistoria = ({ onBack, frotaInicial = [] }) => {
                       value={formData[`${cargo}_re`]} 
                       onChange={(e) => handleMatriculaChange(e.target.value, cargo)} 
                     />
-                    
-                    {/* CAMPOS CONDICIONAIS PARA PREENCHIMENTO MANUAL */}
                     {reNaoEncontrado[cargo] && (
                       <div className="grid grid-cols-2 gap-2 animate-in slide-in-from-top-2 duration-200">
                         <input 
@@ -473,20 +475,14 @@ const Vistoria = ({ onBack, frotaInicial = [] }) => {
                           placeholder="NOME DE GUERRA" 
                           className="vtr-input !bg-blue-50 !py-2 text-[10px] border-blue-200"
                           value={formData[`${cargo}_nome`]}
-                          onChange={(e) => setFormData(prev => ({ 
-                            ...prev, 
-                            [`${cargo}_nome`]: e.target.value.toUpperCase() 
-                          }))}
+                          onChange={(e) => setFormData(prev => ({ ...prev, [`${cargo}_nome`]: e.target.value.toUpperCase() }))}
                         />
                         <input 
                           type="text" 
                           placeholder="UNIDADE (Ex: 1º BPM)" 
                           className="vtr-input !bg-blue-50 !py-2 text-[10px] border-blue-200"
                           value={formData[`${cargo}_unidade`]}
-                          onChange={(e) => setFormData(prev => ({ 
-                            ...prev, 
-                            [`${cargo}_unidade`]: e.target.value.toUpperCase() 
-                          }))}
+                          onChange={(e) => setFormData(prev => ({ ...prev, [`${cargo}_unidade`]: e.target.value.toUpperCase() }))}
                         />
                       </div>
                     )}
@@ -499,9 +495,10 @@ const Vistoria = ({ onBack, frotaInicial = [] }) => {
         ) : (
           <div className="space-y-6 animate-in slide-in-from-right-4 duration-300">
             <CardGuarnicao compacto={true} />
-            <div onClick={() => setProtegerFotos(!protegerFotos)} className={`p-4 rounded-3xl border-2 flex items-center gap-4 cursor-pointer transition-colors ${protegerFotos ? 'bg-blue-600 text-white border-blue-700 shadow-md' : 'bg-white border-slate-200 text-slate-400'}`}>
+            
+            <div onClick={() => setProtegerFotos(!protegerFotos)} className={`p-4 rounded-3xl border-2 flex items-center gap-4 cursor-pointer transition-all ${protegerFotos ? 'bg-blue-600 text-white border-blue-700 shadow-md' : 'bg-white border-slate-200 text-slate-400'}`}>
               {protegerFotos ? <Lock size={20} /> : <Unlock size={20} />}
-              <span className="font-black text-[10px] uppercase">Proteger Imagens</span>
+              <span className="font-black text-[10px] uppercase">Proteger Imagens desta Vistoria</span>
             </div>
 
             <div className="space-y-4">
@@ -513,7 +510,7 @@ const Vistoria = ({ onBack, frotaInicial = [] }) => {
                     </div>
                     <div className="grid gap-2">
                       {grupo.itens.map(item => (
-                        <div key={item} onClick={() => setChecklist(prev => ({...prev, [item]: prev[item] === 'OK' ? 'FALHA' : 'OK'}))} className={`flex justify-between items-center p-3 rounded-xl border transition-colors cursor-pointer ${checklist[item] === 'FALHA' ? 'border-red-500 bg-red-50' : 'bg-slate-50/50 border-slate-100'}`}>
+                        <div key={item} onClick={() => setChecklist(prev => ({...prev, [item]: prev[item] === 'OK' ? 'FALHA' : 'OK'}))} className={`flex justify-between items-center p-3 rounded-xl border transition-all cursor-pointer ${checklist[item] === 'FALHA' ? 'border-red-500 bg-red-50' : 'bg-slate-50/50 border-slate-100'}`}>
                           <span className="text-[11px] font-bold uppercase">{item}</span>
                           <span className={`text-[9px] font-black px-2 py-1 rounded ${checklist[item] === 'OK' ? 'text-green-600' : 'bg-red-600 text-white'}`}>{checklist[item]}</span>
                         </div>
@@ -524,7 +521,7 @@ const Vistoria = ({ onBack, frotaInicial = [] }) => {
               ) : (
                 <div className="bg-white rounded-3xl p-4 border border-slate-200 grid gap-2 shadow-sm">
                   {ITENS_SAIDA.map(item => (
-                    <div key={item} onClick={() => setChecklist(prev => ({...prev, [item]: prev[item] === 'OK' ? 'FALHA' : 'OK'}))} className={`flex justify-between items-center p-3 rounded-xl border transition-colors cursor-pointer ${checklist[item] === 'FALHA' ? 'border-red-500 bg-red-50' : 'bg-slate-50/50 border-slate-100'}`}>
+                    <div key={item} onClick={() => setChecklist(prev => ({...prev, [item]: prev[item] === 'OK' ? 'FALHA' : 'OK'}))} className={`flex justify-between items-center p-3 rounded-xl border transition-all cursor-pointer ${checklist[item] === 'FALHA' ? 'border-red-500 bg-red-50' : 'bg-slate-50/50 border-slate-100'}`}>
                       <span className="text-[11px] font-bold uppercase">{item}</span>
                       <span className={`text-[9px] font-black px-2 py-1 rounded ${checklist[item] === 'OK' ? 'text-green-600' : 'bg-red-600 text-white'}`}>{checklist[item]}</span>
                     </div>
@@ -533,7 +530,7 @@ const Vistoria = ({ onBack, frotaInicial = [] }) => {
               )}
             </div>
 
-            <div className={`p-6 rounded-[2.5rem] border-2 bg-white transition-all shadow-sm ${temAvaria && fotos.length === 0 ? 'border-red-500 animate-pulse' : 'border-slate-200'}`}>
+            <div className={`p-6 rounded-[2.5rem] border-2 bg-white transition-all shadow-sm ${temAvaria && fotos.length === 0 ? 'border-red-500 bg-red-50/30' : 'border-slate-200'}`}>
               <p className="text-[9px] font-black text-slate-400 uppercase mb-3 text-center">Fotos da Vistoria (Mín 1 se houver falha)</p>
               <div className="grid grid-cols-4 gap-2">
                 {fotos.map((f, i) => (
