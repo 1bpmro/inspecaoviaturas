@@ -133,7 +133,7 @@ const ModalTrocaOleo = ({ isOpen, onClose, vtr, kmEntrada, user }) => {
                   };
                 } catch (err) { 
                   setUploading(false); 
-                }
+                } finally { e.target.value = ""; }
               }} />
             </label>
           )}
@@ -185,7 +185,6 @@ const Vistoria = ({ onBack, frotaInicial = [] }) => {
     return viaturas.find(v => toStr(v.Prefixo || v.PREFIXO) === toStr(formData.prefixo_vtr));
   }, [formData.prefixo_vtr, viaturas, toStr]);
 
-  // Lógica de Troca de Óleo
   const precisaTrocaOleo = useMemo(() => {
     if (!vtrSelecionada || tipoVistoria !== 'ENTRADA') return false;
     const getV = (key) => vtrSelecionada[key] || vtrSelecionada[key.toUpperCase()] || '';
@@ -219,7 +218,6 @@ const Vistoria = ({ onBack, frotaInicial = [] }) => {
   const kmInvalido = useMemo(() => {
     const kmAtual = Number(formData.hodometro);
     if (!kmAtual || !kmReferencia) return false;
-    // Na saída, o KM deve ser maior ou igual ao de entrada registrado
     return tipoVistoria === 'SAÍDA' && kmAtual < kmReferencia;
   }, [formData.hodometro, kmReferencia, tipoVistoria]);
 
@@ -237,13 +235,11 @@ const Vistoria = ({ onBack, frotaInicial = [] }) => {
     );
   }, [formData, kmInvalido]);
 
-  // Inicializa checklist conforme o tipo
   useEffect(() => {
     const todosItens = tipoVistoria === 'ENTRADA' ? GRUPOS_ENTRADA.flatMap(g => g.itens) : ITENS_SAIDA;
     setChecklist(todosItens.reduce((acc, item) => ({ ...acc, [item]: 'OK' }), {}));
   }, [tipoVistoria]);
 
-  // Sincronização Inicial
   useEffect(() => {
     let isMounted = true;
     const sincronizarDados = async () => {
@@ -278,10 +274,15 @@ const Vistoria = ({ onBack, frotaInicial = [] }) => {
       );
       
       if (militar) {
+        // CORREÇÃO: Evita duplicidade se o nome já contiver a patente
+        const nomeFinal = toStr(militar.nome).toUpperCase().startsWith(toStr(militar.patente).toUpperCase())
+            ? militar.nome 
+            : `${militar.patente} ${militar.nome}`;
+
         setFormData(prev => ({
           ...prev,
           [`${cargo}_re`]: toStr(militar.re),
-          [`${cargo}_nome`]: `${militar.patente} ${militar.nome}`.trim(),
+          [`${cargo}_nome`]: nomeFinal.trim(),
           [`${cargo}_unidade`]: militar.unidade || '1º BPM'
         }));
         setReNaoEncontrado(prev => ({ ...prev, [cargo]: false }));
@@ -546,12 +547,24 @@ const Vistoria = ({ onBack, frotaInicial = [] }) => {
                       const file = e.target.files[0]; if (!file) return;
                       setUploading(true);
                       try {
-                        const options = { maxSizeMB: 0.2, maxWidthOrHeight: 1024, useWebWorker: true };
+                        const options = { maxSizeMB: 0.2, maxWidthOrHeight: 1024, useWebWorker: true, initialQuality: 0.6 };
                         const compressed = await imageCompression(file, options);
-                        const reader = new FileReader(); 
-                        reader.readAsDataURL(compressed);
-                        reader.onloadend = () => { setFotos(p => [...p, reader.result]); setUploading(false); };
-                      } catch (err) { setUploading(false); }
+                        
+                        // CORREÇÃO: Conversão Base64 robusta via Promise
+                        const base64 = await new Promise((resolve, reject) => {
+                          const reader = new FileReader();
+                          reader.onload = () => resolve(reader.result);
+                          reader.onerror = reject;
+                          reader.readAsDataURL(compressed);
+                        });
+
+                        setFotos(p => [...p, base64]);
+                      } catch (err) { 
+                        console.error("Erro foto:", err);
+                      } finally { 
+                        setUploading(false); 
+                        e.target.value = ""; // Permite re-selecionar o mesmo arquivo se necessário
+                      }
                     }} />
                   </label>
                 )}
