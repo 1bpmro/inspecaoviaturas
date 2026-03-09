@@ -36,32 +36,26 @@ const GarageiroDashboard = ({ onBack }) => {
   const [showLockModal, setShowLockModal] = useState(false);
   const [lockData, setLockData] = useState({ prefixo: '', motivo: 'manutencao', detalhes: '', re_responsavel: '' });
 
- // 1. FILTRO DE MOTORISTAS ATUALIZADO (REGRAS DO COMANDO)
-const motoristasFiltrados = motoristas.filter(m => {
-  // 1. Pega o cargo/posto e o nível, tratando nulos e transformando em Maiúsculo
-  const cargo = (m.PostoGrad || m.cargo || "").toUpperCase().trim();
-  const nivel = (m.Nivel || m.nivel || "").toUpperCase().trim();
+  // 1. FILTRO DE MOTORISTAS ATUALIZADO (REGRAS DO COMANDO)
+  const motoristasFiltrados = motoristas.filter(m => {
+    const cargo = (m.PostoGrad || m.cargo || "").toUpperCase().trim();
+    const nivel = (m.Nivel || m.nivel || "").toUpperCase().trim();
 
-  // 2. Se for ADMIN, já corta logo de cara
-  if (nivel === 'ADMIN' || cargo === 'ADMIN') return false;
+    if (nivel === 'ADMIN' || cargo === 'ADMIN') return false;
 
-  // 3. Lista de termos proibidos usando Regex para aceitar variações (1º, 1°, 1. Ten, etc)
-  const termosProibidos = [
-    /PVSA/, 
-    /TEN\s?CEL/, 
-    /MAJ/, 
-    /CAP/, 
-    /[12][°º°.]?\s?TEN/, // Pega 1º TEN, 2° TEN, 1 TEN, 2. TEN
-    /ASPIRANTE/, 
-    /ST\s/,              // "ST " com espaço para não pegar nomes que comecem com ST
-    /SUBTENENTE/
-  ];
+    const termosProibidos = [
+      /PVSA/, 
+      /TEN\s?CEL/, 
+      /MAJ/, 
+      /CAP/, 
+      /[12][°º°.]?\s?TEN/, 
+      /ASPIRANTE/, 
+      /ST\s/, 
+      /SUBTENENTE/
+    ];
 
-  // 4. Verifica se o cargo contém algum dos termos proibidos
-  const ehProibido = termosProibidos.some(regex => regex.test(cargo));
-
-  return !ehProibido;
-});
+    return !termosProibidos.some(regex => regex.test(cargo));
+  });
 
   const handleFileChange = (e) => {
     const file = e.target.files[0];
@@ -81,79 +75,69 @@ const motoristasFiltrados = motoristas.filter(m => {
     } catch(e) { return 0; }
   };
 
-// 2. CORREÇÃO NO FETCHDATA (Prevenção do TypeError)
-const fetchData = async () => {
-  setLoading(true);
-  try {
-    const [resVtr, resPend, resMot] = await Promise.all([
-      gasApi.getViaturas(), 
-      gasApi.getVistoriasPendentes(),
-      gasApi.getEfetivoCompleto()
-    ]);
-    
-    let frotaGeral = [];
-    if (resVtr?.status === 'success' && Array.isArray(resVtr.data)) {
-      frotaGeral = resVtr.data;
-      setViaturas(frotaGeral);
-    }
-
-    if (resMot?.status === 'success' && Array.isArray(resMot.data)) {
-      setMotoristas(resMot.data);
-    }
-
-    if (resPend?.status === 'success' && Array.isArray(resPend.data)) {
-      let listaFinal = [...resPend.data];
-
-      frotaGeral.forEach(vtr => {
-        if (!vtr) return; // Pula se o objeto vtr for nulo
-
-        const status = (vtr.Status || vtr.status || "").toUpperCase();
-        const prefixo = vtr.Prefixo || vtr.prefixo;
-
-        if (prefixo && (status.includes("AGUARDANDO") || status.includes("PATIO"))) {
-          const jaExiste = listaFinal.some(p => (p?.prefixo_vtr || p?.prefixo) === prefixo);
-          if (!jaExiste) {
-            listaFinal.push({
-              prefixo: prefixo,
-              prefixo_vtr: prefixo,
-              motorista_nome: vtr.UltimoMotoristaNome || vtr.Motorista || "S/ INF",
-              origem: "VISTORIA", 
-              timestamp: new Date().toISOString(),
-              rowId: vtr.rowId || prefixo,
-              troca_oleo: (vtr.Status === "TROCA DE ÓLEO" || vtr.oleo_pendente === "SIM") ? "SIM" : "NÃO"
-            });
-          }
-        }
-      });
-
-      // Filtro seguro para evitar erro de 'undefined' ao ler ID
-      const filtradas = listaFinal.filter(v => {
-        if (!v) return false;
-        const id = v.id_manutencao || v.id_sistema || v.rowId || v.prefixo;
-        return id && !finalizadosLocal.includes(id);
-      });
-
-      if (soundEnabled && filtradas.length > prevItemsCount.current) {
-        audioRef.current.play().catch(() => {});
-      }
+  const fetchData = async () => {
+    setLoading(true);
+    try {
+      const [resVtr, resPend, resMot] = await Promise.all([
+        gasApi.getViaturas(), 
+        gasApi.getVistoriasPendentes(),
+        gasApi.getEfetivoCompleto()
+      ]);
       
-      prevItemsCount.current = filtradas.length;
-      setVistorias(filtradas);
+      let frotaGeral = [];
+      if (resVtr?.status === 'success' && Array.isArray(resVtr.data)) {
+        frotaGeral = resVtr.data;
+        setViaturas(frotaGeral);
+      }
+
+      if (resMot?.status === 'success' && Array.isArray(resMot.data)) {
+        setMotoristas(resMot.data);
+      }
+
+      if (resPend?.status === 'success' && Array.isArray(resPend.data)) {
+        let listaFinal = [...resPend.data];
+
+        frotaGeral.forEach(vtr => {
+          if (!vtr) return;
+          const status = (vtr.Status || vtr.status || "").toUpperCase();
+          const prefixo = vtr.Prefixo || vtr.prefixo;
+
+          if (prefixo && (status.includes("AGUARDANDO") || status.includes("PATIO"))) {
+            const jaExiste = listaFinal.some(p => (p?.prefixo_vtr || p?.prefixo) === prefixo);
+            if (!jaExiste) {
+              listaFinal.push({
+                prefixo: prefixo,
+                prefixo_vtr: prefixo,
+                motorista_nome: vtr.UltimoMotoristaNome || vtr.Motorista || "S/ INF",
+                origem: "VISTORIA", 
+                timestamp: new Date().toISOString(),
+                rowId: vtr.rowId || prefixo,
+                troca_oleo: (vtr.Status === "TROCA DE ÓLEO" || vtr.oleo_pendente === "SIM") ? "SIM" : "NÃO"
+              });
+            }
+          }
+        });
+
+        const filtradas = listaFinal.filter(v => {
+          if (!v) return false;
+          const id = v.id_manutencao || v.id_sistema || v.rowId || v.prefixo;
+          return id && !finalizadosLocal.includes(id);
+        });
+
+        if (soundEnabled && filtradas.length > prevItemsCount.current) {
+          audioRef.current.play().catch(() => {});
+        }
+        
+        prevItemsCount.current = filtradas.length;
+        setVistorias(filtradas);
+      }
+    } catch (error) {
+      console.error("Erro crítico na sincronização:", error);
+    } finally {
+      setLoading(false);
     }
- } catch (error) {
-    // Log detalhado para identificar exatamente onde a API ou o dado falhou
-    console.error("Erro crítico na sincronização:", {
-      mensagem: error.message,
-      stack: error.stack,
-      local: "GarageiroDashboard > fetchData"
-    });
-    
-    // Opcional: Toast ou alerta discreto para o usuário
-    // alert("Erro ao atualizar dados. Verifique a conexão.");
-  } finally {
-    setLoading(false);
-  }
-};
+  };
+
   useEffect(() => {
     fetchData();
     const interval = setInterval(fetchData, 30000);
@@ -169,8 +153,6 @@ const fetchData = async () => {
     
     const precisaValidarOleo = selectedVtr.troca_oleo === "SIM" || selectedVtr.origem === "MANUTENCAO_AVULSA";
     if (precisaValidarOleo && !conf.oleoConfirmado) return alert("Confirme a troca de óleo visualmente.");
-    
-    // EXIGÊNCIA DE FOTO APENAS PARA AVARIA
     if (conf.avaria && !fotoAvaria) return alert("É obrigatório anexar uma foto para registrar a avaria.");
 
     setIsSubmitting(true);
@@ -294,7 +276,7 @@ const fetchData = async () => {
 
         {tab === 'frota' && (
           <div className="space-y-4">
-             <div className="relative">
+            <div className="relative">
               <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" size={18} />
               <input type="text" placeholder="BUSCAR VTR..." className="w-full p-5 pl-12 bg-white border-2 border-slate-200 rounded-3xl font-black text-xs uppercase outline-none focus:border-amber-500 transition-colors" value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} />
             </div>
@@ -333,7 +315,6 @@ const fetchData = async () => {
         )}
       </main>
 
-      {/* MODAL DE CONFERÊNCIA UNIFICADO */}
       {showModal && selectedVtr && (
         <div className="fixed inset-0 bg-slate-900/90 backdrop-blur-md z-50 flex items-center justify-center p-4 overflow-y-auto">
           <div className="bg-white w-full max-w-lg rounded-[3rem] shadow-2xl overflow-hidden flex flex-col my-auto max-h-[95vh]">
@@ -349,7 +330,6 @@ const fetchData = async () => {
             </div>
 
             <div className="p-6 space-y-6 overflow-y-auto bg-white">
-              {/* SEÇÃO 1: MOTORISTA */}
               <div className="space-y-3">
                 <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-2">Identificação do Motorista</p>
                 <div className="bg-slate-50 p-4 rounded-3xl border-2 border-slate-100">
@@ -380,10 +360,8 @@ const fetchData = async () => {
                 </div>
               </div>
 
-              {/* SEÇÃO 2: ESTADO DA VTR */}
               <div className="space-y-4">
                 <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-2">Checklist de Recebimento</p>
-                
                 <div className="grid grid-cols-2 gap-3">
                   <button onClick={() => setConf({...conf, limpezaInterna: !conf.limpezaInterna})} className={`p-4 rounded-3xl border-2 font-black text-[10px] uppercase transition-all ${conf.limpezaInterna ? 'bg-emerald-50 border-emerald-500 text-emerald-700' : 'bg-red-50 border-red-200 text-red-700'}`}>INT: {conf.limpezaInterna ? 'LIMPO' : 'SUJO'}</button>
                   <button onClick={() => setConf({...conf, limpezaExterna: !conf.limpezaExterna})} className={`p-4 rounded-3xl border-2 font-black text-[10px] uppercase transition-all ${conf.limpezaExterna ? 'bg-emerald-50 border-emerald-500 text-emerald-700' : 'bg-slate-50 text-slate-400'}`}>EXT: {conf.limpezaExterna ? 'LIMPO' : 'SUJO'}</button>
@@ -391,12 +369,10 @@ const fetchData = async () => {
                   <button onClick={() => setConf({...conf, avaria: !conf.avaria})} className={`p-4 rounded-3xl border-2 font-black text-[10px] uppercase transition-all ${!conf.avaria ? 'bg-emerald-50 border-emerald-500 text-emerald-700' : 'bg-red-600 border-red-600 text-white animate-pulse'}`}>AVARIAS: {conf.avaria ? 'SIM' : 'NÃO'}</button>
                 </div>
 
-                {/* CAMPO DE DETALHE DE PERTENCES */}
                 {conf.pertences === 'SIM' && (
                   <textarea className="w-full bg-amber-50 border-2 border-amber-200 rounded-2xl p-4 text-[10px] font-bold uppercase outline-none" placeholder="DESCREVA OS PERTENCES ENCONTRADOS..." value={conf.detalhePertences} onChange={e => setConf({...conf, detalhePertences: e.target.value})} />
                 )}
 
-                {/* BLOCO DE ÓLEO */}
                 {(selectedVtr.troca_oleo === "SIM" || selectedVtr.origem === "MANUTENCAO_AVULSA") && (
                   <div className="bg-amber-50 border-2 border-amber-200 rounded-3xl p-5 space-y-4 shadow-inner">
                     <div className="flex justify-between items-start">
@@ -412,7 +388,6 @@ const fetchData = async () => {
                   </div>
                 )}
 
-                {/* FOTO: OBRIGATÓRIO PARA AVARIA, OPCIONAL PARA PERTENCES */}
                 {(conf.avaria || conf.pertences === 'SIM') && (
                   <div className="bg-slate-900 p-5 rounded-3xl space-y-4">
                     <div className="flex items-center gap-3 text-white">
@@ -450,7 +425,6 @@ const fetchData = async () => {
         </div>
       )}
 
-      {/* VISUALIZADOR DE FOTO */}
       {viewingPhoto && (
         <div className="fixed inset-0 bg-black/95 z-[100] flex flex-col p-4">
           <button onClick={() => setViewingPhoto(null)} className="self-end text-white p-4 hover:bg-white/10 rounded-full transition-colors"><X size={32} /></button>
@@ -460,7 +434,6 @@ const fetchData = async () => {
         </div>
       )}
 
-      {/* MODAL DE BLOQUEIO */}
       {showLockModal && (
         <div className="fixed inset-0 bg-slate-900/90 backdrop-blur-md z-[60] flex items-center justify-center p-4">
           <div className="bg-white w-full max-w-sm rounded-[3rem] p-8 shadow-2xl">
