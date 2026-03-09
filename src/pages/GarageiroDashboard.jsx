@@ -19,6 +19,8 @@ const GarageiroDashboard = ({ onBack }) => {
   const [searchTerm, setSearchTerm] = useState('');
   const [soundEnabled, setSoundEnabled] = useState(false);
   const [finalizadosLocal, setFinalizadosLocal] = useState([]);
+  
+  // Áudio de notificação
   const audioRef = useRef(new Audio('https://assets.mixkit.co/active_storage/sfx/2869/2869-preview.mp3'));
   const prevItemsCount = useRef(0);
 
@@ -36,24 +38,168 @@ const GarageiroDashboard = ({ onBack }) => {
   const [showLockModal, setShowLockModal] = useState(false);
   const [lockData, setLockData] = useState({ prefixo: '', motivo: 'manutencao', detalhes: '', re_responsavel: '' });
 
-  // 1. EFEITO INICIAL PARA CARREGAR DADOS
+  // 1. CARREGAMENTO E AUTO-REFRESH
   useEffect(() => {
     fetchData();
-    const interval = setInterval(fetchData, 30000); // Auto-refresh a cada 30s
+    const interval = setInterval(fetchData, 30000); 
     return () => clearInterval(interval);
   }, []);
 
-  // 2. FILTRO DE MOTORISTAS (REGRAS DE NEGÓCIO)
+  // 2. LOGICA DE SOM (Desbloqueio de áudio por interação do usuário)
+  const toggleSound = () => {
+    if (!soundEnabled) {
+      // Tenta dar um play curto e silencioso para "acordar" o áudio no navegador
+      audioRef.current.play().then(() => {
+        audioRef.current.pause();
+        audioRef.current.currentTime = 0;
+      }).catch(() => {});
+    }
+    setSoundEnabled(!soundEnabled);
+  };
+
+  const fetchData = async () => {
+    setLoading(true);
+    try {
+      const [resVtr, resPend, resMot] = await Promise.all([
+        gasApi.getViaturas(),           
+        gasApi.getVistoriasPendentes(), 
+        gasApi.getEfetivoCompleto()
+      ]);
+      
+      let frotaGeral = resVtr?.status === 'success' ? resVtr.data : [];
+      if (resVtr?.status === 'success') setViaturas(frotaGeral);
+      if (resMot?.status === 'success') setMotoristas(resMot.data);
+
+      let listaFinal = [];
+
+      // A. Vistorias da Guia Mensal (Checklists pendentes)
+      if (resPend?.status === 'success' && Array.isArray(resPend.data)) {
+        listaFinal = resPend.data
+          .filter(v => (v.tipo_vistoria || v.tipo || "").toUpperCase() !== "SAIDA")
+          .map(v => ({
+            ...v,
+            origem: "VISTORIA",
+            prefixo: v.prefixo_vtr || v.prefixo,
+            troca_oleo: frotaGeral.find(f => f.Prefixo === (v.prefixo_vtr || v.prefixo))?.Status === "TROCA DE ÓLEO" ? "SIM" : "NÃO"
+          }));
+      }
+
+      // B. Vistorias baseadas no Status do Painel (Patrimônio)
+      frotaGeral.forEach(vtr => {
+        const statusVtr = (vtr.Status || "").toUpperCase().trim();
+        const prefixo = vtr.Prefixo || vtr.prefixo;
+        const statusAlvo = ["AGUARDANDO CONFERÊNCIA", "PÁTIO", "AGUARDANDO PÁTIO", "ENTRADA REGISTRADA", "TROCA DE ÓLEO"];
+
+        if (prefixo && statusAlvo.includes(statusVtr)) {
+          if (!listaFinal.some(p => p.prefixo === prefixo)) {
+            listaFinal.push({
+              prefixo: prefixo,
+              prefixo_vtr: prefixo,
+              motorista_nome: vtr.UltimoMotoristaNome || vtr.Motorista || "S/ INF",
+              origem: "STATUS_PAINEL", 
+              timestamp: vtr.DataHoraUltimaAtualizacao || new Date().toISOString(),
+              rowId: vtr.rowId || vtr.ID,
+              troca_oleo: (statusVtr === "TROCA DE ÓLEO" || vtr.oleo_pendente === "SIM") ? "SIM" : "NÃO"
+            });
+          }
+        }
+      });
+
+      // Filtro de segurança (removendo o que foi finalizado na sessão)
+      const filtradas = listaFinal.filter(v => {
+        const id = v.rowId || v.id_sistema || v.id_manutencao || v.prefixo;
+        return !finalizadosLocal.includes(id);
+      });
+
+      // SOM DE NOTIFICAÇÃO
+      if (soundEnabled && filtradas.length > prevItemsCount.current) {
+        audioRef.current.play().catch(e => console.log("Erro áudio:", e));
+      }
+      
+      prevItemsCount.current = filtradas.length;
+      setVistorias(filtradas);
+    } catch (error) {
+      console.error("Erro na sincronização:", error);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const finalizarConferencia = async () => {
+    if (isSubmitting) return;
+
+    // Validação de Motorista
+    const precisaMotorista = !["MANUTENCAO_AVULSA"].includes(selectedVtr.origem);
+    if (precisaMotorista && !conf.motoristaConfirmado && !conf.novoMotoristaRE) {
+      return alert("Selecione o motorista que está entregando a viatura.");
+    }
+
+    // Validação de Óleo
+    const pendenciaOleo = selectedVtr.troca_oleo === "SIM";
+    if (pendenciaOleo && !conf.oleoConfirmado) {
+      return alert("Você deve confirmar visualmente a troca de óleo antes de prosseguir.");
+    }
+
+    // Validação de Foto para Avarias
+    if (conf.avaria && !fotoAvaria) {
+      return alert("É obrigatório anexar uma foto para registrar a avaria.");
+    }
+
+    setIsSubmitting(true);
+    const idParaRemover = selectedVtr.rowId || selectedVtr.id_sistema || selectedVtr.id_manutencao || selectedVtr.prefixo;
+    const prefixoVtr = (selectedVtr.prefixo || "").toString().toUpperCase();
+
+    try {
+      const payload = {
+        prefixo: prefixoVtr,
+        rowId: selectedVtr.rowId,
+        origem: selectedVtr.origem,
+        status_fisico: conf.avaria ? 'AVARIADA' : 'OK',
+        limpeza: `INT: ${conf.limpezaInterna ? 'C' : 'NC'} | EXT: ${conf.limpezaExterna ? 'C' : 'NC'}`,
+        pertences: conf.pertences === 'SIM' ? `SIM: ${conf.detalhePertences}` : 'NÃO',
+        obs_garageiro: conf.obs,
+        garageiro_re: user.re,
+        foto_avaria: fotoAvaria,
+        motorista_confirmado: conf.motoristaConfirmado,
+        novo_motorista_re: conf.novoMotoristaRE,
+        validacao_oleo_concluida: conf.oleoConfirmado,
+        km_registro: selectedVtr.hodometro_oleo || selectedVtr.km || selectedVtr.Km
+      };
+
+      const res = await gasApi.confirmarVistoriaGarageiro(payload);
+
+      if (res.status === 'success') {
+        const novoStatus = conf.avaria ? "MANUTENÇÃO" : "DISPONÍVEL";
+        await gasApi.alterarStatusViatura(prefixoVtr, novoStatus, {
+          motivo: 'conferencia_patio',
+          detalhes: `Conferência finalizada. ${conf.oleoConfirmado ? 'Óleo validado.' : ''}`,
+          re_responsavel: user.re,
+          rowId: selectedVtr.rowId
+        });
+
+        setFinalizadosLocal(prev => [...prev, idParaRemover]);
+        setShowModal(false);
+        setConf({ 
+          limpezaInterna: true, limpezaExterna: true, pertences: 'NÃO', 
+          detalhePertences: '', motoristaConfirmado: true, novoMotoristaRE: '', 
+          avaria: false, obs: '', oleoConfirmado: false 
+        });
+        setFotoAvaria(null);
+        setTimeout(fetchData, 1500);
+      } else {
+        alert("Erro: " + res.message);
+      }
+    } catch (e) {
+      alert("Erro de conexão.");
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  // Funções Auxiliares
   const motoristasFiltrados = motoristas.filter(m => {
-    const nomeCompleto = (m.Nome || m.nome || "").toUpperCase().trim();
-    if (!nomeCompleto || nomeCompleto.includes("ADMIN")) return false;
-
-    const termosProibidos = [
-      /PVSA/i, /TEN(\s?|\.)?CEL/i, /MAJ/i, /CAP/i,
-      /[12](°|º|\.)?\s?TEN/i, /ASPIRANTE/i, /SUBTENENTE/i, /\bST\b/i
-    ];
-
-    return !termosProibidos.some(regex => regex.test(nomeCompleto));
+    const nome = (m.Nome || m.nome || "").toUpperCase();
+    return !/ADMIN|PVSA|TEN|MAJ|CAP|ASP|SUB|ST/i.test(nome);
   });
 
   const handleFileChange = (e) => {
@@ -65,212 +211,26 @@ const GarageiroDashboard = ({ onBack }) => {
     }
   };
 
-  const calcularEspera = (timestamp) => {
-    if (!timestamp) return null;
-    try {
-      const dateObj = new Date(timestamp);
-      const diff = Math.floor((new Date() - dateObj) / 60000);
-      return diff >= 0 ? diff : 0;
-    } catch(e) { return 0; }
+  const calcularEspera = (ts) => {
+    if (!ts) return null;
+    const diff = Math.floor((new Date() - new Date(ts)) / 60000);
+    return diff > 0 ? diff : 0;
   };
-
-const fetchData = async () => {
-  setLoading(true);
-  try {
-    const [resVtr, resPend, resMot] = await Promise.all([
-      gasApi.getViaturas(),           // Traz os dados da guia PAINEL / PATRIMÔNIO
-      gasApi.getVistoriasPendentes(), // Traz os dados da guia do Mês (ex: 03-2026)
-      gasApi.getEfetivoCompleto()
-    ]);
-    
-    let frotaGeral = [];
-    if (resVtr?.status === 'success' && Array.isArray(resVtr.data)) {
-      frotaGeral = resVtr.data;
-      setViaturas(frotaGeral);
-    }
-
-    if (resMot?.status === 'success' && Array.isArray(resMot.data)) {
-      setMotoristas(resMot.data);
-    }
-
-    // LISTA QUE O GARAGEIRO VAI ENXERGAR
-    let listaFinal = [];
-
-    // 1. REGRA DA GUIA DO MÊS (resPend)
-    // Se você quiser que o garageiro NÃO veja vistorias de ENTRADA vindas diretamente 
-    // da guia mensal (porque ele vai ler pelo Status do Painel), filtramos aqui:
-    if (resPend?.status === 'success' && Array.isArray(resPend.data)) {
-      // Filtramos para remover qualquer coisa que já tenha sido marcada como ENTRADA na guia mensal
-      // Isso evita que apareçam dois cards para a mesma viatura.
-      const vistoriasMesFiltradas = resPend.data.filter(v => 
-        (v.tipo_vistoria || v.tipo || "").toUpperCase() !== "ENTRADA"
-      );
-      listaFinal = [...vistoriasMesFiltradas];
-    }
-
-    // 2. REGRA DA COLUNA STATUS (Guia PAINEL / PATRIMÔNIO)
-    // Esta é a fonte de verdade para o garageiro saber quem está no pátio.
-    frotaGeral.forEach(vtr => {
-      if (!vtr) return;
-      const statusVtr = (vtr.Status || vtr.status || "").toUpperCase().trim();
-      const prefixo = vtr.Prefixo || vtr.prefixo;
-
-      // Status que acionam a presença da VTR na tela do garageiro
-      const statusAlvo = [
-        "AGUARDANDO CONFERÊNCIA", 
-        "PÁTIO", 
-        "AGUARDANDO PÁTIO",
-        "ENTRADA REGISTRADA",
-        "EM CONFERÊNCIA"
-      ];
-
-      if (prefixo && statusAlvo.includes(statusVtr)) {
-        // Verifica se já não adicionamos essa VTR pela lista da guia mensal
-        const jaExiste = listaFinal.some(p => (p?.prefixo_vtr || p?.prefixo) === prefixo);
-        
-        if (!jaExiste) {
-          listaFinal.push({
-            prefixo: prefixo,
-            prefixo_vtr: prefixo,
-            motorista_nome: vtr.UltimoMotoristaNome || vtr.Motorista || "S/ INF",
-            origem: "STATUS_PAINEL", 
-            timestamp: vtr.DataHoraUltimaAtualizacao || new Date().toISOString(),
-            rowId: vtr.rowId || vtr.ID || prefixo,
-            // Mantém a regra do óleo baseada no status ou coluna específica
-            troca_oleo: (statusVtr === "TROCA DE ÓLEO" || vtr.oleo_pendente === "SIM") ? "SIM" : "NÃO"
-          });
-        }
-      }
-    });
-
-    // 3. FILTRO FINAL (Remover o que já foi finalizado localmente nesta sessão)
-    const filtradas = listaFinal.filter(v => {
-      if (!v) return false;
-      const id = v.id_manutencao || v.id_sistema || v.rowId || v.prefixo;
-      return id && !finalizadosLocal.includes(id);
-    });
-
-    // Feedback sonoro para novas viaturas no pátio
-    if (soundEnabled && filtradas.length > prevItemsCount.current) {
-      audioRef.current.play().catch(() => {});
-    }
-    
-    prevItemsCount.current = filtradas.length;
-    setVistorias(filtradas);
-
-  } catch (error) {
-    console.error("Erro crítico na sincronização do Garageiro:", error);
-  } finally {
-    setLoading(false);
-  }
-};
-  
-
- const finalizarConferencia = async () => {
-  if (isSubmitting) return;
-
-  // 1. VALIDAÇÃO DE MOTORISTA
-  // Ajustado para aceitar tanto a origem "VISTORIA" quanto "STATUS_PAINEL"
-  const isVistoriaOuPainel = ["VISTORIA", "STATUS_PAINEL"].includes(selectedVtr.origem);
-  
-  if (isVistoriaOuPainel && !conf.motoristaConfirmado && !conf.novoMotoristaRE) {
-    return alert("Por favor, selecione ou confirme o motorista que está entregando a viatura.");
-  }
-  
-  // 2. VALIDAÇÃO DE ÓLEO E AVARIAS
-  const precisaValidarOleo = selectedVtr.troca_oleo === "SIM" || selectedVtr.origem === "MANUTENCAO_AVULSA";
-  if (precisaValidarOleo && !conf.oleoConfirmado) {
-    return alert("Confirme a troca de óleo visualmente antes de finalizar.");
-  }
-  
-  if (conf.avaria && !fotoAvaria) {
-    return alert("É obrigatório anexar uma foto para registrar a avaria detectada.");
-  }
-
-  setIsSubmitting(true);
-
-  // Identificadores para controle de UI e API
-  const idParaRemover = selectedVtr.id_manutencao || selectedVtr.id_sistema || selectedVtr.rowId || selectedVtr.prefixo;
-  const prefixoVtr = (selectedVtr.prefixo_vtr || selectedVtr.prefixo || "").toString().toUpperCase();
-
-  try {
-    const payload = {
-      origem: selectedVtr.origem, // "STATUS_PAINEL" ou "VISTORIA"
-      prefixo: prefixoVtr,
-      // Garante o envio do rowId (importante para atualizar a guia PATRIMÔNIO)
-      rowId: !isNaN(parseInt(selectedVtr.rowId)) ? parseInt(selectedVtr.rowId) : selectedVtr.rowId,
-      id_manutencao: selectedVtr.id_manutencao,
-      id_vistoria: selectedVtr.id_sistema || selectedVtr.id,
-      status_fisico: conf.avaria ? 'AVARIADA' : 'OK',
-      limpeza: `INT: ${conf.limpezaInterna ? 'C' : 'NC'} | EXT: ${conf.limpezaExterna ? 'C' : 'NC'}`,
-      pertences: conf.pertences === 'SIM' ? `SIM: ${conf.detalhePertences}` : 'NÃO',
-      obs_garageiro: conf.obs,
-      garageiro_re: user.re,
-      foto_avaria: fotoAvaria,
-      motorista_confirmado: conf.motoristaConfirmado,
-      novo_motorista_re: conf.novoMotoristaRE,
-      // Coleta o KM disponível em qualquer uma das fontes de dados
-      km_registro: selectedVtr.hodometro_oleo || selectedVtr.hodometro || selectedVtr.km || selectedVtr.Km 
-    };
-
-    // 1º Passo: Salva o log de conferência do garageiro e processa no banco
-    const res = await gasApi.confirmarVistoriaGarageiro(payload);
-
-    if (res.status === 'success') {
-      // 2º Passo: Força a atualização do Status na guia PAINEL/PATRIMÔNIO para DISPONÍVEL
-      // Se a origem for STATUS_PAINEL, o Apps Script usará o rowId para ser cirúrgico na atualização.
-      await gasApi.alterarStatusViatura(prefixoVtr, "DISPONÍVEL", {
-        motivo: 'disponivel',
-        detalhes: 'Liberação via pátio (Garageiro)',
-        re_responsavel: user.re,
-        rowId: payload.rowId // Passamos o rowId também para a alteração de status
-      });
-
-      // 3º Passo: Feedback na UI e Reset de Estado
-      setFinalizadosLocal(prev => [...prev, idParaRemover]);
-      setShowModal(false);
-      
-      // Limpa o formulário para a próxima conferência
-      setConf({ 
-        limpezaInterna: true, limpezaExterna: true, pertences: 'NÃO', 
-        detalhePertences: '', motoristaConfirmado: true, novoMotoristaRE: '', 
-        avaria: false, obs: '', oleoConfirmado: false 
-      });
-      setFotoAvaria(null);
-
-      // Refresh nos dados após 1.5s para garantir que o Google Sheets processou as duas chamadas
-      setTimeout(fetchData, 1500);
-      
-    } else {
-      alert("Erro ao salvar conferência: " + (res.message || "Tente novamente."));
-    }
-  } catch (e) {
-    console.error("Erro na finalização:", e);
-    alert("Erro de conexão com o servidor. Verifique sua internet.");
-  } finally {
-    setIsSubmitting(false);
-  }
-};
 
   const confirmarAlteracaoStatus = async () => {
     if (isSubmitting) return;
     setIsSubmitting(true);
     try {
       const novoStatus = lockData.motivo === 'disponivel' ? 'DISPONÍVEL' : 'MANUTENÇÃO';
-      const res = await gasApi.alterarStatusViatura(lockData.prefixo, novoStatus, {
+      await gasApi.alterarStatusViatura(lockData.prefixo, novoStatus, {
         motivo: lockData.motivo,
-        detalhes: lockData.detalhes || 'Alteração manual via painel garageiro',
+        detalhes: 'Alteração via Painel Garageiro',
         re_responsavel: user.re
       });
-
-      if (res.status === 'success') {
-        setShowLockModal(false);
-        fetchData();
-      } else {
-        alert("Erro ao alterar status.");
-      }
+      setShowLockModal(false);
+      fetchData();
     } catch (e) {
-      alert("Erro de conexão.");
+      alert("Erro ao alterar status.");
     } finally {
       setIsSubmitting(false);
     }
@@ -289,7 +249,7 @@ const fetchData = async () => {
             </div>
           </div>
           <div className="flex items-center gap-2">
-            <button onClick={() => setSoundEnabled(!soundEnabled)} className={`p-2 rounded-xl transition-all ${soundEnabled ? 'bg-emerald-500 text-white' : 'bg-slate-800 text-slate-400'}`}>
+            <button onClick={toggleSound} className={`p-2 rounded-xl transition-all ${soundEnabled ? 'bg-emerald-500 text-white' : 'bg-slate-800 text-slate-400'}`}>
               {soundEnabled ? <Volume2 size={20} /> : <VolumeX size={20} />}
             </button>
             <button onClick={fetchData} className={`p-2 rounded-full ${loading ? 'animate-spin text-amber-500' : 'text-slate-400'}`}><RefreshCw size={20} /></button>
@@ -318,11 +278,11 @@ const fetchData = async () => {
               </div>
             ) : vistorias.map((vtr, i) => {
               const espera = calcularEspera(vtr.timestamp || vtr.data_hora);
-              const isOleo = vtr.troca_oleo === "SIM" || vtr.origem === "MANUTENCAO_AVULSA";
+              const isOleo = vtr.troca_oleo === "SIM";
               return (
                 <div key={i} className={`bg-white border-2 rounded-[2.5rem] p-6 shadow-sm hover:shadow-md transition-shadow ${isOleo ? 'border-amber-400 bg-amber-50/20' : 'border-slate-200'}`}>
                   <div className="flex justify-between items-start mb-4">
-                    <span className="text-4xl font-black text-slate-900 tracking-tighter">{vtr.prefixo_vtr || vtr.prefixo}</span>
+                    <span className="text-4xl font-black text-slate-900 tracking-tighter">{vtr.prefixo}</span>
                     <div className="text-right">
                       <span className={`${isOleo ? 'bg-amber-500 text-white' : 'bg-blue-100 text-blue-700'} px-3 py-1 rounded-full text-[9px] font-black uppercase`}>
                         {isOleo ? 'PENDÊNCIA ÓLEO' : 'CHECKLIST ENTRADA'}
@@ -332,7 +292,7 @@ const fetchData = async () => {
                   </div>
                   <div className="flex items-center gap-2 mb-6 bg-slate-50 p-3 rounded-2xl border border-slate-100">
                     <div className="bg-slate-200 p-2 rounded-lg text-slate-500"><User size={14} /></div>
-                    <p className="text-[11px] font-bold text-slate-600 uppercase truncate">{vtr.motorista_nome || "NÃO IDENTIFICADO"}</p>
+                    <p className="text-[11px] font-bold text-slate-600 uppercase truncate">{vtr.motorista_nome || "S/ INF"}</p>
                   </div>
                   <button onClick={() => { setSelectedVtr(vtr); setShowModal(true); }} className={`w-full py-4 rounded-2xl font-black uppercase text-xs shadow-lg transition-transform active:scale-95 ${isOleo ? 'bg-amber-600 text-white' : 'bg-slate-900 text-white'}`}>
                     Iniciar Conferência
@@ -352,14 +312,14 @@ const fetchData = async () => {
             <div className="bg-white rounded-[2rem] shadow-sm overflow-hidden border border-slate-200">
               <table className="w-full text-left text-xs md:text-sm">
                 <tbody className="divide-y divide-slate-100 font-bold uppercase">
-                  {viaturas.filter(v => (v.Prefixo || v.prefixo || "").toLowerCase().includes(searchTerm.toLowerCase())).map((v, i) => {
-                    const s = (v.Status || v.status || "").toString().toUpperCase();
+                  {viaturas.filter(v => (v.Prefixo || "").toLowerCase().includes(searchTerm.toLowerCase())).map((v, i) => {
+                    const s = (v.Status || "").toUpperCase();
                     const isDisp = s.includes("DISPON") || s === "OK";
                     return (
                       <tr key={i} className="hover:bg-slate-50 transition-colors">
                         <td className="p-4">
-                          <p className="font-black text-slate-800">{v.Prefixo || v.prefixo}</p>
-                          <p className="text-[10px] text-slate-400">{v.Placa || v.placa}</p>
+                          <p className="font-black text-slate-800">{v.Prefixo}</p>
+                          <p className="text-[10px] text-slate-400">{v.Placa}</p>
                         </td>
                         <td className="p-4">
                           <span className={`text-[9px] font-black px-3 py-1 rounded-full ${isDisp ? 'bg-emerald-100 text-emerald-700' : 'bg-red-100 text-red-700'}`}>
@@ -368,7 +328,7 @@ const fetchData = async () => {
                         </td>
                         <td className="p-4 text-right">
                           <button onClick={() => {
-                            setLockData({ prefixo: v.Prefixo || v.prefixo, motivo: isDisp ? 'manutencao' : 'disponivel', re_responsavel: user.re });
+                            setLockData({ prefixo: v.Prefixo, motivo: isDisp ? 'manutencao' : 'disponivel', re_responsavel: user.re });
                             setShowLockModal(true);
                           }} className="p-2 text-slate-400 hover:text-slate-900 transition-colors">
                              {isDisp ? <Unlock size={18} /> : <Lock size={18} />}
@@ -384,7 +344,7 @@ const fetchData = async () => {
         )}
       </main>
 
-      {/* MODAL PRINCIPAL DE CONFERÊNCIA */}
+      {/* MODAL PRINCIPAL */}
       {showModal && selectedVtr && (
         <div className="fixed inset-0 bg-slate-900/90 backdrop-blur-md z-50 flex items-center justify-center p-4 overflow-y-auto">
           <div className="bg-white w-full max-w-lg rounded-[3rem] shadow-2xl overflow-hidden flex flex-col my-auto max-h-[95vh]">
@@ -410,21 +370,17 @@ const fetchData = async () => {
                   </div>
                   
                   {!conf.motoristaConfirmado && (
-                    <div className="mt-4 animate-in fade-in slide-in-from-top-2 duration-300">
-                      <p className="text-[10px] font-black text-red-500 mb-2 ml-1 uppercase">Quem está devolvendo a VTR?</p>
-                      <div className="relative">
-                        <select 
-                          className="w-full p-4 bg-white border-2 border-red-100 rounded-2xl font-black text-xs uppercase appearance-none outline-none focus:border-red-400"
-                          value={conf.novoMotoristaRE}
-                          onChange={(e) => setConf({...conf, novoMotoristaRE: e.target.value})}
-                        >
-                          <option value="">-- SELECIONE O MOTORISTA --</option>
-                          {motoristasFiltrados.map((m, idx) => (
-                            <option key={idx} value={m.RE || m.re}>{m.PostoGrad || ""} {m.NomeGuerra || m.nome} ({m.RE || m.re})</option>
-                          ))}
-                        </select>
-                        <ChevronDown className="absolute right-4 top-1/2 -translate-y-1/2 text-red-300 pointer-events-none" size={18} />
-                      </div>
+                    <div className="mt-4">
+                      <select 
+                        className="w-full p-4 bg-white border-2 border-red-100 rounded-2xl font-black text-xs uppercase appearance-none outline-none"
+                        value={conf.novoMotoristaRE}
+                        onChange={(e) => setConf({...conf, novoMotoristaRE: e.target.value})}
+                      >
+                        <option value="">-- QUEM ESTÁ ENTREGANDO? --</option>
+                        {motoristasFiltrados.map((m, idx) => (
+                          <option key={idx} value={m.RE || m.re}>{m.PostoGrad || ""} {m.NomeGuerra || m.nome} ({m.RE || m.re})</option>
+                        ))}
+                      </select>
                     </div>
                   )}
                 </div>
@@ -439,54 +395,44 @@ const fetchData = async () => {
                   <button onClick={() => setConf({...conf, avaria: !conf.avaria})} className={`p-4 rounded-3xl border-2 font-black text-[10px] uppercase transition-all ${!conf.avaria ? 'bg-emerald-50 border-emerald-500 text-emerald-700' : 'bg-red-600 border-red-600 text-white animate-pulse'}`}>AVARIAS: {conf.avaria ? 'SIM' : 'NÃO'}</button>
                 </div>
 
-                {conf.pertences === 'SIM' && (
-                  <textarea className="w-full bg-amber-50 border-2 border-amber-200 rounded-2xl p-4 text-[10px] font-bold uppercase outline-none" placeholder="DESCREVA OS PERTENCES ENCONTRADOS..." value={conf.detalhePertences} onChange={e => setConf({...conf, detalhePertences: e.target.value})} />
-                )}
-
-                {(selectedVtr.troca_oleo === "SIM" || selectedVtr.origem === "MANUTENCAO_AVULSA") && (
-                  <div className="bg-amber-50 border-2 border-amber-200 rounded-3xl p-5 space-y-4 shadow-inner">
-                    <div className="flex justify-between items-start">
-                      <div>
-                        <h4 className="text-amber-800 font-black text-xs uppercase flex items-center gap-2"><Droplets size={16} /> Comprovante de Óleo</h4>
-                        <p className="text-[10px] text-amber-700 font-bold mt-1 uppercase">Validar troca no hodômetro</p>
-                      </div>
-                      {(selectedVtr.foto_evidencia || selectedVtr.foto_oleo) && (
-                        <button onClick={() => setViewingPhoto(selectedVtr.foto_evidencia || selectedVtr.foto_oleo)} className="bg-white border-2 border-amber-200 p-2 rounded-xl text-amber-600 hover:bg-amber-100 shadow-sm transition-colors"><Eye size={20} /></button>
+                {selectedVtr.troca_oleo === "SIM" && (
+                  <div className="bg-amber-50 border-2 border-amber-200 rounded-3xl p-5 space-y-4">
+                    <div className="flex justify-between items-center">
+                      <h4 className="text-amber-800 font-black text-xs uppercase flex items-center gap-2"><Droplets size={16} /> Comprovante de Óleo</h4>
+                      {selectedVtr.foto_evidencia && (
+                        <button onClick={() => setViewingPhoto(selectedVtr.foto_evidencia)} className="p-2 bg-white rounded-xl text-amber-600"><Eye size={20} /></button>
                       )}
                     </div>
                     <button onClick={() => setConf({...conf, oleoConfirmado: !conf.oleoConfirmado})} className={`w-full py-4 rounded-2xl font-black text-[10px] uppercase border-2 transition-all ${conf.oleoConfirmado ? 'bg-emerald-600 border-emerald-600 text-white shadow-md' : 'bg-white border-amber-300 text-amber-600'}`}>{conf.oleoConfirmado ? 'ÓLEO VALIDADO' : 'CONFIRMAR TROCA DE ÓLEO'}</button>
                   </div>
                 )}
 
-                {(conf.avaria || conf.pertences === 'SIM') && (
+                {conf.avaria && (
                   <div className="bg-slate-900 p-5 rounded-3xl space-y-4">
                     <div className="flex items-center gap-3 text-white">
                       <Camera className="text-amber-500" size={24} />
-                      <p className="text-[11px] font-black uppercase">Registrar com Foto {conf.avaria ? "(OBRIGATÓRIO)" : "(OPCIONAL)"}</p>
+                      <p className="text-[11px] font-black uppercase tracking-tighter">Registrar Avaria (Obrigatório)</p>
                     </div>
-                    <div className="relative">
-                      <input type="file" accept="image/*" capture="environment" onChange={handleFileChange} className="absolute inset-0 w-full h-full opacity-0 cursor-pointer z-10" />
-                      <div className={`bg-slate-800 border-2 border-dashed rounded-2xl p-6 text-center ${fotoAvaria ? 'border-emerald-500' : 'border-slate-700'}`}>
+                    <input type="file" accept="image/*" capture="environment" onChange={handleFileChange} className="hidden" id="camera-input" />
+                    <label htmlFor="camera-input" className="block">
+                      <div className={`bg-slate-800 border-2 border-dashed rounded-2xl p-6 text-center cursor-pointer ${fotoAvaria ? 'border-emerald-500' : 'border-slate-700'}`}>
                         {fotoAvaria ? (
-                          <div className="relative inline-block">
-                            <img src={fotoAvaria} className="h-32 w-32 object-cover rounded-xl border-2 border-amber-500 shadow-2xl" alt="Preview" />
-                            <button onClick={(e) => {e.stopPropagation(); setFotoAvaria(null);}} className="absolute -top-2 -right-2 bg-red-500 text-white p-1 rounded-full"><X size={12} /></button>
-                          </div>
+                          <img src={fotoAvaria} className="h-32 mx-auto rounded-xl" alt="Preview" />
                         ) : (
-                          <p className="text-slate-500 font-black text-[10px] uppercase">Toque para capturar imagem</p>
+                          <p className="text-slate-500 font-black text-[10px] uppercase">Toque para tirar foto</p>
                         )}
                       </div>
-                    </div>
+                    </label>
                   </div>
                 )}
 
-                <textarea className="w-full bg-slate-50 border-2 border-slate-100 rounded-3xl p-4 text-xs font-bold uppercase outline-none focus:border-amber-400" placeholder="OBSERVAÇÕES DO GARAGEIRO..." rows={2} value={conf.obs} onChange={e => setConf({...conf, obs: e.target.value})} />
+                <textarea className="w-full bg-slate-50 border-2 border-slate-100 rounded-3xl p-4 text-xs font-bold uppercase outline-none focus:border-amber-400" placeholder="OBSERVAÇÕES..." rows={2} value={conf.obs} onChange={e => setConf({...conf, obs: e.target.value})} />
               </div>
 
               <button 
                 onClick={finalizarConferencia}
-                disabled={isSubmitting || (conf.avaria && !fotoAvaria) || ((selectedVtr.troca_oleo === "SIM" || selectedVtr.origem === "MANUTENCAO_AVULSA") && !conf.oleoConfirmado)}
-                className={`w-full py-5 rounded-[2rem] font-black uppercase text-xs shadow-2xl transition-all ${isSubmitting ? 'bg-slate-200' : (conf.avaria && !fotoAvaria) ? 'bg-slate-400 cursor-not-allowed opacity-50' : 'bg-slate-900 text-white hover:bg-emerald-600 active:scale-95'}`}
+                disabled={isSubmitting}
+                className={`w-full py-5 rounded-[2rem] font-black uppercase text-xs shadow-2xl transition-all ${isSubmitting ? 'bg-slate-200' : 'bg-slate-900 text-white hover:bg-emerald-600 active:scale-95'}`}
               >
                 {isSubmitting ? 'Gravando...' : 'Finalizar Validação'}
               </button>
@@ -495,30 +441,27 @@ const fetchData = async () => {
         </div>
       )}
 
-      {/* VISUALIZADOR DE FOTO EM TELA CHEIA */}
+      {/* VISUALIZADOR DE FOTO */}
       {viewingPhoto && (
-        <div className="fixed inset-0 bg-black/95 z-[100] flex flex-col p-4">
-          <button onClick={() => setViewingPhoto(null)} className="self-end text-white p-4 hover:bg-white/10 rounded-full transition-colors"><X size={32} /></button>
+        <div className="fixed inset-0 bg-black/95 z-[100] flex flex-col p-4" onClick={() => setViewingPhoto(null)}>
+          <button className="self-end text-white p-4"><X size={32} /></button>
           <div className="flex-1 flex items-center justify-center p-4">
-            <img src={viewingPhoto.startsWith('http') ? viewingPhoto : (viewingPhoto.startsWith('data:') ? viewingPhoto : `data:image/jpeg;base64,${viewingPhoto}`)} className="max-w-full max-h-full object-contain rounded-2xl shadow-2xl" alt="Evidência" />
+            <img src={viewingPhoto.startsWith('http') ? viewingPhoto : `data:image/jpeg;base64,${viewingPhoto}`} className="max-w-full max-h-full object-contain rounded-2xl" alt="Evidência" />
           </div>
         </div>
       )}
 
-      {/* MODAL DE BLOQUEIO/LIBERAÇÃO MANUAL */}
+      {/* MODAL LOCK */}
       {showLockModal && (
         <div className="fixed inset-0 bg-slate-900/90 backdrop-blur-md z-[60] flex items-center justify-center p-4">
-          <div className="bg-white w-full max-w-sm rounded-[3rem] p-8 shadow-2xl">
+          <div className="bg-white w-full max-w-sm rounded-[3rem] p-8">
             <div className="flex flex-col items-center text-center space-y-6">
               <div className={`w-20 h-20 rounded-full flex items-center justify-center ${lockData.motivo === 'disponivel' ? 'bg-emerald-100 text-emerald-600' : 'bg-red-100 text-red-600'}`}>
                 {lockData.motivo === 'disponivel' ? <Unlock size={40} /> : <Lock size={40} />}
               </div>
-              <h3 className="text-2xl font-black text-slate-800 uppercase tracking-tighter">{lockData.motivo === 'disponivel' ? "Liberar VTR" : "Bloquear VTR"}</h3>
-              <p className="text-xs font-bold text-slate-500 uppercase">Deseja alterar o status da viatura {lockData.prefixo}?</p>
+              <h3 className="text-2xl font-black text-slate-800 uppercase">{lockData.motivo === 'disponivel' ? "Liberar VTR" : "Bloquear VTR"}</h3>
               <div className="flex flex-col w-full gap-3">
-                <button onClick={confirmarAlteracaoStatus} disabled={isSubmitting} className="w-full py-4 bg-slate-900 text-white rounded-2xl font-black uppercase text-xs shadow-lg disabled:opacity-50">
-                  {isSubmitting ? 'Processando...' : 'Confirmar'}
-                </button>
+                <button onClick={confirmarAlteracaoStatus} disabled={isSubmitting} className="w-full py-4 bg-slate-900 text-white rounded-2xl font-black uppercase text-xs">Confirmar</button>
                 <button onClick={() => setShowLockModal(false)} className="w-full py-4 bg-slate-100 text-slate-400 rounded-2xl font-black uppercase text-xs">Cancelar</button>
               </div>
             </div>
