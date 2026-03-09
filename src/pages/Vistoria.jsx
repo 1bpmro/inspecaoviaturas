@@ -69,7 +69,6 @@ const ModalTrocaOleo = ({ isOpen, onClose, vtr, kmEntrada, user }) => {
     if (!fotoOleo) return alert("A foto do comprovante/etiqueta é obrigatória.");
 
     setLoading(true);
-    console.log("[Oleo] Iniciando salvamento...");
     try {
       const payload = {
         prefixo: vtr.Prefixo || vtr.PREFIXO,
@@ -81,8 +80,6 @@ const ModalTrocaOleo = ({ isOpen, onClose, vtr, kmEntrada, user }) => {
       };
       
       const res = await gasApi.registrarTrocaOleo(payload);
-      console.log("[Oleo] Resposta API:", res);
-
       if (res.status === 'success') {
         alert("Troca de óleo registrada com sucesso!");
         onClose();
@@ -90,7 +87,6 @@ const ModalTrocaOleo = ({ isOpen, onClose, vtr, kmEntrada, user }) => {
         alert("Erro ao registrar: " + res.message);
       }
     } catch (e) {
-      console.error("[Oleo] Erro fatal:", e);
       alert("Erro de conexão ao salvar troca de óleo.");
     } finally {
       setLoading(false);
@@ -127,7 +123,6 @@ const ModalTrocaOleo = ({ isOpen, onClose, vtr, kmEntrada, user }) => {
               <input type="file" accept="image/*" capture="environment" className="hidden" onChange={async (e) => {
                 const file = e.target.files[0]; if (!file) return;
                 setUploading(true);
-                console.log("[Oleo] Comprimindo imagem...");
                 try {
                   const compressed = await imageCompression(file, { maxSizeMB: 0.2, maxWidthOrHeight: 1024 });
                   const reader = new FileReader();
@@ -135,10 +130,8 @@ const ModalTrocaOleo = ({ isOpen, onClose, vtr, kmEntrada, user }) => {
                   reader.onloadend = () => {
                     setFotoOleo(reader.result);
                     setUploading(false);
-                    console.log("[Oleo] Imagem carregada.");
                   };
                 } catch (err) { 
-                  console.error("[Oleo] Erro compressão:", err);
                   setUploading(false); 
                 }
               }} />
@@ -171,6 +164,13 @@ const Vistoria = ({ onBack, frotaInicial = [] }) => {
   const [kmReferencia, setKmReferencia] = useState(0);
   const [modalOleoOpen, setModalOleoOpen] = useState(false);
   
+  // NOVO: Estado para controlar se os campos manuais devem abrir
+  const [reNaoEncontrado, setReNaoEncontrado] = useState({
+    motorista: false,
+    comandante: false,
+    patrulheiro: false
+  });
+
   const [formData, setFormData] = useState({
     prefixo_vtr: '', placa_vtr: '', hodometro: '', videomonitoramento: '', 
     tipo_servico: '', servico_detalhe: '',
@@ -192,7 +192,6 @@ const Vistoria = ({ onBack, frotaInicial = [] }) => {
     if (!vtrSelecionada || tipoVistoria !== 'ENTRADA') return false;
     const kmTroca = Number(vtrSelecionada.ProximaTrocaOleo || vtrSelecionada.PROXIMA_TROCA) || 0;
     const kmAtual = Number(formData.hodometro) || 0;
-    // Avisar se faltar 500km ou se já passou
     return kmAtual > 0 && (kmTroca - kmAtual <= 500);
   }, [vtrSelecionada, formData.hodometro, tipoVistoria]);
 
@@ -231,7 +230,6 @@ const Vistoria = ({ onBack, frotaInicial = [] }) => {
   useEffect(() => {
     let isMounted = true;
     const sincronizarDados = async () => {
-      console.log("[Vistoria] Sincronizando dados iniciais...");
       if (viaturas.length === 0) setLoading(true); 
       try {
         const [resVtr, resMil] = await Promise.all([
@@ -241,9 +239,8 @@ const Vistoria = ({ onBack, frotaInicial = [] }) => {
         if (isMounted) {
           if (resVtr.status === 'success') setViaturas(resVtr.data);
           if (resMil.status === 'success') setEfetivoLocal(resMil.data);
-          console.log("[Vistoria] Dados carregados:", { vtrs: resVtr.data?.length, mil: resMil.data?.length });
         }
-      } catch (e) { console.error("[Vistoria] Erro sincronização:", e); } finally { if (isMounted) setLoading(false); }
+      } catch (e) { console.error(e); } finally { if (isMounted) setLoading(false); }
     };
     sincronizarDados();
     return () => { isMounted = false; };
@@ -256,6 +253,7 @@ const Vistoria = ({ onBack, frotaInicial = [] }) => {
     if (reLimpo.length >= 4) {
       const reParaBusca = (reLimpo.length <= 6 && !reLimpo.startsWith("1000")) ? "1000" + reLimpo : reLimpo;
       const militar = efetivoLocal.find(m => toStr(m.re) === reParaBusca || toStr(m.re) === reLimpo);
+      
       if (militar) {
         setFormData(prev => ({
           ...prev,
@@ -263,16 +261,19 @@ const Vistoria = ({ onBack, frotaInicial = [] }) => {
           [`${cargo}_nome`]: `${militar.patente} ${militar.nome}`,
           [`${cargo}_unidade`]: militar.unidade || '1º BPM'
         }));
+        setReNaoEncontrado(prev => ({ ...prev, [cargo]: false }));
       } else {
+        // Se não encontrou, limpa os campos antigos e ativa a edição manual
         setFormData(prev => ({ ...prev, [`${cargo}_nome`]: '', [`${cargo}_unidade`]: '' }));
+        setReNaoEncontrado(prev => ({ ...prev, [cargo]: true }));
       }
+    } else {
+      setReNaoEncontrado(prev => ({ ...prev, [cargo]: false }));
     }
   };
 
   const handleVtrChange = (prefixo) => {
-    console.log("[Vistoria] VTR selecionada:", prefixo);
     const vtr = viaturas.find(v => toStr(v.Prefixo || v.PREFIXO) === toStr(prefixo));
-    
     if (!vtr) {
       setFormData(prev => ({ 
         ...prev, prefixo_vtr: '', placa_vtr: '', hodometro: '',
@@ -320,10 +321,11 @@ const Vistoria = ({ onBack, frotaInicial = [] }) => {
         prefixo_vtr: toStr(vtr.Prefixo || vtr.PREFIXO),
         placa_vtr: toStr(vtr.Placa || vtr.PLACA),
         hodometro: '',
-        motorista_re: '', motorista_nome: '',
-        comandante_re: '', comandante_nome: '',
-        patrulheiro_re: '', patrulheiro_nome: ''
+        motorista_re: '', motorista_nome: '', motorista_unidade: '',
+        comandante_re: '', comandante_nome: '', comandante_unidade: '',
+        patrulheiro_re: '', patrulheiro_nome: '', patrulheiro_unidade: ''
       }));
+      setReNaoEncontrado({ motorista: false, comandante: false, patrulheiro: false });
     }
   };
 
@@ -332,7 +334,6 @@ const Vistoria = ({ onBack, frotaInicial = [] }) => {
     if (!window.confirm("Confirmar o envio da vistoria?")) return;
     
     setLoading(true);
-    console.log("[Vistoria] Enviando vistoria final...");
     try {
       const falhas = Object.entries(checklist).filter(([_, s]) => s === 'FALHA').map(([i]) => i);
       const resumo = falhas.length === 0 ? "SEM ALTERAÇÕES" : 
@@ -356,7 +357,6 @@ const Vistoria = ({ onBack, frotaInicial = [] }) => {
         alert("Erro no servidor: " + res.message);
       }
     } catch (e) {
-      console.error("[Vistoria] Erro no envio:", e);
       alert("Erro de conexão.");
     } finally {
       setLoading(false);
@@ -444,7 +444,6 @@ const Vistoria = ({ onBack, frotaInicial = [] }) => {
                 </select>
               </div>
 
-              {/* ALERTA DE TROCA DE ÓLEO */}
               {precisaTrocaOleo && (
                 <button onClick={() => setModalOleoOpen(true)} className="w-full bg-orange-50 border-2 border-orange-500 p-4 rounded-2xl flex items-center justify-between group shadow-sm active:scale-[0.98] transition-all">
                   <div className="flex items-center gap-3">
@@ -455,9 +454,43 @@ const Vistoria = ({ onBack, frotaInicial = [] }) => {
                 </button>
               )}
 
-              <div className="space-y-3">
+              <div className="space-y-4">
                 {['motorista', 'comandante', 'patrulheiro'].map(cargo => (
-                  <input key={cargo} type="tel" placeholder={`MATRÍCULA ${cargo.toUpperCase()}`} className="vtr-input !bg-slate-50" value={formData[`${cargo}_re`]} onChange={(e) => handleMatriculaChange(e.target.value, cargo)} />
+                  <div key={cargo} className="space-y-2 p-2 rounded-2xl bg-slate-100/50">
+                    <input 
+                      type="tel" 
+                      placeholder={`MATRÍCULA ${cargo.toUpperCase()}`} 
+                      className="vtr-input !bg-white" 
+                      value={formData[`${cargo}_re`]} 
+                      onChange={(e) => handleMatriculaChange(e.target.value, cargo)} 
+                    />
+                    
+                    {/* CAMPOS CONDICIONAIS PARA PREENCHIMENTO MANUAL */}
+                    {reNaoEncontrado[cargo] && (
+                      <div className="grid grid-cols-2 gap-2 animate-in slide-in-from-top-2 duration-200">
+                        <input 
+                          type="text" 
+                          placeholder="NOME DE GUERRA" 
+                          className="vtr-input !bg-blue-50 !py-2 text-[10px] border-blue-200"
+                          value={formData[`${cargo}_nome`]}
+                          onChange={(e) => setFormData(prev => ({ 
+                            ...prev, 
+                            [`${cargo}_nome`]: e.target.value.toUpperCase() 
+                          }))}
+                        />
+                        <input 
+                          type="text" 
+                          placeholder="UNIDADE (Ex: 1º BPM)" 
+                          className="vtr-input !bg-blue-50 !py-2 text-[10px] border-blue-200"
+                          value={formData[`${cargo}_unidade`]}
+                          onChange={(e) => setFormData(prev => ({ 
+                            ...prev, 
+                            [`${cargo}_unidade`]: e.target.value.toUpperCase() 
+                          }))}
+                        />
+                      </div>
+                    )}
+                  </div>
                 ))}
               </div>
             </section>
@@ -550,7 +583,6 @@ const Vistoria = ({ onBack, frotaInicial = [] }) => {
         )}
       </main>
 
-      {/* MODAL TROCA DE ÓLEO */}
       <ModalTrocaOleo 
         isOpen={modalOleoOpen} 
         onClose={() => setModalOleoOpen(false)}
