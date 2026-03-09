@@ -150,7 +150,7 @@ const motoristasFiltrados = motoristas.filter(m => {
     }
   };
 
-  const finalizarConferencia = async () => {
+ const finalizarConferencia = async () => {
     if (isSubmitting) return;
 
     // Validações de segurança
@@ -164,13 +164,19 @@ const motoristasFiltrados = motoristas.filter(m => {
 
     setIsSubmitting(true);
     
-    // Identificador robusto para remover da lista local após sucesso
+    // Identificador para o filtro local do React (não afeta o banco)
     const idParaRemover = selectedVtr.id_manutencao || selectedVtr.id_sistema || selectedVtr.rowId || selectedVtr.prefixo;
 
     try {
-      const res = await gasApi.confirmarVistoriaGarageiro({
+      // PREPARAÇÃO DO PAYLOAD (Dados que vão para o Apps Script)
+      const payload = {
         origem: selectedVtr.origem,
-        rowId: selectedVtr.rowId || selectedVtr.ID || selectedVtr.id, // Fallback duplo
+        // Garante que o Prefixo sempre vá como uma string limpa
+        prefixo: (selectedVtr.prefixo_vtr || selectedVtr.prefixo || "").toString().toUpperCase(),
+        
+        // Se o rowId não for um número real, envia null para evitar o erro de NaN no backend
+        rowId: !isNaN(parseInt(selectedVtr.rowId)) ? selectedVtr.rowId : null,
+        
         id_manutencao: selectedVtr.id_manutencao,
         id_vistoria: selectedVtr.id_sistema || selectedVtr.id,
         status_fisico: conf.avaria ? 'AVARIADA' : 'OK',
@@ -182,23 +188,29 @@ const motoristasFiltrados = motoristas.filter(m => {
         motorista_confirmado: conf.motoristaConfirmado,
         novo_motorista_re: conf.novoMotoristaRE,
         km_registro: selectedVtr.hodometro_oleo || selectedVtr.hodometro || selectedVtr.km 
-      });
+      };
+
+      const res = await gasApi.confirmarVistoriaGarageiro(payload);
 
       if (res.status === 'success') {
         setFinalizadosLocal(prev => [...prev, idParaRemover]);
         setShowModal(false);
-        // Reset do formulário...
+        
+        // Reset do formulário
         setConf({ 
           limpezaInterna: true, limpezaExterna: true, pertences: 'NÃO', 
           detalhePertences: '', motoristaConfirmado: true, novoMotoristaRE: '', 
           avaria: false, obs: '', oleoConfirmado: false 
         });
         setFotoAvaria(null);
+        
+        // Refresh rápido para limpar a lista
         setTimeout(fetchData, 1000);
       } else {
         alert("Erro ao salvar: " + (res.message || "Tente novamente."));
       }
     } catch (e) {
+      console.error(e);
       alert("Erro de conexão com o servidor.");
     } finally {
       setIsSubmitting(false);
