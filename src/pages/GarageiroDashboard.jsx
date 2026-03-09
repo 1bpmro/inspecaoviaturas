@@ -151,84 +151,79 @@ const motoristasFiltrados = motoristas.filter(m => {
   };
 
  const finalizarConferencia = async () => {
-    if (isSubmitting) return;
+  if (isSubmitting) return;
 
-    // Validações de segurança
-    if (selectedVtr.origem === "VISTORIA" && !conf.motoristaConfirmado && !conf.novoMotoristaRE) {
-      return alert("Selecione o motorista que está entregando a VTR.");
+  // Validações de segurança
+  if (selectedVtr.origem === "VISTORIA" && !conf.motoristaConfirmado && !conf.novoMotoristaRE) {
+    return alert("Selecione o motorista que está entregando a VTR.");
+  }
+  
+  const precisaValidarOleo = selectedVtr.troca_oleo === "SIM" || selectedVtr.origem === "MANUTENCAO_AVULSA";
+  if (precisaValidarOleo && !conf.oleoConfirmado) return alert("Confirme a troca de óleo visualmente.");
+  if (conf.avaria && !fotoAvaria) return alert("É obrigatório anexar uma foto para registrar a avaria.");
+
+  setIsSubmitting(true);
+  
+  const idParaRemover = selectedVtr.id_manutencao || selectedVtr.id_sistema || selectedVtr.rowId || selectedVtr.prefixo;
+  const prefixoVtr = (selectedVtr.prefixo_vtr || selectedVtr.prefixo || "").toString().toUpperCase();
+
+  try {
+    // 1. PREPARAÇÃO DO PAYLOAD
+    const payload = {
+      origem: selectedVtr.origem,
+      prefixo: prefixoVtr,
+      rowId: !isNaN(parseInt(selectedVtr.rowId)) ? selectedVtr.rowId : null,
+      id_manutencao: selectedVtr.id_manutencao,
+      id_vistoria: selectedVtr.id_sistema || selectedVtr.id,
+      status_fisico: conf.avaria ? 'AVARIADA' : 'OK',
+      limpeza: `INT: ${conf.limpezaInterna ? 'C' : 'NC'} | EXT: ${conf.limpezaExterna ? 'C' : 'NC'}`,
+      pertences: conf.pertences === 'SIM' ? `SIM: ${conf.detalhePertences}` : 'NÃO',
+      obs_garageiro: conf.obs,
+      garageiro_re: user.re,
+      foto_avaria: fotoAvaria,
+      motorista_confirmado: conf.motoristaConfirmado,
+      novo_motorista_re: conf.novoMotoristaRE,
+      km_registro: selectedVtr.hodometro_oleo || selectedVtr.hodometro || selectedVtr.km 
+    };
+
+    // 2. ENVIAR CONFERÊNCIA PARA O LOG/HISTÓRICO
+    const res = await gasApi.confirmarVistoriaGarageiro(payload);
+
+    if (res.status === 'success') {
+      
+      // 3. ATUALIZAR STATUS DA VTR NO BANCO (De Aguardando para Disponível)
+      // Passamos um objeto de log para o histórico de status também
+      await gasApi.alterarStatusViatura(prefixoVtr, "DISPONÍVEL", {
+        motivo: 'disponivel',
+        detalhes: 'Liberação automática via conferência de pátio',
+        re_responsavel: user.re
+      });
+
+      // Feedback visual e limpeza local
+      setFinalizadosLocal(prev => [...prev, idParaRemover]);
+      setShowModal(false);
+      
+      // Reset do formulário
+      setConf({ 
+        limpezaInterna: true, limpezaExterna: true, pertences: 'NÃO', 
+        detalhePertences: '', motoristaConfirmado: true, novoMotoristaRE: '', 
+        avaria: false, obs: '', oleoConfirmado: false 
+      });
+      setFotoAvaria(null);
+      
+      // Refresh nos dados gerais para garantir sincronia
+      setTimeout(fetchData, 1000);
+    } else {
+      alert("Erro ao salvar conferência: " + (res.message || "Tente novamente."));
     }
-    
-    const precisaValidarOleo = selectedVtr.troca_oleo === "SIM" || selectedVtr.origem === "MANUTENCAO_AVULSA";
-    if (precisaValidarOleo && !conf.oleoConfirmado) return alert("Confirme a troca de óleo visualmente.");
-    if (conf.avaria && !fotoAvaria) return alert("É obrigatório anexar uma foto para registrar a avaria.");
-
-    setIsSubmitting(true);
-    
-    // Identificador para o filtro local do React (não afeta o banco)
-    const idParaRemover = selectedVtr.id_manutencao || selectedVtr.id_sistema || selectedVtr.rowId || selectedVtr.prefixo;
-
-    try {
-      // PREPARAÇÃO DO PAYLOAD (Dados que vão para o Apps Script)
-      const payload = {
-        origem: selectedVtr.origem,
-        // Garante que o Prefixo sempre vá como uma string limpa
-        prefixo: (selectedVtr.prefixo_vtr || selectedVtr.prefixo || "").toString().toUpperCase(),
-        
-        // Se o rowId não for um número real, envia null para evitar o erro de NaN no backend
-        rowId: !isNaN(parseInt(selectedVtr.rowId)) ? selectedVtr.rowId : null,
-        
-        id_manutencao: selectedVtr.id_manutencao,
-        id_vistoria: selectedVtr.id_sistema || selectedVtr.id,
-        status_fisico: conf.avaria ? 'AVARIADA' : 'OK',
-        limpeza: `INT: ${conf.limpezaInterna ? 'C' : 'NC'} | EXT: ${conf.limpezaExterna ? 'C' : 'NC'}`,
-        pertences: conf.pertences === 'SIM' ? `SIM: ${conf.detalhePertences}` : 'NÃO',
-        obs_garageiro: conf.obs,
-        garageiro_re: user.re,
-        foto_avaria: fotoAvaria,
-        motorista_confirmado: conf.motoristaConfirmado,
-        novo_motorista_re: conf.novoMotoristaRE,
-        km_registro: selectedVtr.hodometro_oleo || selectedVtr.hodometro || selectedVtr.km 
-      };
-
-      const res = await gasApi.confirmarVistoriaGarageiro(payload);
-
-      if (res.status === 'success') {
-        setFinalizadosLocal(prev => [...prev, idParaRemover]);
-        setShowModal(false);
-        
-        // Reset do formulário
-        setConf({ 
-          limpezaInterna: true, limpezaExterna: true, pertences: 'NÃO', 
-          detalhePertences: '', motoristaConfirmado: true, novoMotoristaRE: '', 
-          avaria: false, obs: '', oleoConfirmado: false 
-        });
-        setFotoAvaria(null);
-        
-        // Refresh rápido para limpar a lista
-        setTimeout(fetchData, 1000);
-      } else {
-        alert("Erro ao salvar: " + (res.message || "Tente novamente."));
-      }
-    } catch (e) {
-      console.error(e);
-      alert("Erro de conexão com o servidor.");
-    } finally {
-      setIsSubmitting(false);
-    }
-  };
-
-  const confirmarAlteracaoStatus = async () => {
-    setIsSubmitting(true);
-    try {
-      let statusFinal = lockData.motivo === 'disponivel' ? "DISPONÍVEL" : "MANUTENÇÃO";
-      const res = await gasApi.alterarStatusViatura(lockData.prefixo, statusFinal, lockData);
-      if (res.status === 'success') {
-        setShowLockModal(false);
-        fetchData();
-      }
-    } catch (e) { alert("Erro de comunicação."); } finally { setIsSubmitting(false); }
-  };
-
+  } catch (e) {
+    console.error("Erro no processo de finalização:", e);
+    alert("Erro de conexão com o servidor.");
+  } finally {
+    setIsSubmitting(false);
+  }
+};
+  
   return (
     <div className="min-h-screen bg-slate-100 flex flex-col font-sans">
       <header className="bg-slate-900 text-white p-4 shadow-xl border-b-4 border-amber-500">
