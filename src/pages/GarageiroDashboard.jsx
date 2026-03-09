@@ -38,21 +38,29 @@ const GarageiroDashboard = ({ onBack }) => {
 
  // 1. FILTRO DE MOTORISTAS ATUALIZADO (REGRAS DO COMANDO)
 const motoristasFiltrados = motoristas.filter(m => {
-  // Normaliza o texto para facilitar a comparação (remove acentos e espaços extras)
-  const cargo = (m.PostoGrad || m.cargo || "").toUpperCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
-  const nivel = (m.Nivel || m.nivel || "").toUpperCase();
-  
-  // Lista expandida conforme sua solicitação
-  const patentesProibidas = [
-    'ADMIN', 'PVSA', 'TEN CEL', 'MAJ', 'CAP', 
-    '1 TEN', '2 TEN', '1º TEN', '2º TEN', '1° TEN', '2° TEN',
-    'ASPIRANTE', 'ST', 'SUBTENENTE'
+  // 1. Pega o cargo/posto e o nível, tratando nulos e transformando em Maiúsculo
+  const cargo = (m.PostoGrad || m.cargo || "").toUpperCase().trim();
+  const nivel = (m.Nivel || m.nivel || "").toUpperCase().trim();
+
+  // 2. Se for ADMIN, já corta logo de cara
+  if (nivel === 'ADMIN' || cargo === 'ADMIN') return false;
+
+  // 3. Lista de termos proibidos usando Regex para aceitar variações (1º, 1°, 1. Ten, etc)
+  const termosProibidos = [
+    /PVSA/, 
+    /TEN\s?CEL/, 
+    /MAJ/, 
+    /CAP/, 
+    /[12][°º°.]?\s?TEN/, // Pega 1º TEN, 2° TEN, 1 TEN, 2. TEN
+    /ASPIRANTE/, 
+    /ST\s/,              // "ST " com espaço para não pegar nomes que comecem com ST
+    /SUBTENENTE/
   ];
 
-  // Regra: Não pode ser ADMIN nem conter nenhuma das patentes proibidas
-  const ehProibido = patentesProibidas.some(p => cargo.includes(p));
-  
-  return nivel !== 'ADMIN' && !ehProibido;
+  // 4. Verifica se o cargo contém algum dos termos proibidos
+  const ehProibido = termosProibidos.some(regex => regex.test(cargo));
+
+  return !ehProibido;
 });
 
   const handleFileChange = (e) => {
