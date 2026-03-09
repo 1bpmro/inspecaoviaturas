@@ -259,42 +259,48 @@ const Vistoria = ({ onBack, frotaInicial = [] }) => {
     return () => { isMounted = false; };
   }, [frotaInicial, viaturas.length]);
 
-  const handleMatriculaChange = (valor, cargo) => {
-    const reLimpo = toStr(valor).replace(/\D/g, '');
-    setFormData(prev => ({ ...prev, [`${cargo}_re`]: reLimpo }));
+const handleMatriculaChange = (valor, cargo) => {
+  const reLimpo = toStr(valor).replace(/\D/g, '');
+  setFormData(prev => ({ ...prev, [`${cargo}_re`]: reLimpo }));
 
-    if (reLimpo.length >= 4) {
-      const reBuscaCurto = reLimpo.padStart(6, '0');
-      const reBuscaLongo = reLimpo.startsWith('1000') ? reLimpo : '1000' + reLimpo;
+  if (reLimpo.length >= 4) {
+    const reBuscaCurto = reLimpo.padStart(6, '0');
+    const reBuscaLongo = reLimpo.startsWith('1000') ? reLimpo : '1000' + reLimpo;
 
-      const militar = efetivoLocal.find(m => 
-        toStr(m.re) === reLimpo || 
-        toStr(m.re) === reBuscaCurto || 
-        toStr(m.re) === reBuscaLongo
-      );
+    const militar = efetivoLocal.find(m => 
+      toStr(m.re) === reLimpo || 
+      toStr(m.re) === reBuscaCurto || 
+      toStr(m.re) === reBuscaLongo
+    );
+    
+    if (militar) {
+      const patenteRaw = toStr(militar.patente).trim();
+      const nomeRaw = toStr(militar.nome).trim();
+
+      // CORREÇÃO: Verifica se o nome já começa com a patente (ignorando maiúsculas/minúsculas)
+      // Se o nome já começa com a patente, usa apenas o nome. Se não, concatena.
+      const nomeJaTemPatente = nomeRaw.toUpperCase().startsWith(patenteRaw.toUpperCase());
       
-      if (militar) {
-        // CORREÇÃO: Evita duplicidade se o nome já contiver a patente
-        const nomeFinal = toStr(militar.nome).toUpperCase().startsWith(toStr(militar.patente).toUpperCase())
-            ? militar.nome 
-            : `${militar.patente} ${militar.nome}`;
+      const nomeFinal = nomeJaTemPatente 
+        ? nomeRaw 
+        : `${patenteRaw} ${nomeRaw}`;
 
-        setFormData(prev => ({
-          ...prev,
-          [`${cargo}_re`]: toStr(militar.re),
-          [`${cargo}_nome`]: nomeFinal.trim(),
-          [`${cargo}_unidade`]: militar.unidade || '1º BPM'
-        }));
-        setReNaoEncontrado(prev => ({ ...prev, [cargo]: false }));
-      } else {
-        setFormData(prev => ({ ...prev, [`${cargo}_nome`]: '', [`${cargo}_unidade`]: '' }));
-        setReNaoEncontrado(prev => ({ ...prev, [cargo]: true }));
-      }
-    } else {
+      setFormData(prev => ({
+        ...prev,
+        [`${cargo}_re`]: toStr(militar.re),
+        [`${cargo}_nome`]: nomeFinal.toUpperCase().trim(),
+        [`${cargo}_unidade`]: militar.unidade || '1º BPM'
+      }));
       setReNaoEncontrado(prev => ({ ...prev, [cargo]: false }));
+    } else {
+      setFormData(prev => ({ ...prev, [`${cargo}_nome`]: '', [`${cargo}_unidade`]: '' }));
+      setReNaoEncontrado(prev => ({ ...prev, [cargo]: true }));
     }
-  };
-
+  } else {
+    setReNaoEncontrado(prev => ({ ...prev, [cargo]: false }));
+  }
+};
+  
   const handleVtrChange = (prefixo) => {
     const vtr = viaturas.find(v => toStr(v.Prefixo || v.PREFIXO) === toStr(prefixo));
     if (!vtr) {
@@ -334,39 +340,42 @@ const Vistoria = ({ onBack, frotaInicial = [] }) => {
     }
   };
 
-  const handleFinalizar = async () => {
-    if (temAvaria && fotos.length === 0) return alert("É obrigatório anexar fotos das avarias.");
-    if (!window.confirm("Confirmar o envio da vistoria?")) return;
-    
-    setLoading(true);
-    try {
-      const falhas = Object.entries(checklist).filter(([_, s]) => s === 'FALHA').map(([i]) => i);
-      const resumo = falhas.length === 0 ? "SEM ALTERAÇÕES" : 
-                     tipoVistoria === 'ENTRADA' ? `FALHA EM: ${falhas.join(', ')}` :
-                     falhas.map(item => MAPA_FALHAS_SAIDA[item] || item).join(', ');
+ const handleFinalizar = async () => {
+  if (temAvaria && fotos.length === 0) return alert("É obrigatório anexar fotos das avarias.");
+  if (!window.confirm("Confirmar o envio da vistoria?")) return;
+  
+  setLoading(true);
+  try {
+    const falhas = Object.entries(checklist).filter(([_, s]) => s === 'FALHA').map(([i]) => i);
+    const resumo = falhas.length === 0 ? "SEM ALTERAÇÕES" : 
+                   tipoVistoria === 'ENTRADA' ? `FALHA EM: ${falhas.join(', ')}` :
+                   falhas.map(item => MAPA_FALHAS_SAIDA[item] || item).join(', ');
 
-      const res = await gasApi.saveVistoria({
-        ...formData,
-        tipo_vistoria: tipoVistoria,
-        checklist_resumo: resumo,
-        fotos_vistoria: fotos,
-        proteger_ocorrencia: protegerFotos,
-        militar_logado: `${user.patente} ${user.nome}`,
-        status_garageiro: "PENDENTE"
-      });
+    // Construção do payload com o nome exato da coluna do Google Sheets
+    const payload = {
+      ...formData,
+      tipo_vistoria: tipoVistoria,
+      checklist_resumo: resumo,
+      Links_fotos: fotos, // Alterado de fotos_vistoria para o nome da sua coluna
+      proteger_ocorrencia: protegerFotos,
+      militar_logado: `${user.patente} ${user.nome}`,
+      status_garageiro: "PENDENTE"
+    };
 
-      if (res.status === 'success') {
-        alert("Vistoria enviada com sucesso!");
-        onBack();
-      } else {
-        alert("Erro no servidor: " + res.message);
-      }
-    } catch (e) {
-      alert("Erro de conexão.");
-    } finally {
-      setLoading(false);
+    const res = await gasApi.saveVistoria(payload);
+
+    if (res.status === 'success') {
+      alert("Vistoria enviada com sucesso!");
+      onBack();
+    } else {
+      alert("Erro no servidor: " + res.message);
     }
-  };
+  } catch (e) {
+    alert("Erro de conexão.");
+  } finally {
+    setLoading(false);
+  }
+};
 
   const CardGuarnicao = ({ compacto = false }) => (
     <div className={`${compacto ? 'bg-slate-800 p-3 rounded-2xl' : 'bg-slate-900 p-5 rounded-3xl'} mb-4 border-b-4 border-blue-600 shadow-inner transition-all`}>
