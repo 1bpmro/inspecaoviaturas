@@ -36,26 +36,34 @@ const GarageiroDashboard = ({ onBack }) => {
   const [showLockModal, setShowLockModal] = useState(false);
   const [lockData, setLockData] = useState({ prefixo: '', motivo: 'manutencao', detalhes: '', re_responsavel: '' });
 
-  // 1. FILTRO DE MOTORISTAS ATUALIZADO (REGRAS DO COMANDO)
-  const motoristasFiltrados = motoristas.filter(m => {
-    const cargo = (m.PostoGrad || m.cargo || "").toUpperCase().trim();
-    const nivel = (m.Nivel || m.nivel || "").toUpperCase().trim();
+// 1. FILTRO DE MOTORISTAS (BUSCANDO DENTRO DA STRING DO NOME)
+const motoristasFiltrados = motoristas.filter(m => {
+  // Pega o nome vindo do banco (ajuste 'Nome' para 'nome' se necessário)
+  const nomeCompleto = (m.Nome || m.nome || "").toUpperCase().trim();
 
-    if (nivel === 'ADMIN' || cargo === 'ADMIN') return false;
+  // Se o nome estiver vazio, remove da lista
+  if (!nomeCompleto) return false;
 
-    const termosProibidos = [
-      /PVSA/, 
-      /TEN\s?CEL/, 
-      /MAJ/, 
-      /CAP/, 
-      /[12][°º°.]?\s?TEN/, 
-      /ASPIRANTE/, 
-      /ST\s/, 
-      /SUBTENENTE/
-    ];
+  // Se for Admin, remove
+  if (nomeCompleto.includes("ADMIN")) return false;
 
-    return !termosProibidos.some(regex => regex.test(cargo));
-  });
+  // Lista de termos que, se encontrados em QUALQUER parte do nome, bloqueiam o registro
+  const termosProibidos = [
+    /PVSA/i,
+    /TEN(\s?|\.)?CEL/i,    // Pega "TEN CEL", "TENCEL", "TEN.CEL"
+    /MAJ/i,
+    /CAP/i,
+    /[12](°|º|\.)?\s?TEN/i, // Pega "1° TEN", "1.TEN", "2ºTEN"
+    /ASPIRANTE/i,
+    /SUBTENENTE/i,
+    /\bST\b/i               // Pega "ST" isolado (evita nomes que tenham 'st' no meio)
+  ];
+
+  // Se o nome der "match" com qualquer um dos termos acima, retorna FALSE (filtra para fora)
+  const ehOficial = termosProibidos.some(regex => regex.test(nomeCompleto));
+
+  return !ehOficial;
+});
 
   const handleFileChange = (e) => {
     const file = e.target.files[0];
