@@ -36,16 +36,24 @@ const GarageiroDashboard = ({ onBack }) => {
   const [showLockModal, setShowLockModal] = useState(false);
   const [lockData, setLockData] = useState({ prefixo: '', motivo: 'manutencao', detalhes: '', re_responsavel: '' });
 
-  // FILTRO DE MOTORISTAS ATUALIZADO (REGRAS DO COMANDO)
-  const motoristasFiltrados = motoristas.filter(m => {
-    const cargo = (m.PostoGrad || m.cargo || "").toUpperCase();
-    const nivel = (m.Nivel || m.nivel || "").toUpperCase();
-    const patentesProibidas = [
-      'PVSA', 'ST PM', 'ASPIRANTE PM', '1º TEN QOAPM', 
-      '2º TEN QOAPM', 'CAP PM', 'MAJ PM', 'TEN CEL PM'
-    ];
-    return nivel !== 'ADMIN' && !patentesProibidas.some(p => cargo.includes(p));
-  });
+ // 1. FILTRO DE MOTORISTAS ATUALIZADO (REGRAS DO COMANDO)
+const motoristasFiltrados = motoristas.filter(m => {
+  // Normaliza o texto para facilitar a comparação (remove acentos e espaços extras)
+  const cargo = (m.PostoGrad || m.cargo || "").toUpperCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+  const nivel = (m.Nivel || m.nivel || "").toUpperCase();
+  
+  // Lista expandida conforme sua solicitação
+  const patentesProibidas = [
+    'ADMIN', 'PVSA', 'TEN CEL', 'MAJ', 'CAP', 
+    '1 TEN', '2 TEN', '1º TEN', '2º TEN', '1° TEN', '2° TEN',
+    'ASPIRANTE', 'ST', 'SUBTENENTE'
+  ];
+
+  // Regra: Não pode ser ADMIN nem conter nenhuma das patentes proibidas
+  const ehProibido = patentesProibidas.some(p => cargo.includes(p));
+  
+  return nivel !== 'ADMIN' && !ehProibido;
+});
 
   const handleFileChange = (e) => {
     const file = e.target.files[0];
