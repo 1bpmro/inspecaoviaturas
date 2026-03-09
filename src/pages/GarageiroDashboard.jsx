@@ -73,66 +73,79 @@ const motoristasFiltrados = motoristas.filter(m => {
     } catch(e) { return 0; }
   };
 
- const fetchData = async () => {
-    setLoading(true);
-    try {
-      const [resVtr, resPend, resMot] = await Promise.all([
-        gasApi.getViaturas(), 
-        gasApi.getVistoriasPendentes(),
-        gasApi.getEfetivoCompleto()
-      ]);
-      
-      let frotaGeral = [];
-      if (resVtr.status === 'success') {
-        frotaGeral = resVtr.data;
-        setViaturas(frotaGeral);
-      }
-
-      if (resMot.status === 'success') setMotoristas(resMot.data);
-
-      if (resPend.status === 'success') {
-        let listaFinal = [...resPend.data];
-
-        frotaGeral.forEach(vtr => {
-          const status = (vtr.Status || vtr.status || "").toUpperCase();
-          const prefixo = vtr.Prefixo || vtr.prefixo;
-
-          if (status.includes("AGUARDANDO") || status.includes("PÁTIO") || status.includes("PATIO")) {
-            const jaExiste = listaFinal.some(p => (p.prefixo_vtr || p.prefixo) === prefixo);
-            if (!jaExiste) {
-              listaFinal.push({
-                prefixo: prefixo,
-                prefixo_vtr: prefixo,
-                // BUSCANDO DA COLUNA ESPECÍFICA DA PLANILHA PATRIMONIO
-                motorista_nome: vtr.UltimoMotoristaNome || vtr.Motorista || "S/ INF",
-                origem: "VISTORIA", 
-                timestamp: new Date().toISOString(),
-                rowId: vtr.rowId || prefixo,
-                troca_oleo: (vtr.Status === "TROCA DE ÓLEO" || vtr.oleo_pendente === "SIM") ? "SIM" : "NÃO"
-              });
-            }
-          }
-        });
-
-        const filtradas = listaFinal.filter(v => {
-          const id = v.id_manutencao || v.id_sistema || v.rowId || v.prefixo;
-          return !finalizadosLocal.includes(id);
-        });
-
-        if (soundEnabled && filtradas.length > prevItemsCount.current) {
-          audioRef.current.play().catch(() => {});
-        }
-        
-        prevItemsCount.current = filtradas.length;
-        setVistorias(filtradas);
-      }
-    } catch (error) {
-      console.error("Erro crítico ao sincronizar dados:", error);
-    } finally {
-      setLoading(false);
+// 2. CORREÇÃO NO FETCHDATA (Prevenção do TypeError)
+const fetchData = async () => {
+  setLoading(true);
+  try {
+    const [resVtr, resPend, resMot] = await Promise.all([
+      gasApi.getViaturas(), 
+      gasApi.getVistoriasPendentes(),
+      gasApi.getEfetivoCompleto()
+    ]);
+    
+    let frotaGeral = [];
+    if (resVtr?.status === 'success' && Array.isArray(resVtr.data)) {
+      frotaGeral = resVtr.data;
+      setViaturas(frotaGeral);
     }
-  };
 
+    if (resMot?.status === 'success' && Array.isArray(resMot.data)) {
+      setMotoristas(resMot.data);
+    }
+
+    if (resPend?.status === 'success' && Array.isArray(resPend.data)) {
+      let listaFinal = [...resPend.data];
+
+      frotaGeral.forEach(vtr => {
+        if (!vtr) return; // Pula se o objeto vtr for nulo
+
+        const status = (vtr.Status || vtr.status || "").toUpperCase();
+        const prefixo = vtr.Prefixo || vtr.prefixo;
+
+        if (prefixo && (status.includes("AGUARDANDO") || status.includes("PATIO"))) {
+          const jaExiste = listaFinal.some(p => (p?.prefixo_vtr || p?.prefixo) === prefixo);
+          if (!jaExiste) {
+            listaFinal.push({
+              prefixo: prefixo,
+              prefixo_vtr: prefixo,
+              motorista_nome: vtr.UltimoMotoristaNome || vtr.Motorista || "S/ INF",
+              origem: "VISTORIA", 
+              timestamp: new Date().toISOString(),
+              rowId: vtr.rowId || prefixo,
+              troca_oleo: (vtr.Status === "TROCA DE ÓLEO" || vtr.oleo_pendente === "SIM") ? "SIM" : "NÃO"
+            });
+          }
+        }
+      });
+
+      // Filtro seguro para evitar erro de 'undefined' ao ler ID
+      const filtradas = listaFinal.filter(v => {
+        if (!v) return false;
+        const id = v.id_manutencao || v.id_sistema || v.rowId || v.prefixo;
+        return id && !finalizadosLocal.includes(id);
+      });
+
+      if (soundEnabled && filtradas.length > prevItemsCount.current) {
+        audioRef.current.play().catch(() => {});
+      }
+      
+      prevItemsCount.current = filtradas.length;
+      setVistorias(filtradas);
+    }
+ } catch (error) {
+    // Log detalhado para identificar exatamente onde a API ou o dado falhou
+    console.error("Erro crítico na sincronização:", {
+      mensagem: error.message,
+      stack: error.stack,
+      local: "GarageiroDashboard > fetchData"
+    });
+    
+    // Opcional: Toast ou alerta discreto para o usuário
+    // alert("Erro ao atualizar dados. Verifique a conexão.");
+  } finally {
+    setLoading(false);
+  }
+};
   useEffect(() => {
     fetchData();
     const interval = setInterval(fetchData, 30000);
