@@ -45,10 +45,9 @@ const GarageiroDashboard = ({ onBack }) => {
     return () => clearInterval(interval);
   }, []);
 
-  // 2. LOGICA DE SOM (Desbloqueio de áudio por interação do usuário)
+  // 2. LOGICA DE SOM
   const toggleSound = () => {
     if (!soundEnabled) {
-      // Tenta dar um play curto e silencioso para "acordar" o áudio no navegador
       audioRef.current.play().then(() => {
         audioRef.current.pause();
         audioRef.current.currentTime = 0;
@@ -72,7 +71,7 @@ const GarageiroDashboard = ({ onBack }) => {
 
       let listaFinal = [];
 
-      // A. Vistorias da Guia Mensal (Checklists pendentes)
+      // A. Vistorias da Guia Mensal
       if (resPend?.status === 'success' && Array.isArray(resPend.data)) {
         listaFinal = resPend.data
           .filter(v => (v.tipo_vistoria || v.tipo || "").toUpperCase() !== "SAIDA")
@@ -84,7 +83,7 @@ const GarageiroDashboard = ({ onBack }) => {
           }));
       }
 
-      // B. Vistorias baseadas no Status do Painel (Patrimônio)
+      // B. Vistorias baseadas no Status do Painel
       frotaGeral.forEach(vtr => {
         const statusVtr = (vtr.Status || "").toUpperCase().trim();
         const prefixo = vtr.Prefixo || vtr.prefixo;
@@ -105,13 +104,11 @@ const GarageiroDashboard = ({ onBack }) => {
         }
       });
 
-      // Filtro de segurança (removendo o que foi finalizado na sessão)
       const filtradas = listaFinal.filter(v => {
         const id = v.rowId || v.id_sistema || v.id_manutencao || v.prefixo;
         return !finalizadosLocal.includes(id);
       });
 
-      // SOM DE NOTIFICAÇÃO
       if (soundEnabled && filtradas.length > prevItemsCount.current) {
         audioRef.current.play().catch(e => console.log("Erro áudio:", e));
       }
@@ -128,19 +125,15 @@ const GarageiroDashboard = ({ onBack }) => {
   const finalizarConferencia = async () => {
     if (isSubmitting) return;
 
-    // Validação de Motorista
     const precisaMotorista = !["MANUTENCAO_AVULSA"].includes(selectedVtr.origem);
     if (precisaMotorista && !conf.motoristaConfirmado && !conf.novoMotoristaRE) {
       return alert("Selecione o motorista que está entregando a viatura.");
     }
 
-    // Validação de Óleo
-    const pendenciaOleo = selectedVtr.troca_oleo === "SIM";
-    if (pendenciaOleo && !conf.oleoConfirmado) {
+    if (selectedVtr.troca_oleo === "SIM" && !conf.oleoConfirmado) {
       return alert("Você deve confirmar visualmente a troca de óleo antes de prosseguir.");
     }
 
-    // Validação de Foto para Avarias
     if (conf.avaria && !fotoAvaria) {
       return alert("É obrigatório anexar uma foto para registrar a avaria.");
     }
@@ -196,7 +189,6 @@ const GarageiroDashboard = ({ onBack }) => {
     }
   };
 
-  // Funções Auxiliares
   const motoristasFiltrados = motoristas.filter(m => {
     const nome = (m.Nome || m.nome || "").toUpperCase();
     return !/ADMIN|PVSA|TEN|MAJ|CAP|ASP|SUB|ST/i.test(nome);
@@ -346,8 +338,8 @@ const GarageiroDashboard = ({ onBack }) => {
 
       {/* MODAL PRINCIPAL */}
       {showModal && selectedVtr && (
-        <div className="fixed inset-0 bg-slate-900/90 backdrop-blur-md z-50 flex items-center justify-center p-4 overflow-y-auto">
-          <div className="bg-white w-full max-w-lg rounded-[3rem] shadow-2xl overflow-hidden flex flex-col my-auto max-h-[95vh]">
+        <div className="fixed inset-0 bg-slate-900/90 backdrop-blur-md z-50 flex items-center justify-center p-4">
+          <div className="bg-white w-full max-w-lg rounded-[3rem] shadow-2xl overflow-hidden flex flex-col max-h-[90vh]">
             <div className="bg-slate-900 p-6 text-white flex justify-between items-center shrink-0">
               <div className="flex items-center gap-4">
                 <div className="w-12 h-12 bg-amber-500 rounded-2xl flex items-center justify-center text-slate-900 font-black text-xl">{(selectedVtr.prefixo || "").toString().slice(-2)}</div>
@@ -359,7 +351,7 @@ const GarageiroDashboard = ({ onBack }) => {
               <button onClick={() => setShowModal(false)} className="p-2 hover:bg-white/10 rounded-full transition-colors"><X size={24} /></button>
             </div>
 
-            <div className="p-6 space-y-6 overflow-y-auto bg-white">
+            <div className="p-6 space-y-6 overflow-y-auto">
               <div className="space-y-3">
                 <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-2">Identificação do Motorista</p>
                 <div className="bg-slate-50 p-4 rounded-3xl border-2 border-slate-100">
@@ -417,7 +409,7 @@ const GarageiroDashboard = ({ onBack }) => {
                     <label htmlFor="camera-input" className="block">
                       <div className={`bg-slate-800 border-2 border-dashed rounded-2xl p-6 text-center cursor-pointer ${fotoAvaria ? 'border-emerald-500' : 'border-slate-700'}`}>
                         {fotoAvaria ? (
-                          <img src={fotoAvaria} className="h-32 mx-auto rounded-xl" alt="Preview" />
+                          <img src={fotoAvaria} className="h-32 mx-auto rounded-xl object-cover" alt="Preview" />
                         ) : (
                           <p className="text-slate-500 font-black text-[10px] uppercase">Toque para tirar foto</p>
                         )}
@@ -432,7 +424,7 @@ const GarageiroDashboard = ({ onBack }) => {
               <button 
                 onClick={finalizarConferencia}
                 disabled={isSubmitting}
-                className={`w-full py-5 rounded-[2rem] font-black uppercase text-xs shadow-2xl transition-all ${isSubmitting ? 'bg-slate-200' : 'bg-slate-900 text-white hover:bg-emerald-600 active:scale-95'}`}
+                className={`w-full py-5 rounded-[2rem] font-black uppercase text-xs shadow-2xl transition-all mb-4 ${isSubmitting ? 'bg-slate-200 text-slate-400 cursor-not-allowed' : 'bg-slate-900 text-white hover:bg-emerald-600 active:scale-95'}`}
               >
                 {isSubmitting ? 'Gravando...' : 'Finalizar Validação'}
               </button>
@@ -446,7 +438,11 @@ const GarageiroDashboard = ({ onBack }) => {
         <div className="fixed inset-0 bg-black/95 z-[100] flex flex-col p-4" onClick={() => setViewingPhoto(null)}>
           <button className="self-end text-white p-4"><X size={32} /></button>
           <div className="flex-1 flex items-center justify-center p-4">
-            <img src={viewingPhoto.startsWith('http') ? viewingPhoto : `data:image/jpeg;base64,${viewingPhoto}`} className="max-w-full max-h-full object-contain rounded-2xl" alt="Evidência" />
+            <img 
+              src={viewingPhoto.startsWith('http') || viewingPhoto.startsWith('data:') ? viewingPhoto : `data:image/jpeg;base64,${viewingPhoto}`} 
+              className="max-w-full max-h-full object-contain rounded-2xl shadow-2xl" 
+              alt="Evidência" 
+            />
           </div>
         </div>
       )}
@@ -454,14 +450,16 @@ const GarageiroDashboard = ({ onBack }) => {
       {/* MODAL LOCK */}
       {showLockModal && (
         <div className="fixed inset-0 bg-slate-900/90 backdrop-blur-md z-[60] flex items-center justify-center p-4">
-          <div className="bg-white w-full max-w-sm rounded-[3rem] p-8">
+          <div className="bg-white w-full max-w-sm rounded-[3rem] p-8 shadow-2xl">
             <div className="flex flex-col items-center text-center space-y-6">
               <div className={`w-20 h-20 rounded-full flex items-center justify-center ${lockData.motivo === 'disponivel' ? 'bg-emerald-100 text-emerald-600' : 'bg-red-100 text-red-600'}`}>
                 {lockData.motivo === 'disponivel' ? <Unlock size={40} /> : <Lock size={40} />}
               </div>
               <h3 className="text-2xl font-black text-slate-800 uppercase">{lockData.motivo === 'disponivel' ? "Liberar VTR" : "Bloquear VTR"}</h3>
               <div className="flex flex-col w-full gap-3">
-                <button onClick={confirmarAlteracaoStatus} disabled={isSubmitting} className="w-full py-4 bg-slate-900 text-white rounded-2xl font-black uppercase text-xs">Confirmar</button>
+                <button onClick={confirmarAlteracaoStatus} disabled={isSubmitting} className="w-full py-4 bg-slate-900 text-white rounded-2xl font-black uppercase text-xs active:scale-95 transition-transform disabled:bg-slate-300">
+                  {isSubmitting ? 'Processando...' : 'Confirmar'}
+                </button>
                 <button onClick={() => setShowLockModal(false)} className="w-full py-4 bg-slate-100 text-slate-400 rounded-2xl font-black uppercase text-xs">Cancelar</button>
               </div>
             </div>
