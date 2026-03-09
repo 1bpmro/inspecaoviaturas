@@ -45,15 +45,14 @@ const GarageiroDashboard = ({ onBack }) => {
     } catch(e) { return 0; }
   };
 
-  // ISSO É O QUE VAI "FOFOCAR" O ERRO NO CONSOLE (F12)
-useEffect(() => {
-  if (viewingPhoto) {
-    console.log("%c[RASTREADOR] Dados da Foto:", "color: #fbbf24; font-weight: bold; background: #000; padding: 2px 5px;");
-    console.log("Início da string:", viewingPhoto.substring(0, 50));
-  }
-}, [viewingPhoto]);
+  useEffect(() => {
+    if (viewingPhoto) {
+      console.log("%c[RASTREADOR] Dados da Foto:", "color: #fbbf24; font-weight: bold; background: #000; padding: 2px 5px;");
+      console.log("Início da string:", viewingPhoto.substring(0, 50));
+    }
+  }, [viewingPhoto]);
 
-const fetchData = async () => {
+  const fetchData = async () => {
     setLoading(true);
     try {
       const [resVtr, resPend, resMot] = await Promise.all([
@@ -64,20 +63,20 @@ const fetchData = async () => {
       
       if (resVtr.status === 'success') setViaturas(resVtr.data);
       
-     if (resPend.status === 'success') {
-  // Filtra usando o ID Único (mais seguro) ou o rowId
-  const vistoriasFiltradas = resPend.data.filter(v => {
-    const idUnico = v.id_manutencao || v.id_sistema || v.rowId;
-    return !finalizadosLocal.includes(idUnico);
-  });
+      if (resPend.status === 'success') {
+        // Correção no Filtro: Garante que IDs de Vistorias e Óleo sejam processados
+        const vistoriasFiltradas = resPend.data.filter(v => {
+          const idUnico = v.id_manutencao || v.id_sistema || v.ID_SISTEMA || v.rowId || v.id;
+          return !finalizadosLocal.includes(idUnico);
+        });
 
-  if (soundEnabled && vistoriasFiltradas.length > prevItemsCount.current) {
-    audioRef.current.play().catch(() => {});
-  }
-  
-  prevItemsCount.current = vistoriasFiltradas.length;
-  setVistorias(vistoriasFiltradas);
-}
+        if (soundEnabled && vistoriasFiltradas.length > prevItemsCount.current) {
+          audioRef.current.play().catch(() => {});
+        }
+        
+        prevItemsCount.current = vistoriasFiltradas.length;
+        setVistorias(vistoriasFiltradas);
+      }
 
       if (resMot.status === 'success') setMotoristas(resMot.data);
     } catch (error) {
@@ -96,7 +95,6 @@ const fetchData = async () => {
   const finalizarConferencia = async () => {
     if (isSubmitting) return;
 
-    // Validações básicas
     if (selectedVtr.origem === "VISTORIA") {
       if (!conf.motoristaConfirmado && !conf.novoMotoristaRE) return alert("Selecione o motorista.");
     }
@@ -105,15 +103,15 @@ const fetchData = async () => {
     if (precisaValidarOleo && !conf.oleoConfirmado) return alert("Confirme a troca de óleo visualmente.");
 
     setIsSubmitting(true);
-    const rowIdParaRemover = selectedVtr.rowId;
+    const idParaRemover = selectedVtr.id_manutencao || selectedVtr.id_sistema || selectedVtr.ID_SISTEMA || selectedVtr.rowId || selectedVtr.id;
 
     try {
       const res = await gasApi.confirmarVistoriaGarageiro({
-  origem: selectedVtr.origem,
-  rowId: rowIdParaRemover, 
-  id_manutencao: selectedVtr.id_manutencao, // <--- ADICIONE ESTA LINHA IMPORTANTE
-  id_vistoria: selectedVtr.id_sistema || selectedVtr.ID_SISTEMA || selectedVtr.id,
-  status_fisico: conf.avaria ? 'AVARIADA' : 'OK',
+        origem: selectedVtr.origem,
+        rowId: selectedVtr.rowId, 
+        id_manutencao: selectedVtr.id_manutencao,
+        id_vistoria: selectedVtr.id_sistema || selectedVtr.ID_SISTEMA || selectedVtr.id,
+        status_fisico: conf.avaria ? 'AVARIADA' : 'OK',
         limpeza: `INT: ${conf.limpezaInterna ? 'C' : 'NC'} | EXT: ${conf.limpezaExterna ? 'C' : 'NC'}`,
         pertences: conf.pertences === 'SIM' ? `SIM: ${conf.detalhePertences}` : 'NÃO',
         obs_garageiro: conf.obs,
@@ -124,21 +122,17 @@ const fetchData = async () => {
         km_registro: selectedVtr.hodometro_oleo || selectedVtr.hodometro || selectedVtr.km 
       });
 
-if (res.status === 'success') {
-  // Use o id_manutencao se existir, senão o rowId
-  const idParaLog = selectedVtr.id_manutencao || rowIdParaRemover;
-  
-  setFinalizadosLocal(prev => [...prev, idParaLog]);
-  setVistorias(prev => prev.filter(v => (v.id_manutencao || v.rowId) !== idParaLog));
-  
-  setShowModal(false);
+      if (res.status === 'success') {
+        setFinalizadosLocal(prev => [...prev, idParaRemover]);
+        setVistorias(prev => prev.filter(v => (v.id_manutencao || v.id_sistema || v.ID_SISTEMA || v.rowId || v.id) !== idParaRemover));
+        
+        setShowModal(false);
         setConf({ 
           limpezaInterna: true, limpezaExterna: true, pertences: 'NÃO', 
           detalhePertences: '', motoristaConfirmado: true, novoMotoristaRE: '', 
           avaria: false, obs: '', oleoConfirmado: false 
         });
 
-        // 3. Aguarda um pouco para o Google processar a planilha antes de atualizar
         setTimeout(fetchData, 2000);
       } else {
         alert("Erro ao salvar: " + (res.message || "Tente novamente."));
@@ -165,8 +159,6 @@ if (res.status === 'success') {
       }
     } catch (e) { alert("Erro de comunicação."); } finally { setIsSubmitting(false); }
   };
-
-  
 
   return (
     <div className="min-h-screen bg-slate-100 flex flex-col">
@@ -221,7 +213,7 @@ if (res.status === 'success') {
                     <span className="text-3xl font-black text-slate-900 tracking-tighter">{vtr.prefixo_vtr || vtr.prefixo}</span>
                     <div className="text-right">
                       <span className={`${isOleoInstantaneo ? 'bg-amber-500 text-white' : 'bg-blue-100 text-blue-700'} px-3 py-1 rounded-full text-[9px] font-black uppercase`}>
-                        {isOleoInstantaneo ? 'ALERTA ÓLEO' : 'Pátio'}
+                        {isOleoInstantaneo ? 'ALERTA ÓLEO' : 'SAÍDA VTR'}
                       </span>
                       {espera !== null && <p className="text-[10px] font-black mt-1 text-slate-400">{espera} MIN</p>}
                     </div>
@@ -295,7 +287,7 @@ if (res.status === 'success') {
             <div className="bg-slate-900 p-6 text-white flex justify-between items-center">
               <div>
                 <h2 className="text-2xl font-black uppercase tracking-tighter">{selectedVtr.prefixo_vtr || selectedVtr.prefixo}</h2>
-                <p className="text-[10px] text-amber-500 font-black uppercase">Validação</p>
+                <p className="text-[10px] text-amber-500 font-black uppercase">Validação {selectedVtr.origem}</p>
               </div>
               <button onClick={() => setShowModal(false)} className="p-2 hover:bg-white/10 rounded-full"><X size={24} /></button>
             </div>
@@ -347,7 +339,7 @@ if (res.status === 'success') {
               ) : (
                 <div className="py-6 text-center space-y-3 bg-slate-50 rounded-3xl border-2 border-dashed border-slate-200">
                   <Wrench size={40} className="mx-auto text-slate-300" />
-                  <p className="text-xs font-bold text-slate-500 uppercase px-6">Manutenção Preventiva</p>
+                  <p className="text-xs font-bold text-slate-500 uppercase px-6">Manutenção Preventiva / Óleo</p>
                 </div>
               )}
 
@@ -363,20 +355,20 @@ if (res.status === 'success') {
         </div>
       )}
 
-      {/* VISUALIZADOR DE FOTO CORRIGIDO */}
+      {/* VISUALIZADOR DE FOTO */}
       {viewingPhoto && (
         <div className="fixed inset-0 bg-black/95 z-[100] flex flex-col p-4 animate-in fade-in duration-300">
           <button onClick={() => setViewingPhoto(null)} className="self-end text-white p-4 rounded-full"><X size={32} /></button>
           <div className="flex-1 flex items-center justify-center">
-          <img 
-  src={viewingPhoto.startsWith('http') ? viewingPhoto : (viewingPhoto.startsWith('data:') ? viewingPhoto : `data:image/jpeg;base64,${viewingPhoto}`)} 
-  className="max-w-full max-h-full object-contain rounded-2xl" 
-  alt="Evidência"
-  onError={(e) => { 
-    console.error("Erro ao carregar imagem:", viewingPhoto);
-    e.target.src = "https://placehold.co/600x400?text=Erro+no+Link+do+Drive"; 
-  }}
-/>
+            <img 
+              src={viewingPhoto.startsWith('http') ? viewingPhoto : (viewingPhoto.startsWith('data:') ? viewingPhoto : `data:image/jpeg;base64,${viewingPhoto}`)} 
+              className="max-w-full max-h-full object-contain rounded-2xl" 
+              alt="Evidência"
+              onError={(e) => { 
+                console.error("Erro ao carregar imagem:", viewingPhoto);
+                e.target.src = "https://placehold.co/600x400?text=Erro+no+Link+do+Drive"; 
+              }}
+            />
           </div>
         </div>
       )}
