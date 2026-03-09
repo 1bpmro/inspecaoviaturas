@@ -52,35 +52,68 @@ const GarageiroDashboard = ({ onBack }) => {
     }
   }, [viewingPhoto]);
 
-  const fetchData = async () => {
+ const fetchData = async () => {
     setLoading(true);
     try {
+      // 1. Busca as três fontes de dados simultaneamente
       const [resVtr, resPend, resMot] = await Promise.all([
         gasApi.getViaturas(), 
         gasApi.getVistoriasPendentes(),
         gasApi.getEfetivoCompleto()
       ]);
       
-      if (resVtr.status === 'success') setViaturas(resVtr.data);
-      
-      if (resPend.status === 'success') {
-        // Correção no Filtro: Garante que IDs de Vistorias e Óleo sejam processados
-        const vistoriasFiltradas = resPend.data.filter(v => {
-          const idUnico = v.id_manutencao || v.id_sistema || v.ID_SISTEMA || v.rowId || v.id;
-          return !finalizadosLocal.includes(idUnico);
-        });
-
-        if (soundEnabled && vistoriasFiltradas.length > prevItemsCount.current) {
-          audioRef.current.play().catch(() => {});
-        }
-        
-        prevItemsCount.current = vistoriasFiltradas.length;
-        setVistorias(vistoriasFiltradas);
+      let frotaGeral = [];
+      if (resVtr.status === 'success') {
+        frotaGeral = resVtr.data;
+        setViaturas(frotaGeral);
       }
 
       if (resMot.status === 'success') setMotoristas(resMot.data);
+
+      // 2. LÓGICA DE UNIFICAÇÃO: Criar a lista de conferências
+      if (resPend.status === 'success') {
+        // Começamos com o que já está na planilha de vistorias/manutenção
+        let listaFinal = [...resPend.data];
+
+        // 3. CRUZAMENTO: Varre a frota em busca de quem está "AGUARDANDO"
+        frotaGeral.forEach(vtr => {
+          const status = (vtr.Status || vtr.status || "").toUpperCase();
+          const prefixo = vtr.Prefixo || vtr.prefixo;
+
+          // Se na frota diz que está aguardando, mas não está na lista de pendentes...
+          if (status.includes("AGUARDANDO") || status.includes("PÁTIO") || status.includes("PATIO")) {
+            const jaExiste = listaFinal.some(p => (p.prefixo_vtr || p.prefixo) === prefixo);
+            
+            if (!jaExiste) {
+              // ...nós "puxamos" ela manualmente para a aba de conferência
+              listaFinal.push({
+                prefixo: prefixo,
+                prefixo_vtr: prefixo,
+                motorista_nome: vtr.Motorista || "S/ INF",
+                origem: "VISTORIA", 
+                timestamp: new Date().toISOString(),
+                rowId: vtr.rowId || prefixo // Identificador para sumir após conferir
+              });
+            }
+          }
+        });
+
+        // 4. FILTRO DE SEGURANÇA: Remove o que o garageiro acabou de finalizar nesta sessão
+        const filtradas = listaFinal.filter(v => {
+          const id = v.id_manutencao || v.id_sistema || v.rowId || v.prefixo;
+          return !finalizadosLocal.includes(id);
+        });
+
+        // Alerta sonoro se chegar algo novo
+        if (soundEnabled && filtradas.length > prevItemsCount.current) {
+          audioRef.current.play().catch(() => {});
+        }
+        
+        prevItemsCount.current = filtradas.length;
+        setVistorias(filtradas);
+      }
     } catch (error) {
-      console.error("Erro ao buscar dados:", error);
+      console.error("Erro crítico ao sincronizar dados:", error);
     } finally {
       setLoading(false);
     }
@@ -88,9 +121,10 @@ const GarageiroDashboard = ({ onBack }) => {
 
   useEffect(() => {
     fetchData();
+    // Atualiza a cada 30 segundos para manter a aba de conferências sincronizada com a frota
     const interval = setInterval(fetchData, 30000);
     return () => clearInterval(interval);
-  }, [soundEnabled]);
+  }, [soundEnabled, finalizadosLocal]); // Adicionado finalizadosLocal para reagir a conclusões
 
   const finalizarConferencia = async () => {
     if (isSubmitting) return;
