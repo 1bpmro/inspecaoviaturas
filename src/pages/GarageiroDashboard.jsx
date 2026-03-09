@@ -105,19 +105,23 @@ const GarageiroDashboard = ({ onBack }) => {
           if (prefixo && (status.includes("AGUARDANDO") || status.includes("PATIO"))) {
             const jaExiste = listaFinal.some(p => (p?.prefixo_vtr || p?.prefixo) === prefixo);
             if (!jaExiste) {
+              // GARANTINDO QUE O rowId NÃO SEJA NaN
+              const validRowId = vtr.rowId || vtr.ID || vtr.id || prefixo;
+              
               listaFinal.push({
                 prefixo: prefixo,
                 prefixo_vtr: prefixo,
                 motorista_nome: vtr.UltimoMotoristaNome || vtr.Motorista || "S/ INF",
                 origem: "VISTORIA", 
                 timestamp: new Date().toISOString(),
-                rowId: vtr.rowId || prefixo,
+                rowId: validRowId, 
                 troca_oleo: (vtr.Status === "TROCA DE ÓLEO" || vtr.oleo_pendente === "SIM") ? "SIM" : "NÃO"
               });
             }
           }
         });
 
+        // Filtragem para não mostrar o que já foi finalizado localmente
         const filtradas = listaFinal.filter(v => {
           if (!v) return false;
           const id = v.id_manutencao || v.id_sistema || v.rowId || v.prefixo;
@@ -138,17 +142,12 @@ const GarageiroDashboard = ({ onBack }) => {
     }
   };
 
-  useEffect(() => {
-    fetchData();
-    const interval = setInterval(fetchData, 30000);
-    return () => clearInterval(interval);
-  }, [soundEnabled, finalizadosLocal]);
-
   const finalizarConferencia = async () => {
     if (isSubmitting) return;
 
-    if (selectedVtr.origem === "VISTORIA") {
-      if (!conf.motoristaConfirmado && !conf.novoMotoristaRE) return alert("Selecione o motorista que está entregando a VTR.");
+    // Validações de segurança
+    if (selectedVtr.origem === "VISTORIA" && !conf.motoristaConfirmado && !conf.novoMotoristaRE) {
+      return alert("Selecione o motorista que está entregando a VTR.");
     }
     
     const precisaValidarOleo = selectedVtr.troca_oleo === "SIM" || selectedVtr.origem === "MANUTENCAO_AVULSA";
@@ -156,14 +155,16 @@ const GarageiroDashboard = ({ onBack }) => {
     if (conf.avaria && !fotoAvaria) return alert("É obrigatório anexar uma foto para registrar a avaria.");
 
     setIsSubmitting(true);
-    const idParaRemover = selectedVtr.id_manutencao || selectedVtr.id_sistema || selectedVtr.ID_SISTEMA || selectedVtr.rowId || selectedVtr.id;
+    
+    // Identificador robusto para remover da lista local após sucesso
+    const idParaRemover = selectedVtr.id_manutencao || selectedVtr.id_sistema || selectedVtr.rowId || selectedVtr.prefixo;
 
     try {
       const res = await gasApi.confirmarVistoriaGarageiro({
         origem: selectedVtr.origem,
-        rowId: selectedVtr.rowId, 
+        rowId: selectedVtr.rowId || selectedVtr.ID || selectedVtr.id, // Fallback duplo
         id_manutencao: selectedVtr.id_manutencao,
-        id_vistoria: selectedVtr.id_sistema || selectedVtr.ID_SISTEMA || selectedVtr.id,
+        id_vistoria: selectedVtr.id_sistema || selectedVtr.id,
         status_fisico: conf.avaria ? 'AVARIADA' : 'OK',
         limpeza: `INT: ${conf.limpezaInterna ? 'C' : 'NC'} | EXT: ${conf.limpezaExterna ? 'C' : 'NC'}`,
         pertences: conf.pertences === 'SIM' ? `SIM: ${conf.detalhePertences}` : 'NÃO',
@@ -178,6 +179,7 @@ const GarageiroDashboard = ({ onBack }) => {
       if (res.status === 'success') {
         setFinalizadosLocal(prev => [...prev, idParaRemover]);
         setShowModal(false);
+        // Reset do formulário...
         setConf({ 
           limpezaInterna: true, limpezaExterna: true, pertences: 'NÃO', 
           detalhePertences: '', motoristaConfirmado: true, novoMotoristaRE: '', 
@@ -189,7 +191,7 @@ const GarageiroDashboard = ({ onBack }) => {
         alert("Erro ao salvar: " + (res.message || "Tente novamente."));
       }
     } catch (e) {
-      alert("Erro de conexão.");
+      alert("Erro de conexão com o servidor.");
     } finally {
       setIsSubmitting(false);
     }
