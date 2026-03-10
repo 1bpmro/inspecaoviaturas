@@ -139,7 +139,18 @@ const Vistoria = ({ onBack, frotaInicial = [] }) => {
     const itens = tipoVistoria === 'ENTRADA' ? ITENS_ENTRADA : ITENS_SAIDA;
     const novoChecklist = itens.reduce((acc, item) => ({ ...acc, [item]: 'OK' }), {});
     setChecklist(novoChecklist);
-    setFormData(prev => ({ ...prev, termo_aceite: false, prefixo_vtr: '' }));
+    setFormData(prev => ({ 
+      ...prev, 
+      termo_aceite: false, 
+      prefixo_vtr: '',
+      hodometro: '',
+      videomonitoramento: '',
+      tipo_servico: '',
+      detalhe_servico: '',
+      motorista_re: '', motorista_nome: '',
+      comandante_re: '', comandante_nome: '',
+      patrulheiro_re: '', patrulheiro_nome: ''
+    }));
   }, [tipoVistoria]);
 
   const viaturasFiltradas = useMemo(() => {
@@ -183,33 +194,63 @@ const Vistoria = ({ onBack, frotaInicial = [] }) => {
     sincronizar();
   }, []);
 
+  // FUNÇÃO AUXILIAR PARA BUSCAR MILITAR PELO RE (ACEITA 1000 OU SEM)
+  const buscarMilitar = (re) => {
+    const reLimpo = toStr(re).replace(/\D/g, '');
+    if (reLimpo.length < 4) return null;
+    return efetivoLocal.find(m => {
+        const mRE = toStr(m.re);
+        return mRE === reLimpo || mRE === `1000${reLimpo}` || `1000${mRE}` === reLimpo;
+    });
+  };
+
   const handleVtrChange = (prefixo) => {
     const vtr = viaturas.find(v => toStr(v.Prefixo || v.PREFIXO) === toStr(prefixo));
     if (!vtr) return;
-    setFormData(prev => ({ 
-      ...prev, 
-      prefixo_vtr: toStr(vtr.Prefixo || vtr.PREFIXO), 
-      placa_vtr: toStr(vtr.Placa || vtr.PLACA) 
-    }));
+
+    // Se for SAÍDA, puxar dados da vtr (que refletem a última entrada)
+    if (tipoVistoria === 'SAÍDA') {
+      const mot = buscarMilitar(vtr.Motorista_RE || vtr.MOTORISTA_RE);
+      const cmd = buscarMilitar(vtr.Comandante_RE || vtr.COMANDANTE_RE);
+      const ptr = buscarMilitar(vtr.Patrulheiro_RE || vtr.PATRULHEIRO_RE);
+
+      setFormData(prev => ({ 
+        ...prev, 
+        prefixo_vtr: toStr(vtr.Prefixo || vtr.PREFIXO), 
+        placa_vtr: toStr(vtr.Placa || vtr.PLACA),
+        hodometro: toStr(vtr.KM_Atual || vtr.KM_ATUAL),
+        videomonitoramento: toStr(vtr.Video || vtr.VIDEO),
+        tipo_servico: toStr(vtr.Tipo_Servico || vtr.TIPO_SERVICO),
+        detalhe_servico: toStr(vtr.Detalhe_Servico || vtr.DETALHE_SERVICO),
+        motorista_re: toStr(vtr.Motorista_RE || vtr.MOTORISTA_RE),
+        motorista_nome: mot ? `${mot.patente} ${mot.nome}`.toUpperCase() : '',
+        comandante_re: toStr(vtr.Comandante_RE || vtr.COMANDANTE_RE),
+        comandante_nome: cmd ? `${cmd.patente} ${cmd.nome}`.toUpperCase() : '',
+        patrulheiro_re: toStr(vtr.Patrulheiro_RE || vtr.PATRULHEIRO_RE),
+        patrulheiro_nome: ptr ? `${ptr.patente} ${ptr.nome}`.toUpperCase() : '',
+      }));
+    } else {
+      setFormData(prev => ({ 
+        ...prev, 
+        prefixo_vtr: toStr(vtr.Prefixo || vtr.PREFIXO), 
+        placa_vtr: toStr(vtr.Placa || vtr.PLACA) 
+      }));
+    }
   };
 
   const handleMatriculaChange = (valor, cargo) => {
     let reLimpo = toStr(valor).replace(/\D/g, '');
     setFormData(prev => ({ ...prev, [`${cargo}_re`]: reLimpo }));
-    if (reLimpo.length >= 4) {
-      const militar = efetivoLocal.find(m => {
-          const mRE = toStr(m.re);
-          return mRE === reLimpo || mRE === `1000${reLimpo}` || `1000${mRE}` === reLimpo;
-      });
-      if (militar) {
-        setFormData(prev => ({
-          ...prev,
-          [`${cargo}_nome`]: `${militar.patente} ${militar.nome}`.toUpperCase(),
-          [`${cargo}_unidade`]: militar.unidade || '1º BPM'
-        }));
-      } else {
-        setFormData(prev => ({ ...prev, [`${cargo}_nome`]: '' }));
-      }
+    
+    const militar = buscarMilitar(reLimpo);
+    if (militar) {
+      setFormData(prev => ({
+        ...prev,
+        [`${cargo}_nome`]: `${militar.patente} ${militar.nome}`.toUpperCase(),
+        [`${cargo}_unidade`]: militar.unidade || '1º BPM'
+      }));
+    } else {
+      setFormData(prev => ({ ...prev, [`${cargo}_nome`]: '' }));
     }
   };
 
@@ -342,8 +383,6 @@ const Vistoria = ({ onBack, frotaInicial = [] }) => {
       ) : (
       
         <div className="space-y-4 animate-in slide-in-from-right-4">
-        {/* --- PASSO 2: CHECKLIST E FOTOS DE AVARIAS --- */}
-  
   {/* LISTA DE ITENS */}
   <div className="grid gap-2">
     {(tipoVistoria === 'ENTRADA' ? ITENS_ENTRADA : ITENS_SAIDA).map(item => (
@@ -371,7 +410,7 @@ const Vistoria = ({ onBack, frotaInicial = [] }) => {
     ))}
   </div>
 
-  {/* SEÇÃO DE FOTOS (SÓ APARECE SE TIVER FALHA) */}
+  {/* SEÇÃO DE FOTOS */}
   {temAvaria && (
     <div className="bg-white dark:bg-slate-900 rounded-[2.5rem] p-6 border-2 border-red-500 shadow-lg space-y-4">
       <div className="text-center">
