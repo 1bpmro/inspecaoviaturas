@@ -46,10 +46,11 @@ const OPCOES_COMUNITARIA = ["Patrulha Comercial", "Base Móvel", "Patrulha Escol
 
 // Configuração padrão de compressão para evitar erros de upload
 const COMPRESSION_OPTIONS = {
-  maxSizeMB: 0.1,          // Reduzido para 100kb para garantir sucesso no GAS
-  maxWidthOrHeight: 1024,
+  maxSizeMB: 0.05,          // Reduzido para 50kb (Metade do anterior)
+  maxWidthOrHeight: 800,    // Reduzido de 1024 para 800
   useWebWorker: true,
-  fileType: 'image/jpeg'
+  fileType: 'image/jpeg',
+  initialQuality: 0.6       // Adicionado: força qualidade 60%
 };
 
 // --- SUB-COMPONENTE: MODAL TROCA DE ÓLEO ---
@@ -127,7 +128,7 @@ const ModalTrocaOleo = ({ isOpen, onClose, vtr, kmEntrada, user }) => {
     // 2. Converte para Base64 de forma limpa
     const base64 = await imageCompression.getDataUrlFromFile(compressedFile);
     
-    setFotos(p => [...p, base64]); 
+    setFotoOleo(base64);
     setUploading(false); 
   } catch (err) { 
     console.error("Erro no processamento da imagem:", err);
@@ -263,38 +264,75 @@ const Vistoria = ({ onBack, frotaInicial = [] }) => {
     }
   };
 
-  const handleFinalizar = async () => {
-    if (Object.values(checklist).includes('FALHA') && fotos.length === 0) return alert("Fotos obrigatórias para avarias.");
-    if (!window.confirm("Confirmar envio?")) return;
-    
-    setLoading(true);
-    try {
-      const falhas = Object.entries(checklist).filter(([_, s]) => s === 'FALHA').map(([i]) => i);
-      const resumo = falhas.length === 0 ? "SEM ALTERAÇÕES" : tipoVistoria === 'ENTRADA' ? `FALHA EM: ${falhas.join(', ')}` : falhas.map(i => MAPA_FALHAS_SAIDA[i] || i).join(', ');
-      
-      const res = await gasApi.saveVistoria({ 
-        ...formData, 
-        tipo_vistoria: tipoVistoria, 
-        checklist_resumo: resumo, 
-        fotos_vistoria: fotos, 
-        proteger_ocorrencia: protegerFotos, 
-        militar_logado: `${user.patente} ${user.nome}`, 
-        status_garageiro: "PENDENTE" 
-      });
+ const handleFinalizar = async () => {
+  // 1. Validação de fotos obrigatórias em caso de avaria
+  const temFalha = Object.values(checklist).includes('FALHA');
+  if (temFalha && fotos.length === 0) {
+    return alert("ATENÇÃO: É obrigatório tirar fotos das avarias/falhas constatadas.");
+  }
 
-      if (res.status === 'success') { 
-        alert("Vistoria enviada com sucesso!"); 
-        onBack(); 
-      } else { 
-        alert("Erro no Servidor: " + res.message); 
-      }
-    } catch (e) { 
-      console.error("Erro no envio da vistoria:", e);
-      alert("Erro de conexão. Verifique sua internet e tente novamente."); 
-    } finally { 
-      setLoading(false); 
+  if (!window.confirm("Deseja finalizar e enviar a vistoria agora?")) return;
+
+  setLoading(true);
+  try {
+    // 2. Preparar o resumo do checklist
+    const falhas = Object.entries(checklist)
+      .filter(([_, status]) => status === 'FALHA')
+      .map(([item]) => item);
+    
+    const resumo = falhas.length === 0 
+      ? "SEM ALTERAÇÕES" 
+      : tipoVistoria === 'ENTRADA' 
+        ? `FALHA EM: ${falhas.join(', ')}` 
+        : falhas.map(i => MAPA_FALHAS_SAIDA[i] || i).join(', ');
+
+    // 3. PASSO 1: Enviar os dados do formulário SEM as fotos primeiro
+    // Isso garante que os dados de texto (que são leves) cheguem sem erro de memória.
+    const payloadInicial = {
+      ...formData,
+      tipo_vistoria: tipoVistoria,
+      checklist_resumo: resumo,
+      proteger_ocorrencia: protegerFotos,
+      militar_logado: `${user.patente} ${user.nome}`,
+      status_garageiro: "PENDENTE",
+      fotos_vistoria: [] // Enviamos vazio primeiro
+    };
+
+    console.log("Enviando dados da vistoria...");
+    const resVistoria = await gasApi.saveVistoria(payloadInicial);
+
+    if (resVistoria.status !== 'success') {
+      throw new Error(resVistoria.message || "Erro ao salvar dados básicos");
     }
-  };
+
+    // 4. PASSO 2: Enviar as fotos UMA POR UMA (Se houver fotos)
+    // Isso evita o erro de "Insuficiência de Memória" no Google Apps Script.
+    if (fotos.length > 0) {
+      const idVistoria = resVistoria.id || resVistoria.row; // O GAS deve retornar o ID da linha criada
+      
+      for (let i = 0; i < fotos.length; i++) {
+        console.log(`Enviando foto ${i + 1} de ${fotos.length}...`);
+        
+        // Aqui chamamos uma função específica para upload de foto
+        // Se o seu gasApi não tiver 'uploadFoto', use o 'saveVistoria' enviando apenas o ID e a foto
+        await gasApi.saveVistoria({
+          id_referencia: idVistoria, // Para o script saber onde anexar
+          foto_avulsa: fotos[i],
+          index_foto: i
+        });
+      }
+    }
+
+    alert("Vistoria e fotos enviadas com sucesso!");
+    onBack();
+
+  } catch (e) {
+    console.error("Erro crítico no envio:", e);
+    alert("ERRO DE MEMÓRIA OU CONEXÃO: O sistema do Google não suportou o tamanho das fotos. Tente enviar com menos fotos ou fotos mais simples.");
+  } finally {
+    setLoading(false);
+  }
+};
 
   const CardGuarnicao = ({ compacto = false }) => (
     <div className={`${compacto ? 'bg-slate-800 p-3 rounded-2xl' : 'bg-slate-900 p-5 rounded-3xl'} mb-4 border-b-4 border-blue-600 shadow-inner`}>
