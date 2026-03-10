@@ -12,15 +12,12 @@ ReactDOM.createRoot(document.getElementById('root')).render(
   </React.StrictMode>,
 )
 
-// REGISTRO DO SERVICE WORKER (Filtro para PWA)
-// Este bloco faz com que o Chrome/Safari do celular reconheçam o site como App instalável.
+// No seu src/main.jsx, mantenha o registro assim:
 if ('serviceWorker' in navigator) {
   window.addEventListener('load', () => {
-    // O navegador busca o arquivo 'sw.js' na raiz pública (pasta /public)
-    navigator.serviceWorker.register('/sw.js').then(registration => {
-      console.log('SW registrado com sucesso:', registration.scope);
-    }).catch(error => {
-      console.log('Falha ao registrar o SW:', error);
-    });
+    // O Vite mapeia public/sw.js para /sw.js no build final
+    navigator.serviceWorker.register('/sw.js') 
+      .then(reg => console.log('SW ok:', reg.scope))
+      .catch(err => console.log('SW erro:', err));
   });
 }
