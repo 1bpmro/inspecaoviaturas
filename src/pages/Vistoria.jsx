@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
-import { useAuth } from '../lib/AuthContext';
+import { useAuth } from '../lib/AuthContext'; 
 import { gasApi } from '../api/gasClient';
 import imageCompression from 'browser-image-compression';
 import { 
