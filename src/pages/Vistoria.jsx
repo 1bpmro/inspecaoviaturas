@@ -7,6 +7,8 @@ import {
   Users, Lock, Unlock, Car, Shield, Wrench 
 } from 'lucide-react';
 
+
+
 // --- CONFIGURAÇÃO E CONSTANTES ---
 const GRUPOS_ENTRADA = [
   {
@@ -154,6 +156,7 @@ const ModalTrocaOleo = ({ isOpen, onClose, vtr, kmEntrada, user }) => {
 const Vistoria = ({ onBack, frotaInicial = [] }) => { 
   const { user } = useAuth();
   const [step, setStep] = useState(1);
+  const [uploadStatus, setUploadStatus] = useState("")
   const [loading, setLoading] = useState(false);
   const [uploading, setUploading] = useState(false);
   const [viaturas, setViaturas] = useState(frotaInicial);
@@ -264,7 +267,7 @@ const Vistoria = ({ onBack, frotaInicial = [] }) => {
     }
   };
 
- const handleFinalizar = async () => {
+const handleFinalizar = async () => {
   // 1. Validação de fotos obrigatórias em caso de avaria
   const temFalha = Object.values(checklist).includes('FALHA');
   if (temFalha && fotos.length === 0) {
@@ -274,6 +277,8 @@ const Vistoria = ({ onBack, frotaInicial = [] }) => {
   if (!window.confirm("Deseja finalizar e enviar a vistoria agora?")) return;
 
   setLoading(true);
+  setUploadStatus("Iniciando envio...");
+
   try {
     // 2. Preparar o resumo do checklist
     const falhas = Object.entries(checklist)
@@ -286,8 +291,8 @@ const Vistoria = ({ onBack, frotaInicial = [] }) => {
         ? `FALHA EM: ${falhas.join(', ')}` 
         : falhas.map(i => MAPA_FALHAS_SAIDA[i] || i).join(', ');
 
-    // 3. PASSO 1: Enviar os dados do formulário SEM as fotos primeiro
-    // Isso garante que os dados de texto (que são leves) cheguem sem erro de memória.
+    // 3. PASSO 1: Enviar os dados do formulário (sem fotos)
+    setUploadStatus("Enviando dados técnicos...");
     const payloadInicial = {
       ...formData,
       tipo_vistoria: tipoVistoria,
@@ -295,42 +300,43 @@ const Vistoria = ({ onBack, frotaInicial = [] }) => {
       proteger_ocorrencia: protegerFotos,
       militar_logado: `${user.patente} ${user.nome}`,
       status_garageiro: "PENDENTE",
-      fotos_vistoria: [] // Enviamos vazio primeiro
+      fotos_vistoria: [] 
     };
 
-    console.log("Enviando dados da vistoria...");
     const resVistoria = await gasApi.saveVistoria(payloadInicial);
 
     if (resVistoria.status !== 'success') {
       throw new Error(resVistoria.message || "Erro ao salvar dados básicos");
     }
 
-    // 4. PASSO 2: Enviar as fotos UMA POR UMA (Se houver fotos)
-    // Isso evita o erro de "Insuficiência de Memória" no Google Apps Script.
+    // 4. PASSO 2: Enviar as fotos UMA POR UMA com status visual
     if (fotos.length > 0) {
-      const idVistoria = resVistoria.id || resVistoria.row; // O GAS deve retornar o ID da linha criada
+      const idVistoria = resVistoria.id; 
       
       for (let i = 0; i < fotos.length; i++) {
-        console.log(`Enviando foto ${i + 1} de ${fotos.length}...`);
+        setUploadStatus(`Enviando foto ${i + 1} de ${fotos.length}...`);
         
-        // Aqui chamamos uma função específica para upload de foto
-        // Se o seu gasApi não tiver 'uploadFoto', use o 'saveVistoria' enviando apenas o ID e a foto
-        await gasApi.saveVistoria({
-          id_referencia: idVistoria, // Para o script saber onde anexar
-          foto_avulsa: fotos[i],
-          index_foto: i
+        const resFoto = await gasApi.saveVistoria({
+          id_referencia: idVistoria,
+          foto_avulsa: fotos[i]
         });
+
+        if (resFoto.status !== 'success') {
+          console.warn(`Falha no envio da foto ${i+1}, tentando continuar...`);
+        }
       }
     }
 
+    setUploadStatus("Concluído!");
     alert("Vistoria e fotos enviadas com sucesso!");
     onBack();
 
   } catch (e) {
     console.error("Erro crítico no envio:", e);
-    alert("ERRO DE MEMÓRIA OU CONEXÃO: O sistema do Google não suportou o tamanho das fotos. Tente enviar com menos fotos ou fotos mais simples.");
+    alert("ERRO NO ENVIO: O servidor do Google demorou a responder ou a conexão falhou.");
   } finally {
     setLoading(false);
+    setUploadStatus("");
   }
 };
 
@@ -526,9 +532,20 @@ const Vistoria = ({ onBack, frotaInicial = [] }) => {
 
             <div className="flex gap-2">
               <button onClick={() => setStep(1)} className="flex-1 bg-white p-5 rounded-2xl font-black border-2 border-slate-200 uppercase text-xs">Voltar</button>
-              <button onClick={handleFinalizar} disabled={!formData.termo_aceite || loading || (Object.values(checklist).includes('FALHA') && fotos.length === 0)} className="btn-tatico flex-[2] disabled:opacity-50 uppercase">
-                {loading ? <Loader2 className="animate-spin mx-auto"/> : "Finalizar Envio"}
-              </button>
+              <button 
+  onClick={handleFinalizar} 
+  disabled={!formData.termo_aceite || loading || (Object.values(checklist).includes('FALHA') && fotos.length === 0)} 
+  className="btn-tatico flex-[2] disabled:opacity-50 uppercase relative overflow-hidden"
+>
+  {loading ? (
+    <div className="flex flex-col items-center">
+      <Loader2 className="animate-spin mb-1" size={18} />
+      <span className="text-[9px] font-black">{uploadStatus}</span>
+    </div>
+  ) : (
+    "Finalizar Envio"
+  )}
+</button>
             </div>
           </div>
         )}
