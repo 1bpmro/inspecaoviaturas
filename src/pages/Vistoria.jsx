@@ -274,21 +274,31 @@ const handleMatriculaChange = (valor, cargo) => {
     );
     
     if (militar) {
-      const patenteRaw = toStr(militar.patente).trim();
-      const nomeRaw = toStr(militar.nome).trim();
-
-      // CORREÇÃO: Verifica se o nome já começa com a patente (ignorando maiúsculas/minúsculas)
-      // Se o nome já começa com a patente, usa apenas o nome. Se não, concatena.
-      const nomeJaTemPatente = nomeRaw.toUpperCase().startsWith(patenteRaw.toUpperCase());
+      // 1. Pegamos o nome original do banco
+      let nomeFinal = toStr(militar.nome).trim().toUpperCase();
       
-      const nomeFinal = nomeJaTemPatente 
-        ? nomeRaw 
-        : `${patenteRaw} ${nomeRaw}`;
+      // 2. Lista de patentes para remover do início do nome (se existirem)
+      // Isso evita que "2º SGT PM DIONE" vire "2º SGT PM 2º SGT PM DIONE"
+      const patentesParaRemover = [
+        "2º SGT PM", "1º SGT PM", "SGT PM", "SUB TEN PM", "ST PM", 
+        "AL SGT PM", "CB PM", "SD PM", "MAJ PM", "CAP PM", "TEN PM",
+        "TEN CEL PM"
+      ];
+
+      // Remove a patente do início da string do nome, caso ela esteja lá
+      patentesParaRemover.forEach(patente => {
+        if (nomeFinal.startsWith(patente)) {
+          nomeFinal = nomeFinal.replace(patente, "").trim();
+        }
+      });
 
       setFormData(prev => ({
         ...prev,
         [`${cargo}_re`]: toStr(militar.re),
-        [`${cargo}_nome`]: nomeFinal.toUpperCase().trim(),
+        // Aqui você decide: 
+        // Se quiser APENAS o nome: use nomeFinal
+        // Se quiser Patente + Nome sem repetir: use `${toStr(militar.patente)} ${nomeFinal}`
+        [`${cargo}_nome`]: nomeFinal.trim(), 
         [`${cargo}_unidade`]: militar.unidade || '1º BPM'
       }));
       setReNaoEncontrado(prev => ({ ...prev, [cargo]: false }));
