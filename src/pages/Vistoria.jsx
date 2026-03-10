@@ -49,6 +49,7 @@ const COMPRESSION_OPTIONS = {
   maxSizeMB: 0.1,          // Reduzido para 100kb para garantir sucesso no GAS
   maxWidthOrHeight: 1024,
   useWebWorker: true
+  fileType: 'image/jpeg'
 };
 
 // --- SUB-COMPONENTE: MODAL TROCA DE ÓLEO ---
@@ -115,20 +116,25 @@ const ModalTrocaOleo = ({ isOpen, onClose, vtr, kmEntrada, user }) => {
                   <span className="text-[10px] font-black text-slate-500 uppercase">Foto da Etiqueta / Recibo</span>
                 </>
               )}
-              <input type="file" accept="image/*" capture="environment" className="hidden" onChange={async (e) => {
-                const file = e.target.files[0]; if (!file) return;
-                setUploading(true);
-                try {
-                  const compressed = await imageCompression(file, COMPRESSION_OPTIONS);
-                  const reader = new FileReader();
-                  reader.readAsDataURL(compressed);
-                  reader.onloadend = () => { setFotoOleo(reader.result); setUploading(false); };
-                } catch (err) { 
-                  console.error("Erro no upload da foto de óleo:", err);
-                  alert("Erro ao processar imagem.");
-                  setUploading(false); 
-                }
-              }} />
+         <input type="file" accept="image/*" capture="environment" className="hidden" onChange={async (e) => {
+  const file = e.target.files[0]; 
+  if (!file) return;
+  setUploading(true);
+  try {
+    // 1. Comprime o arquivo e força JPEG
+    const compressedFile = await imageCompression(file, COMPRESSION_OPTIONS);
+    
+    // 2. Converte para Base64 de forma limpa
+    const base64 = await imageCompression.getDataUrlFromFile(compressedFile);
+    
+    setFotos(p => [...p, base64]); 
+    setUploading(false); 
+  } catch (err) { 
+    console.error("Erro no processamento da imagem:", err);
+    alert("Erro ao processar foto. Tente novamente.");
+    setUploading(false); 
+  }
+}} />
             </label>
           )}
         </div>
