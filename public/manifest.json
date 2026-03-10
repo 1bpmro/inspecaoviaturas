@@ -1,6 +1,6 @@
 {
-  "short_name": "DERSO 1BPM",
-  "name": "DERSO - Vistoria de Viaturas",
+  "short_name": "VISTORIA 1BPM",
+  "name": "BATALHÃO RONDON - Vistoria de Viaturas",
   "icons": [
     {
       "src": "icon-512.png", // <--- Caminho direto, sem subpasta
