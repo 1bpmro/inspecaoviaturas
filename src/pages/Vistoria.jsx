@@ -44,6 +44,13 @@ const ITENS_SAIDA = Object.keys(MAPA_FALHAS_SAIDA);
 const TIPOS_SERVICO = ["Patrulhamento Ordinário", "Operação", "Força Tática", "Patrulha Comunitária", "Patrulhamento Rural", "Outro"];
 const OPCOES_COMUNITARIA = ["Patrulha Comercial", "Base Móvel", "Patrulha Escolar"];
 
+// Configuração padrão de compressão para evitar erros de upload
+const COMPRESSION_OPTIONS = {
+  maxSizeMB: 0.1,          // Reduzido para 100kb para garantir sucesso no GAS
+  maxWidthOrHeight: 1024,
+  useWebWorker: true
+};
+
 // --- SUB-COMPONENTE: MODAL TROCA DE ÓLEO ---
 const ModalTrocaOleo = ({ isOpen, onClose, vtr, kmEntrada, user }) => {
   const [loading, setLoading] = useState(false);
@@ -112,11 +119,15 @@ const ModalTrocaOleo = ({ isOpen, onClose, vtr, kmEntrada, user }) => {
                 const file = e.target.files[0]; if (!file) return;
                 setUploading(true);
                 try {
-                  const compressed = await imageCompression(file, { maxSizeMB: 0.2, maxWidthOrHeight: 1024 });
+                  const compressed = await imageCompression(file, COMPRESSION_OPTIONS);
                   const reader = new FileReader();
                   reader.readAsDataURL(compressed);
                   reader.onloadend = () => { setFotoOleo(reader.result); setUploading(false); };
-                } catch (err) { setUploading(false); }
+                } catch (err) { 
+                  console.error("Erro no upload da foto de óleo:", err);
+                  alert("Erro ao processar imagem.");
+                  setUploading(false); 
+                }
               }} />
             </label>
           )}
@@ -163,13 +174,10 @@ const Vistoria = ({ onBack, frotaInicial = [] }) => {
   const vtrSelecionada = useMemo(() => 
     viaturas.find(v => toStr(v.Prefixo || v.PREFIXO) === toStr(formData.prefixo_vtr)), [formData.prefixo_vtr, viaturas, toStr]);
 
-  // CORREÇÃO: Lógica de cálculo de troca de óleo melhorada
   const precisaTrocaOleo = useMemo(() => {
     if (!vtrSelecionada || tipoVistoria !== 'ENTRADA') return false;
     const kmTroca = Number(vtrSelecionada.ProximaTrocaOleo || vtrSelecionada.PROXIMA_TROCA || vtrSelecionada.PROXIMA_TROCA_OLEO) || 0;
     const kmAtual = Number(formData.hodometro) || 0;
-    
-    // Só ativa se o KM atual for válido e estiver a menos de 500km do limite ou já passou
     return kmAtual > 0 && kmTroca > 0 && (kmTroca - kmAtual <= 500);
   }, [vtrSelecionada, formData.hodometro, tipoVistoria]);
 
@@ -252,13 +260,34 @@ const Vistoria = ({ onBack, frotaInicial = [] }) => {
   const handleFinalizar = async () => {
     if (Object.values(checklist).includes('FALHA') && fotos.length === 0) return alert("Fotos obrigatórias para avarias.");
     if (!window.confirm("Confirmar envio?")) return;
+    
     setLoading(true);
     try {
       const falhas = Object.entries(checklist).filter(([_, s]) => s === 'FALHA').map(([i]) => i);
       const resumo = falhas.length === 0 ? "SEM ALTERAÇÕES" : tipoVistoria === 'ENTRADA' ? `FALHA EM: ${falhas.join(', ')}` : falhas.map(i => MAPA_FALHAS_SAIDA[i] || i).join(', ');
-      const res = await gasApi.saveVistoria({ ...formData, tipo_vistoria: tipoVistoria, checklist_resumo: resumo, fotos_vistoria: fotos, proteger_ocorrencia: protegerFotos, militar_logado: `${user.patente} ${user.nome}`, status_garageiro: "PENDENTE" });
-      if (res.status === 'success') { alert("Vistoria enviada!"); onBack(); } else { alert("Erro: " + res.message); }
-    } catch (e) { alert("Erro de conexão."); } finally { setLoading(false); }
+      
+      const res = await gasApi.saveVistoria({ 
+        ...formData, 
+        tipo_vistoria: tipoVistoria, 
+        checklist_resumo: resumo, 
+        fotos_vistoria: fotos, 
+        proteger_ocorrencia: protegerFotos, 
+        militar_logado: `${user.patente} ${user.nome}`, 
+        status_garageiro: "PENDENTE" 
+      });
+
+      if (res.status === 'success') { 
+        alert("Vistoria enviada com sucesso!"); 
+        onBack(); 
+      } else { 
+        alert("Erro no Servidor: " + res.message); 
+      }
+    } catch (e) { 
+      console.error("Erro no envio da vistoria:", e);
+      alert("Erro de conexão. Verifique sua internet e tente novamente."); 
+    } finally { 
+      setLoading(false); 
+    }
   };
 
   const CardGuarnicao = ({ compacto = false }) => (
@@ -308,7 +337,6 @@ const Vistoria = ({ onBack, frotaInicial = [] }) => {
               <div className="grid grid-cols-2 gap-3">
                 <select className="vtr-input !py-4" value={formData.prefixo_vtr} onChange={(e) => handleVtrChange(e.target.value)}>
                   <option value="">SELECIONE A VTR</option>
-                  {/* CORREÇÃO: Filtro por status DISPONÍVEL na entrada */}
                   {(tipoVistoria === 'ENTRADA' 
                     ? viaturas.filter(v => String(v.Status || v.STATUS).toUpperCase() === 'DISPONÍVEL') 
                     : viaturas.filter(v => String(v.Status || v.STATUS).toUpperCase() === 'EM SERVIÇO')
@@ -410,7 +438,7 @@ const Vistoria = ({ onBack, frotaInicial = [] }) => {
             </div>
 
             <div className={`p-6 rounded-[2.5rem] border-2 bg-white ${Object.values(checklist).includes('FALHA') && fotos.length === 0 ? 'border-red-500' : 'border-slate-200'}`}>
-              <p className="text-[9px] font-black text-slate-400 uppercase mb-3 text-center">Fotos da Vistoria</p>
+              <p className="text-[9px] font-black text-slate-400 uppercase mb-3 text-center">Fotos da Vistoria (Máx 4)</p>
               <div className="grid grid-cols-4 gap-2">
                 {fotos.map((f, i) => (
                   <div key={i} className="relative aspect-square rounded-2xl overflow-hidden border border-slate-200">
@@ -422,13 +450,23 @@ const Vistoria = ({ onBack, frotaInicial = [] }) => {
                   <label className="aspect-square rounded-2xl border-2 border-dashed border-slate-300 flex items-center justify-center cursor-pointer bg-slate-50">
                     {uploading ? <Loader2 className="animate-spin text-blue-600" /> : <Plus className="text-slate-400" />}
                     <input type="file" accept="image/*" capture="environment" className="hidden" onChange={async (e) => {
-                      const file = e.target.files[0]; if (!file) return;
+                      const file = e.target.files[0]; 
+                      if (!file) return;
                       setUploading(true);
                       try {
-                        const compressed = await imageCompression(file, { maxSizeMB: 0.2, maxWidthOrHeight: 1024 });
-                        const reader = new FileReader(); reader.readAsDataURL(compressed);
-                        reader.onloadend = () => { setFotos(p => [...p, reader.result]); setUploading(false); };
-                      } catch (err) { setUploading(false); }
+                        // Aplica compressão robusta antes de transformar em base64
+                        const compressed = await imageCompression(file, COMPRESSION_OPTIONS);
+                        const reader = new FileReader(); 
+                        reader.readAsDataURL(compressed);
+                        reader.onloadend = () => { 
+                          setFotos(p => [...p, reader.result]); 
+                          setUploading(false); 
+                        };
+                      } catch (err) { 
+                        console.error("Erro no processamento da imagem:", err);
+                        alert("Não foi possível processar esta foto.");
+                        setUploading(false); 
+                      }
                     }} />
                   </label>
                 )}
