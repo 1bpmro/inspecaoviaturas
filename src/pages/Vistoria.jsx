@@ -163,11 +163,14 @@ const Vistoria = ({ onBack, frotaInicial = [] }) => {
   const vtrSelecionada = useMemo(() => 
     viaturas.find(v => toStr(v.Prefixo || v.PREFIXO) === toStr(formData.prefixo_vtr)), [formData.prefixo_vtr, viaturas, toStr]);
 
+  // CORREÇÃO: Lógica de cálculo de troca de óleo melhorada
   const precisaTrocaOleo = useMemo(() => {
     if (!vtrSelecionada || tipoVistoria !== 'ENTRADA') return false;
-    const kmTroca = Number(vtrSelecionada.ProximaTrocaOleo || vtrSelecionada.PROXIMA_TROCA) || 0;
+    const kmTroca = Number(vtrSelecionada.ProximaTrocaOleo || vtrSelecionada.PROXIMA_TROCA || vtrSelecionada.PROXIMA_TROCA_OLEO) || 0;
     const kmAtual = Number(formData.hodometro) || 0;
-    return kmAtual > 0 && (kmTroca - kmAtual <= 500);
+    
+    // Só ativa se o KM atual for válido e estiver a menos de 500km do limite ou já passou
+    return kmAtual > 0 && kmTroca > 0 && (kmTroca - kmAtual <= 500);
   }, [vtrSelecionada, formData.hodometro, tipoVistoria]);
 
   const kmInvalido = useMemo(() => {
@@ -305,7 +308,11 @@ const Vistoria = ({ onBack, frotaInicial = [] }) => {
               <div className="grid grid-cols-2 gap-3">
                 <select className="vtr-input !py-4" value={formData.prefixo_vtr} onChange={(e) => handleVtrChange(e.target.value)}>
                   <option value="">SELECIONE A VTR</option>
-                  {(tipoVistoria === 'ENTRADA' ? viaturas.filter(v => v.Status !== 'EM SERVIÇO') : viaturas.filter(v => v.Status === 'EM SERVIÇO')).map(v => (
+                  {/* CORREÇÃO: Filtro por status DISPONÍVEL na entrada */}
+                  {(tipoVistoria === 'ENTRADA' 
+                    ? viaturas.filter(v => String(v.Status || v.STATUS).toUpperCase() === 'DISPONÍVEL') 
+                    : viaturas.filter(v => String(v.Status || v.STATUS).toUpperCase() === 'EM SERVIÇO')
+                  ).map(v => (
                     <option key={v.Prefixo || v.PREFIXO} value={v.Prefixo || v.PREFIXO}>{v.Prefixo || v.PREFIXO}</option>
                   ))}
                 </select>
