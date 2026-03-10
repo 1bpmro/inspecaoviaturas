@@ -48,7 +48,7 @@ const OPCOES_COMUNITARIA = ["Patrulha Comercial", "Base Móvel", "Patrulha Escol
 const COMPRESSION_OPTIONS = {
   maxSizeMB: 0.1,          // Reduzido para 100kb para garantir sucesso no GAS
   maxWidthOrHeight: 1024,
-  useWebWorker: true
+  useWebWorker: true,
   fileType: 'image/jpeg'
 };
 
