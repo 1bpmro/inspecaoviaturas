@@ -307,9 +307,10 @@ const Vistoria = ({ onBack, frotaInicial = [] }) => {
               PRÓXIMO <ChevronRight size={18}/>
             </button>
           </div>
-        ) : (
-          {/* --- PASSO 2: CHECKLIST E FOTOS DE AVARIAS --- */}
-<div className="space-y-4 animate-in slide-in-from-right-4">
+      ) : (
+      
+        <div className="space-y-4 animate-in slide-in-from-right-4">
+        {/* --- PASSO 2: CHECKLIST E FOTOS DE AVARIAS --- */}
   
   {/* LISTA DE ITENS */}
   <div className="grid gap-2">
