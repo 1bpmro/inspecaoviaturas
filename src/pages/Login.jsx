@@ -97,7 +97,7 @@ const Login = () => {
         
         {/* CABEÇALHO (Mantido original) */}
         <div className="bg-slate-900 dark:bg-slate-950 p-8 text-center transition-colors">
-          <img src="/icon-512.png" alt="Brasão 1º BPM" className="w-24 h-24 mx-auto mb-4 drop-shadow-2xl object-contain" />
+          <img src="./icon-512.png" alt="Brasão 1º BPM" className="w-24 h-24 mx-auto mb-4 drop-shadow-2xl object-contain" />
           <h1 className="text-xl font-black text-white uppercase tracking-tighter">1º BPM - BATALHÃO RONDON</h1>
           <p className="text-blue-400 text-[10px] font-bold tracking-widest uppercase mt-1 opacity-90">
             {loadingPerfil ? "SINCRONIZANDO ACESSOS..." : "Sistema de inspeção de viaturas do 1º BPM - RO"}
