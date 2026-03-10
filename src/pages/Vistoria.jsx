@@ -105,6 +105,7 @@ const ITENS_ENTRADA = ["Documento da Viatura", "Estepe", "Chave de Roda", "Macac
 const MAPA_FALHAS_SAIDA = { "Viatura Entregue Limpa": "VIATURA ENTREGUE SUJA", "Viatura em Condições de Uso": "VIATURA SEM CONDIÇÕES DE USO", "Avarias Constatadas": "AVARIAS CONSTATADAS", "Limpeza Interna": "SEM LIMPEZA INTERNA", "Limpeza Externa": "SEM LIMPEZA EXTERNA", "Pertences da Guarnição Retirados": "ENCONTRADO PERTENCES DA GUARNIÇÃO" };
 const ITENS_SAIDA = Object.keys(MAPA_FALHAS_SAIDA);
 const TIPOS_SERVICO = ["Patrulhamento Ordinário", "Operação", "Força Tática", "Patrulha Comunitária", "Patrulhamento Rural", "Outro"];
+const OPCOES_COMUNITARIA = ["BASE MÓVEL", "PATRULHA ESCOLAR", "PATRULHA COMERCIAL"];
 
 // --- COMPONENTE PRINCIPAL ---
 const Vistoria = ({ onBack, frotaInicial = [] }) => { 
@@ -119,7 +120,8 @@ const Vistoria = ({ onBack, frotaInicial = [] }) => {
   
   const [formData, setFormData] = useState({
     prefixo_vtr: '', placa_vtr: '', hodometro: '', videomonitoramento: '', 
-    tipo_servico: '', motorista_re: '', motorista_nome: '', motorista_unidade: '',
+    tipo_servico: '', detalhe_servico: '',
+    motorista_re: '', motorista_nome: '', motorista_unidade: '',
     comandante_re: '', comandante_nome: '', comandante_unidade: '',
     patrulheiro_re: '', patrulheiro_nome: '', patrulheiro_unidade: '',
     termo_aceite: false
@@ -129,7 +131,6 @@ const Vistoria = ({ onBack, frotaInicial = [] }) => {
 
   const toStr = (val) => (val !== undefined && val !== null ? String(val).trim() : '');
 
-  // Verifica se há falhas no checklist
   const temAvaria = useMemo(() => {
     return Object.values(checklist).includes('FALHA');
   }, [checklist]);
@@ -138,9 +139,16 @@ const Vistoria = ({ onBack, frotaInicial = [] }) => {
     const itens = tipoVistoria === 'ENTRADA' ? ITENS_ENTRADA : ITENS_SAIDA;
     const novoChecklist = itens.reduce((acc, item) => ({ ...acc, [item]: 'OK' }), {});
     setChecklist(novoChecklist);
-    // Resetar aceite ao mudar tipo
-    setFormData(prev => ({ ...prev, termo_aceite: false }));
+    setFormData(prev => ({ ...prev, termo_aceite: false, prefixo_vtr: '' }));
   }, [tipoVistoria]);
+
+  const viaturasFiltradas = useMemo(() => {
+    if (tipoVistoria === 'ENTRADA') return viaturas;
+    return viaturas.filter(v => {
+        const status = (v.Status || v.STATUS || '').toUpperCase();
+        return status === 'EM SERVIÇO' || status === 'EM SERVICO';
+    });
+  }, [viaturas, tipoVistoria]);
 
   const vtrSelecionada = useMemo(() => {
     return viaturas.find(v => toStr(v.Prefixo || v.PREFIXO) === toStr(formData.prefixo_vtr));
@@ -189,7 +197,10 @@ const Vistoria = ({ onBack, frotaInicial = [] }) => {
     let reLimpo = toStr(valor).replace(/\D/g, '');
     setFormData(prev => ({ ...prev, [`${cargo}_re`]: reLimpo }));
     if (reLimpo.length >= 4) {
-      const militar = efetivoLocal.find(m => toStr(m.re) === reLimpo);
+      const militar = efetivoLocal.find(m => {
+          const mRE = toStr(m.re);
+          return mRE === reLimpo || mRE === `1000${reLimpo}` || `1000${mRE}` === reLimpo;
+      });
       if (militar) {
         setFormData(prev => ({
           ...prev,
@@ -260,8 +271,8 @@ const Vistoria = ({ onBack, frotaInicial = [] }) => {
           <div className="space-y-4 animate-in fade-in slide-in-from-bottom-4">
             <section className="bg-white dark:bg-slate-900 rounded-[2.5rem] p-6 shadow-sm border border-slate-200 dark:border-slate-800 space-y-4">
                 <select className="vtr-input w-full !py-4" value={formData.prefixo_vtr} onChange={e => handleVtrChange(e.target.value)}>
-                  <option value="">SELECIONE A VTR</option>
-                  {viaturas.map(v => <option key={v.Prefixo || v.PREFIXO} value={v.Prefixo || v.PREFIXO}>{v.Prefixo || v.PREFIXO}</option>)}
+                  <option value="">{tipoVistoria === 'ENTRADA' ? 'SELECIONE A VTR' : 'VTRS EM SERVIÇO'}</option>
+                  {viaturasFiltradas.map(v => <option key={v.Prefixo || v.PREFIXO} value={v.Prefixo || v.PREFIXO}>{v.Prefixo || v.PREFIXO}</option>)}
                 </select>
 
                 <div className="grid grid-cols-2 gap-3">
@@ -274,10 +285,31 @@ const Vistoria = ({ onBack, frotaInicial = [] }) => {
                     </select>
                 </div>
 
-                <select className="vtr-input w-full" value={formData.tipo_servico} onChange={e => setFormData({...formData, tipo_servico: e.target.value})}>
+                <select className="vtr-input w-full" value={formData.tipo_servico} onChange={e => setFormData({...formData, tipo_servico: e.target.value, detalhe_servico: ''})}>
                     <option value="">TIPO DE SERVIÇO</option>
                     {TIPOS_SERVICO.map(t => <option key={t} value={t}>{t}</option>)}
                 </select>
+
+                {/* --- CAMPOS DINÂMICOS DE SERVIÇO --- */}
+                {(formData.tipo_servico === 'Operação' || formData.tipo_servico === 'Outro') && (
+                    <input 
+                      type="text" className="vtr-input w-full animate-in zoom-in-95" 
+                      placeholder="NOME DA OPERAÇÃO / SERVIÇO" 
+                      value={formData.detalhe_servico} 
+                      onChange={e => setFormData({...formData, detalhe_servico: e.target.value.toUpperCase()})} 
+                    />
+                )}
+
+                {formData.tipo_servico === 'Patrulha Comunitária' && (
+                    <select 
+                      className="vtr-input w-full animate-in zoom-in-95" 
+                      value={formData.detalhe_servico} 
+                      onChange={e => setFormData({...formData, detalhe_servico: e.target.value})}
+                    >
+                        <option value="">SELECIONE O MODAL</option>
+                        {OPCOES_COMUNITARIA.map(opt => <option key={opt} value={opt}>{opt}</option>)}
+                    </select>
+                )}
 
                 {precisaTrocaOleo && (
                   <button onClick={() => setModalOleoOpen(true)} className="w-full bg-orange-50 border-2 border-orange-500 p-4 rounded-2xl flex items-center justify-between animate-pulse shadow-md">
@@ -382,7 +414,7 @@ const Vistoria = ({ onBack, frotaInicial = [] }) => {
     </div>
   )}
 
-  {/* TERMO DE ACEITE (O QUE VOCÊ PEDIU) */}
+  {/* TERMO DE ACEITE */}
   <label className="flex items-start gap-4 p-5 bg-white dark:bg-slate-900 border-2 border-slate-200 dark:border-slate-800 rounded-3xl cursor-pointer shadow-sm hover:border-blue-300 transition-all mt-6">
     <input 
       type="checkbox" 
