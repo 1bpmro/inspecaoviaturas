@@ -135,21 +135,17 @@ const Vistoria = ({ onBack, frotaInicial = [] }) => {
     return Object.values(checklist).includes('FALHA');
   }, [checklist]);
 
+  // AJUSTE: Reset do checklist sem apagar dados já carregados
   useEffect(() => {
     const itens = tipoVistoria === 'ENTRADA' ? ITENS_ENTRADA : ITENS_SAIDA;
     const novoChecklist = itens.reduce((acc, item) => ({ ...acc, [item]: 'OK' }), {});
     setChecklist(novoChecklist);
+    
+    // Reset seletivo para evitar apagar o que handleVtrChange acabou de setar
     setFormData(prev => ({ 
       ...prev, 
       termo_aceite: false, 
-      prefixo_vtr: '',
-      hodometro: '',
-      videomonitoramento: '',
-      tipo_servico: '',
-      detalhe_servico: '',
-      motorista_re: '', motorista_nome: '',
-      comandante_re: '', comandante_nome: '',
-      patrulheiro_re: '', patrulheiro_nome: ''
+      prefixo_vtr: '' // Limpa o prefixo para forçar nova seleção ao trocar o modo
     }));
   }, [tipoVistoria]);
 
@@ -197,7 +193,7 @@ const Vistoria = ({ onBack, frotaInicial = [] }) => {
   // FUNÇÃO AUXILIAR PARA BUSCAR MILITAR PELO RE (ACEITA 1000 OU SEM)
   const buscarMilitar = (re) => {
     const reLimpo = toStr(re).replace(/\D/g, '');
-    if (reLimpo.length < 4) return null;
+    if (!reLimpo || reLimpo.length < 4) return null;
     return efetivoLocal.find(m => {
         const mRE = toStr(m.re);
         return mRE === reLimpo || mRE === `1000${reLimpo}` || `1000${mRE}` === reLimpo;
@@ -208,32 +204,37 @@ const Vistoria = ({ onBack, frotaInicial = [] }) => {
     const vtr = viaturas.find(v => toStr(v.Prefixo || v.PREFIXO) === toStr(prefixo));
     if (!vtr) return;
 
-    // Se for SAÍDA, puxar dados da vtr (que refletem a última entrada)
     if (tipoVistoria === 'SAÍDA') {
-      const mot = buscarMilitar(vtr.Motorista_RE || vtr.MOTORISTA_RE);
-      const cmd = buscarMilitar(vtr.Comandante_RE || vtr.COMANDANTE_RE);
-      const ptr = buscarMilitar(vtr.Patrulheiro_RE || vtr.PATRULHEIRO_RE);
+      const reMot = toStr(vtr.Motorista_RE || vtr.MOTORISTA_RE || vtr.motorista_re);
+      const reCmd = toStr(vtr.Comandante_RE || vtr.COMANDANTE_RE || vtr.comandante_re);
+      const rePtr = toStr(vtr.Patrulheiro_RE || vtr.PATRULHEIRO_RE || vtr.patrulheiro_re);
+
+      const mot = buscarMilitar(reMot);
+      const cmd = buscarMilitar(reCmd);
+      const ptr = buscarMilitar(rePtr);
 
       setFormData(prev => ({ 
         ...prev, 
         prefixo_vtr: toStr(vtr.Prefixo || vtr.PREFIXO), 
         placa_vtr: toStr(vtr.Placa || vtr.PLACA),
-        hodometro: toStr(vtr.KM_Atual || vtr.KM_ATUAL),
-        videomonitoramento: toStr(vtr.Video || vtr.VIDEO),
-        tipo_servico: toStr(vtr.Tipo_Servico || vtr.TIPO_SERVICO),
-        detalhe_servico: toStr(vtr.Detalhe_Servico || vtr.DETALHE_SERVICO),
-        motorista_re: toStr(vtr.Motorista_RE || vtr.MOTORISTA_RE),
+        hodometro: toStr(vtr.KM_Atual || vtr.KM_ATUAL || vtr.hodometro),
+        videomonitoramento: toStr(vtr.Video || vtr.VIDEO || vtr.videomonitoramento),
+        tipo_servico: toStr(vtr.Tipo_Servico || vtr.TIPO_SERVICO || vtr.tipo_servico),
+        detalhe_servico: toStr(vtr.Detalhe_Servico || vtr.DETALHE_SERVICO || vtr.detalhe_servico),
+        motorista_re: reMot,
         motorista_nome: mot ? `${mot.patente} ${mot.nome}`.toUpperCase() : '',
-        comandante_re: toStr(vtr.Comandante_RE || vtr.COMANDANTE_RE),
+        comandante_re: reCmd,
         comandante_nome: cmd ? `${cmd.patente} ${cmd.nome}`.toUpperCase() : '',
-        patrulheiro_re: toStr(vtr.Patrulheiro_RE || vtr.PATRULHEIRO_RE),
+        patrulheiro_re: rePtr,
         patrulheiro_nome: ptr ? `${ptr.patente} ${ptr.nome}`.toUpperCase() : '',
       }));
     } else {
       setFormData(prev => ({ 
         ...prev, 
         prefixo_vtr: toStr(vtr.Prefixo || vtr.PREFIXO), 
-        placa_vtr: toStr(vtr.Placa || vtr.PLACA) 
+        placa_vtr: toStr(vtr.Placa || vtr.PLACA),
+        hodometro: '', videomonitoramento: '', tipo_servico: '', detalhe_servico: '',
+        motorista_re: '', motorista_nome: '', comandante_re: '', comandante_nome: '', patrulheiro_re: '', patrulheiro_nome: ''
       }));
     }
   };
@@ -383,7 +384,6 @@ const Vistoria = ({ onBack, frotaInicial = [] }) => {
       ) : (
       
         <div className="space-y-4 animate-in slide-in-from-right-4">
-  {/* LISTA DE ITENS */}
   <div className="grid gap-2">
     {(tipoVistoria === 'ENTRADA' ? ITENS_ENTRADA : ITENS_SAIDA).map(item => (
       <div 
@@ -410,7 +410,6 @@ const Vistoria = ({ onBack, frotaInicial = [] }) => {
     ))}
   </div>
 
-  {/* SEÇÃO DE FOTOS */}
   {temAvaria && (
     <div className="bg-white dark:bg-slate-900 rounded-[2.5rem] p-6 border-2 border-red-500 shadow-lg space-y-4">
       <div className="text-center">
@@ -418,32 +417,22 @@ const Vistoria = ({ onBack, frotaInicial = [] }) => {
         <h3 className="text-[10px] font-black text-red-600 uppercase">Avarias Detectadas</h3>
         <p className="text-[8px] font-bold text-slate-400 uppercase">É obrigatório anexar fotos dos danos</p>
       </div>
-
       <div className="grid grid-cols-3 gap-3">
         {fotos.map((foto, idx) => (
           <div key={idx} className="relative aspect-square rounded-2xl overflow-hidden border-2 border-slate-100">
-            <img src={foto} className="w-full h-full object-cover" />
-            <button 
-              onClick={() => setFotos(fotos.filter((_, i) => i !== idx))}
-              className="absolute top-1 right-1 bg-red-600 text-white p-1 rounded-full shadow-lg"
-            >
-              <X size={12}/>
-            </button>
+            <img src={foto} className="w-full h-full object-cover" alt="" />
+            <button onClick={() => setFotos(fotos.filter((_, i) => i !== idx))} className="absolute top-1 right-1 bg-red-600 text-white p-1 rounded-full shadow-lg"><X size={12}/></button>
           </div>
         ))}
-        
         {fotos.length < 6 && (
           <label className="aspect-square flex flex-col items-center justify-center bg-slate-50 dark:bg-slate-800 rounded-2xl border-2 border-dashed border-slate-300 cursor-pointer hover:bg-slate-100 transition-all">
             <Plus className="text-slate-400" size={24} />
             <span className="text-[8px] font-black text-slate-400 uppercase mt-1">Foto</span>
-            <input 
-              type="file" accept="image/*" capture="environment" className="hidden" 
+            <input type="file" accept="image/*" capture="environment" className="hidden" 
               onChange={async (e) => {
-                const file = e.target.files[0];
-                if (!file) return;
+                const file = e.target.files[0]; if (!file) return;
                 const compressed = await imageCompression(file, { maxSizeMB: 0.2, maxWidthOrHeight: 800 });
-                const reader = new FileReader();
-                reader.readAsDataURL(compressed);
+                const reader = new FileReader(); reader.readAsDataURL(compressed);
                 reader.onloadend = () => setFotos(p => [...p, reader.result]);
               }} 
             />
@@ -453,14 +442,8 @@ const Vistoria = ({ onBack, frotaInicial = [] }) => {
     </div>
   )}
 
-  {/* TERMO DE ACEITE */}
   <label className="flex items-start gap-4 p-5 bg-white dark:bg-slate-900 border-2 border-slate-200 dark:border-slate-800 rounded-3xl cursor-pointer shadow-sm hover:border-blue-300 transition-all mt-6">
-    <input 
-      type="checkbox" 
-      className="w-6 h-6 rounded border-slate-300 text-blue-600 mt-1" 
-      checked={formData.termo_aceite} 
-      onChange={(e) => setFormData({...formData, termo_aceite: e.target.checked})} 
-    />
+    <input type="checkbox" className="w-6 h-6 rounded border-slate-300 text-blue-600 mt-1" checked={formData.termo_aceite} onChange={(e) => setFormData({...formData, termo_aceite: e.target.checked})} />
     <p className="text-[10px] font-black uppercase text-slate-600 dark:text-slate-400 leading-tight text-justify">
       EU, <span className="text-slate-900 dark:text-white underline">{formData.motorista_nome || 'MOTORISTA'}</span>, 
       {tipoVistoria === 'ENTRADA' ? (
@@ -473,11 +456,7 @@ const Vistoria = ({ onBack, frotaInicial = [] }) => {
   
   <div className="flex gap-2">
     <button onClick={() => setStep(1)} className="flex-1 bg-white p-5 rounded-2xl font-black border-2 border-slate-200 text-slate-900 hover:bg-slate-50 transition-colors uppercase text-xs">Voltar</button>
-    <button 
-      onClick={handleFinalizar} 
-      disabled={!formData.termo_aceite || loading || (temAvaria && fotos.length === 0)} 
-      className="btn-tatico flex-[2] disabled:bg-slate-300 disabled:text-slate-500 shadow-lg active:scale-95 transition-all"
-    >
+    <button onClick={handleFinalizar} disabled={!formData.termo_aceite || loading || (temAvaria && fotos.length === 0)} className="btn-tatico flex-[2] disabled:bg-slate-300 disabled:text-slate-500 shadow-lg active:scale-95 transition-all">
       {loading ? <Loader2 className="animate-spin mx-auto"/> : "FINALIZAR ENVIO"}
     </button>
   </div>
@@ -485,13 +464,7 @@ const Vistoria = ({ onBack, frotaInicial = [] }) => {
         )}
       </main>
 
-      <ModalTrocaOleo 
-        isOpen={modalOleoOpen} 
-        onClose={() => setModalOleoOpen(false)}
-        vtr={vtrSelecionada}
-        kmEntrada={formData.hodometro}
-        user={user}
-      />
+      <ModalTrocaOleo isOpen={modalOleoOpen} onClose={() => setModalOleoOpen(false)} vtr={vtrSelecionada} kmEntrada={formData.hodometro} user={user} />
     </div>
   );
 };
