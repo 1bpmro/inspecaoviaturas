@@ -191,7 +191,7 @@ const Vistoria = ({ onBack, frotaInicial = [] }) => {
     // Limpa seleção para evitar conflito de status entre Entrada/Saída
     setFormData(prev => ({ 
       ...prev, 
-      prefixo_vtr: '', placa_vtr: '', hodometro: '', 
+      placa_vtr: '', hodometro: '', 
       motorista_re: '', motorista_nome: '', comandante_re: '', comandante_nome: '', patrulheiro_re: '', patrulheiro_nome: ''
     }));
     setKmReferencia(0);
