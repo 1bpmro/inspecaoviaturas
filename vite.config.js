@@ -6,7 +6,7 @@ export default defineConfig({
 
   plugins: [react()],
 
-  // nome do repositório no GitHub
+  // nome do repositório no GitHub Pages
   base: '/inspecaoviaturas/',
 
   resolve: {
@@ -17,14 +17,14 @@ export default defineConfig({
 
   build: {
 
-    // garante pasta de assets estável
+    // garante pasta assets correta no GitHub Pages
     assetsDir: "assets",
 
-    // melhora compatibilidade com celulares
-    target: "es2018",
+    // limpa build anterior
+    emptyOutDir: true,
 
-    // limpa build antigo
-    emptyOutDir: true
+    // melhora compatibilidade com celulares
+    target: "es2018"
 
   },
 
