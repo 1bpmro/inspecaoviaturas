@@ -378,23 +378,51 @@ const Vistoria = ({ onBack, frotaInicial = [] }) => {
             <section className="bg-white rounded-[2rem] p-6 shadow-sm border border-slate-200 space-y-4">
               <CardGuarnicao />
               <div className="grid grid-cols-2 gap-2">
-  <select className="vtr-input" value={formData.prefixo_vtr} onChange={(e) => handleVtrChange(e.target.value)}>
-    <option value="">SELECIONE A VTR</option>
-    {viaturas
-      .filter(v => {
-        const s = String(v.STATUS || v.status || "").toUpperCase();
-        if (tipoVistoria === 'ENTRADA') {
-          return s.includes('DISP') || s.includes('PÁTIO') || s.includes('MANUT') || s === "";
-        } else {
-          return s.includes('SERV') || s.includes('AGUAR');
-        }
-      })
-      .map(v => {
-        const pref = v.PREFIXO || v.prefixo || v.Prefixo;
-        return <option key={pref} value={pref}>{pref} {v.STATUS ? `(${v.STATUS})` : ''}</option>;
-      })
-    }
-  </select>
+ <select
+  className="vtr-input"
+  value={String(formData.prefixo_vtr || "")}
+  onChange={(e) => {
+    const valor = String(e.target.value);
+
+    setFormData(prev => ({
+      ...prev,
+      prefixo_vtr: valor
+    }));
+
+    handleVtrChange(valor);
+  }}
+>
+  <option value="">SELECIONE A VTR</option>
+
+  {viaturas
+    .slice()
+    .sort((a, b) =>
+      String(a.PREFIXO || a.prefixo).localeCompare(String(b.PREFIXO || b.prefixo))
+    )
+    .filter(v => {
+      const s = String(v.STATUS || v.status || "").toUpperCase();
+
+      if (tipoVistoria === "ENTRADA") {
+        return (
+          s.includes("DISP") ||
+          s.includes("PÁTIO") ||
+          s.includes("MANUT") ||
+          s === ""
+        );
+      } else {
+        return s.includes("SERV") || s.includes("AGUAR");
+      }
+    })
+    .map((v, index) => {
+      const pref = String(v.PREFIXO || v.prefixo || v.Prefixo || "");
+
+      return (
+        <option key={`${pref}-${index}`} value={pref}>
+          {pref} {v.STATUS ? `(${v.STATUS})` : ""}
+        </option>
+      );
+    })}
+</select>
 
   {/* SELETOR DE SERVIÇO COM GATILHO PARA O MODAL */}
   <select 
