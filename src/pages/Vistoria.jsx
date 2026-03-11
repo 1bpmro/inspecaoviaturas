@@ -460,7 +460,8 @@ useEffect(() => {
             <section className="bg-white rounded-[2rem] p-6 shadow-sm border border-slate-200 space-y-4">
               <CardGuarnicao formData={formData} />
               <div className="grid grid-cols-2 gap-2">
- <select
+                
+<select
   className="vtr-input"
   value={String(formData.prefixo_vtr || "")}
   onChange={(e) => {
@@ -476,18 +477,25 @@ useEffect(() => {
 >
   <option value="">SELECIONE A VTR</option>
 
-{viaturasFiltradas.map((v, index) => {
+  {viaturasFiltradas
+    .slice()
+    .sort((a, b) =>
+      String(a.PREFIXO || a.prefixo || "")
+        .localeCompare(String(b.PREFIXO || b.prefixo || ""))
+    )
+    .map((v, index) => {
 
-  const pref = String(v.PREFIXO || v.prefixo || v.Prefixo || "");
+      const pref = String(v.PREFIXO || v.prefixo || v.Prefixo || "");
+      const status = String(v.STATUS || v.status || "");
 
-  return (
-    <option key={`${pref}-${index}`} value={pref}>
-      {pref} {v.STATUS ? `(${v.STATUS})` : ""}
-    </option>
-  );
+      return (
+        <option key={`${pref}-${index}`} value={pref}>
+          {pref} {status ? `(${status})` : ""}
+        </option>
+      );
+    })
+  }
 
-})}
-   
 </select>
 
   {/* SELETOR DE SERVIÇO COM GATILHO PARA O MODAL */}
