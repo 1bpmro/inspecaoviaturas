@@ -3,56 +3,54 @@ import { ChevronRight } from "lucide-react";
 
 const ChecklistGrupo = ({
   titulo,
+  icon,
   itens,
-  respostas,
+  checklist,
   onToggle
 }) => {
 
   return (
-    <div className="bg-slate-900 rounded-3xl p-4 mb-4 border-b-4 border-blue-600">
+    <div className="bg-white rounded-3xl p-4 border border-slate-200">
 
-      <div className="flex items-center justify-between mb-3 border-b border-white/10 pb-2">
-        <h3 className="text-[10px] font-black text-white uppercase">
+      <div className="flex items-center gap-2 mb-3 text-blue-700">
+        {icon}
+        <span className="font-black text-[10px] uppercase">
           {titulo}
-        </h3>
-        <ChevronRight size={16} className="text-blue-400"/>
+        </span>
       </div>
 
-      <div className="space-y-2">
+      {itens.map(item => {
 
-        {itens.map(item => {
+        const status = checklist[item];
 
-          const marcado = respostas[item] === true;
+        return (
+          <div
+            key={item}
+            onClick={() => onToggle(item)}
+            className={`flex justify-between items-center p-3 mb-1 rounded-xl border cursor-pointer transition-all
+            ${status === "FALHA"
+              ? "border-red-500 bg-red-50"
+              : "bg-slate-50 border-transparent"
+            }`}
+          >
 
-          return (
-            <button
-              key={item}
-              onClick={() => onToggle(item)}
-              className={`w-full flex items-center justify-between p-3 rounded-2xl border text-[10px] font-bold uppercase transition
-              ${marcado
-                ? "bg-green-600 border-green-500 text-white"
-                : "bg-white/5 border-white/10 text-white"
+            <span className="text-[11px] font-bold uppercase">
+              {item}
+            </span>
+
+            <span className={`text-[9px] font-black px-2 py-1 rounded
+              ${status === "OK"
+                ? "text-green-600"
+                : "bg-red-600 text-white"
               }`}
             >
+              {status}
+            </span>
 
-              <span className="text-left flex-1">
-                {item}
-              </span>
+          </div>
+        );
 
-              <div className={`w-4 h-4 rounded-full border-2 flex items-center justify-center
-                ${marcado
-                  ? "border-white bg-white"
-                  : "border-white/30"
-                }`}
-              >
-              </div>
-
-            </button>
-          );
-
-        })}
-
-      </div>
+      })}
 
     </div>
   );
