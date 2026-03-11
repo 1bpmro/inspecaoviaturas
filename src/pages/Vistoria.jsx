@@ -2,6 +2,10 @@ import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { useAuth } from '../lib/AuthContext'; 
 import { gasApi } from '../api/gasClient';
 import imageCompression from 'browser-image-compression';
+
+import ModalComunitaria from "../components/vistoria/ModalComunitaria";
+import CardGuarnicao from "../components/vistoria/CardGuarnicao";
+import ChecklistGrupo from "../components/vistoria/ChecklistGrupo";
 import { 
   ArrowLeft, ChevronRight, Loader2, X, Plus, 
   Users, Lock, Unlock, Car, Shield, Wrench 
@@ -45,35 +49,11 @@ const TIPOS_SERVICO = ["Patrulhamento Ordinário", "Operação", "Força Tática
 const OPCOES_COMUNITARIA = ["Patrulha Comercial", "Base Móvel", "Patrulha Escolar"];
 
 const COMPRESSION_OPTIONS = {
-  maxSizeMB: 0.05,
-  maxWidthOrHeight: 800,
+  maxSizeMB: 0.04,
+  maxWidthOrHeight: 720,
   useWebWorker: true,
-  fileType: 'image/jpeg',
-  initialQuality: 0.6
-};
-
-const ModalComunitaria = ({ isOpen, onSelect, onClose }) => {
-  if (!isOpen) return null;
-
-  return (
-    <div className="fixed inset-0 z-[110] bg-slate-900/90 backdrop-blur-sm flex items-center justify-center p-6">
-      <div className="bg-white w-full max-w-xs rounded-[2rem] p-6 shadow-2xl border-t-8 border-blue-600">
-        <h3 className="text-center font-black text-slate-800 uppercase text-xs mb-4">Selecione a Modalidade</h3>
-        <div className="space-y-2">
-          {OPCOES_COMUNITARIA.map(opcao => (
-            <button
-              key={opcao}
-              onClick={() => onSelect(opcao.toUpperCase())}
-              className="w-full p-4 bg-slate-100 hover:bg-blue-50 text-slate-700 font-bold rounded-2xl text-[10px] uppercase transition-colors border border-slate-200"
-            >
-              {opcao}
-            </button>
-          ))}
-        </div>
-        <button onClick={onClose} className="w-full mt-4 text-[10px] font-black text-slate-400 uppercase">Cancelar</button>
-      </div>
-    </div>
-  );
+  fileType: "image/jpeg",
+  initialQuality: 0.55
 };
 
 // --- SUB-COMPONENTE: MODAL TROCA DE ÓLEO ---
@@ -194,6 +174,13 @@ const Vistoria = ({ onBack, frotaInicial = [] }) => {
 
   const [checklist, setChecklist] = useState({});
 
+  const toggleChecklist = (item) => {
+  setChecklist(prev => ({
+    ...prev,
+    [item]: prev[item] === "OK" ? "FALHA" : "OK"
+  }));
+};
+
   const toStr = useCallback((v) => (v !== undefined && v !== null ? String(v) : ''), []);
 
   // Sincroniza Checklist e Reseta Campos ao trocar tipo de vistoria
@@ -210,27 +197,117 @@ const Vistoria = ({ onBack, frotaInicial = [] }) => {
     setKmReferencia(0);
   }, [tipoVistoria]);
 
-  useEffect(() => {
-    let isMounted = true;
-    const sync = async () => {
-      if (viaturas.length === 0) setLoading(true);
+useEffect(() => {
+
+  let isMounted = true;
+
+  const sync = async () => {
+
+    const cache = localStorage.getItem("viaturas_cache");
+
+    if (cache) {
       try {
-        const [resVtr, resMil] = await Promise.all([
-          viaturas.length === 0 ? gasApi.getViaturas() : Promise.resolve({ status: 'success', data: viaturas }),
-          gasApi.getEfetivoCompleto()
-        ]);
-        if (isMounted) {
-          if (resVtr.status === 'success') setViaturas(resVtr.data);
-          if (resMil.status === 'success') setEfetivoLocal(resMil.data);
-        }
-      } catch (e) { console.error(e); } finally { if (isMounted) setLoading(false); }
-    };
-    sync();
-    return () => { isMounted = false; };
-  }, [viaturas.length]);
+        const parsed = JSON.parse(cache);
+        if (isMounted) setViaturas(parsed);
+      } catch {
+        localStorage.removeItem("viaturas_cache");
+      }
+    }
+
+    try {
+
+      const [resVtr, resMil] = await Promise.all([
+        gasApi.getViaturas(),
+        gasApi.getEfetivoCompleto()
+      ]);
+
+      if (!isMounted) return;
+
+      if (resVtr.status === "success") {
+        setViaturas(resVtr.data);
+        localStorage.setItem("viaturas_cache", JSON.stringify(resVtr.data));
+      }
+
+      if (resMil.status === "success") {
+        setEfetivoLocal(resMil.data);
+      }
+
+    } catch (e) {
+      console.error("Erro ao sincronizar:", e);
+    }
+
+  };
+
+  sync();
+
+  return () => {
+    isMounted = false;
+  };
+
+}, []);
+ 
+ useEffect(() => {
+
+  const enviarFila = async () => {
+
+    const fila = JSON.parse(localStorage.getItem("vistoria_fila") || "[]");
+
+    if (fila.length === 0) return;
+
+    for (const item of fila) {
+
+      try {
+        await gasApi.saveVistoria(item);
+      } catch {
+        return;
+      }
+
+    }
+
+    localStorage.removeItem("vistoria_fila");
+
+  };
+
+  if (navigator.onLine) {
+    enviarFila();
+  }
+
+  window.addEventListener("online", enviarFila);
+
+  return () => {
+    window.removeEventListener("online", enviarFila);
+  };
+
+}, []);
 
   const vtrSelecionada = useMemo(() => 
     viaturas.find(v => toStr(v.Prefixo || v.PREFIXO) === toStr(formData.prefixo_vtr)), [formData.prefixo_vtr, viaturas, toStr]);
+
+  const viaturasFiltradas = useMemo(() => {
+
+  return viaturas
+    .slice()
+    .sort((a, b) =>
+      String(a.PREFIXO || a.prefixo).localeCompare(String(b.PREFIXO || b.prefixo))
+    )
+    .filter(v => {
+
+      const s = String(v.STATUS || v.status || "").toUpperCase();
+
+      if (tipoVistoria === "ENTRADA") {
+        return (
+          s.includes("DISP") ||
+          s.includes("PÁTIO") ||
+          s.includes("MANUT") ||
+          s === ""
+        );
+      } else {
+        return s.includes("SERV") || s.includes("AGUAR");
+      }
+
+    });
+
+}, [viaturas, tipoVistoria]);
 
   const precisaTrocaOleo = useMemo(() => {
     if (!vtrSelecionada || tipoVistoria !== 'ENTRADA') return false;
@@ -309,50 +386,55 @@ const Vistoria = ({ onBack, frotaInicial = [] }) => {
     }
   };
 
-  const handleFinalizar = async () => {
-    if (!formData.termo_aceite) return alert("Aceite o termo para prosseguir.");
-    if (!window.confirm("Deseja salvar e abrir o formulário de fotos?")) return;
+ const handleFinalizar = async () => {
 
-    setLoading(true);
-    try {
-      const falhas = Object.entries(checklist).filter(([_, s]) => s === 'FALHA').map(([i]) => i);
-      const resumo = falhas.length === 0 ? "SEM ALTERAÇÕES" : (tipoVistoria === 'ENTRADA' ? `FALHA EM: ${falhas.join(', ')}` : falhas.map(i => MAPA_FALHAS_SAIDA[i] || i).join(', '));
+  if (!formData.termo_aceite)
+    return alert("Aceite o termo para prosseguir.");
 
-      const payload = {
-        ...formData,
-        tipo_vistoria: tipoVistoria,
-        checklist_resumo: resumo,
-        proteger_ocorrencia: protegerFotos,
-        militar_logado: `${user?.patente || ''} ${user?.nome || ''}`.trim(),
-        status_garageiro: "PENDENTE"
-      };
+  const falhas = Object.entries(checklist)
+    .filter(([_, s]) => s === "FALHA")
+    .map(([i]) => i);
 
-      const res = await gasApi.saveVistoria(payload);
-      if (res.status === 'success') {
-        window.location.href = `https://docs.google.com/forms/d/e/1FAIpQLSeVQZ9pr-cdS6_haOa-d0kfU66aTgDJLR6xyxOUx03mdiHj5w/viewform?usp=pp_url&entry.1691316538=${res.id}&entry.364438341=${formData.prefixo_vtr}`;
-      } else { alert(res.message); }
-    } catch (e) { alert("Erro ao salvar."); } finally { setLoading(false); }
+  const resumo =
+    falhas.length === 0
+      ? "SEM ALTERAÇÕES"
+      : tipoVistoria === "ENTRADA"
+      ? `FALHA EM: ${falhas.join(", ")}`
+      : falhas.map(i => MAPA_FALHAS_SAIDA[i] || i).join(", ");
+
+  const payload = {
+    ...formData,
+    tipo_vistoria: tipoVistoria,
+    checklist_resumo: resumo,
+    proteger_ocorrencia: protegerFotos,
+    militar_logado: `${user?.patente || ""} ${user?.nome || ""}`.trim(),
+    status_garageiro: "PENDENTE"
   };
 
-  const CardGuarnicao = ({ compacto = false }) => (
-    <div className={`${compacto ? 'bg-slate-800 p-3 rounded-2xl' : 'bg-slate-900 p-5 rounded-3xl'} mb-4 border-b-4 border-blue-600`}>
-      <div className="flex items-center gap-2 mb-2 border-b border-white/10 pb-1">
-        <Users className="text-blue-400" size={compacto ? 14 : 18} />
-        <span className="text-[10px] font-black text-white uppercase">Guarnição</span>
-      </div>
-      {[{ l: 'MOT', c: 'motorista' }, { l: 'CMD', c: 'comandante' }, { l: 'PTR', c: 'patrulheiro' }].map(m => (
-        <div key={m.l} className="flex items-center mb-1">
-          <span className="text-[9px] font-black text-blue-500 w-8">{m.l}</span>
-          <div className="flex-1 px-2 py-1 rounded bg-white/5 border border-white/10">
-            <span className="text-[10px] text-white font-bold uppercase truncate block">
-              {formData[`${m.c}_nome`] || `---`}
-            </span>
-          </div>
-        </div>
-      ))}
-    </div>
-  );
+  try {
 
+    const res = await gasApi.saveVistoria(payload);
+
+    if (res.status === "success") {
+
+      window.location.href =
+        `https://docs.google.com/forms/d/e/1FAIpQLSeVQZ9pr-cdS6_haOa-d0kfU66aTgDJLR6xyxOUx03mdiHj5w/viewform?usp=pp_url&entry.1691316538=${res.id}&entry.364438341=${formData.prefixo_vtr}`;
+
+    }
+
+  } catch (e) {
+
+    const fila = JSON.parse(localStorage.getItem("vistoria_fila") || "[]");
+
+    fila.push(payload);
+
+    localStorage.setItem("vistoria_fila", JSON.stringify(fila));
+
+    alert("Sem internet. Vistoria salva no aparelho e será enviada depois.");
+
+  }
+
+};
   return (
     <div className="min-h-screen bg-slate-50 pb-10">
       <header className="bg-slate-900 text-white p-5 sticky top-0 z-50">
@@ -376,7 +458,7 @@ const Vistoria = ({ onBack, frotaInicial = [] }) => {
         {step === 1 ? (
           <div className="space-y-4">
             <section className="bg-white rounded-[2rem] p-6 shadow-sm border border-slate-200 space-y-4">
-              <CardGuarnicao />
+              <CardGuarnicao formData={formData} />
               <div className="grid grid-cols-2 gap-2">
  <select
   className="vtr-input"
@@ -394,34 +476,18 @@ const Vistoria = ({ onBack, frotaInicial = [] }) => {
 >
   <option value="">SELECIONE A VTR</option>
 
-  {viaturas
-    .slice()
-    .sort((a, b) =>
-      String(a.PREFIXO || a.prefixo).localeCompare(String(b.PREFIXO || b.prefixo))
-    )
-    .filter(v => {
-      const s = String(v.STATUS || v.status || "").toUpperCase();
+{viaturasFiltradas.map((v, index) => {
 
-      if (tipoVistoria === "ENTRADA") {
-        return (
-          s.includes("DISP") ||
-          s.includes("PÁTIO") ||
-          s.includes("MANUT") ||
-          s === ""
-        );
-      } else {
-        return s.includes("SERV") || s.includes("AGUAR");
-      }
-    })
-    .map((v, index) => {
-      const pref = String(v.PREFIXO || v.prefixo || v.Prefixo || "");
+  const pref = String(v.PREFIXO || v.prefixo || v.Prefixo || "");
 
-      return (
-        <option key={`${pref}-${index}`} value={pref}>
-          {pref} {v.STATUS ? `(${v.STATUS})` : ""}
-        </option>
-      );
-    })}
+  return (
+    <option key={`${pref}-${index}`} value={pref}>
+      {pref} {v.STATUS ? `(${v.STATUS})` : ""}
+    </option>
+  );
+
+})}
+   
 </select>
 
   {/* SELETOR DE SERVIÇO COM GATILHO PARA O MODAL */}
@@ -484,23 +550,26 @@ const Vistoria = ({ onBack, frotaInicial = [] }) => {
           </div>
         ) : (
           <div className="space-y-4">
-            <CardGuarnicao compacto />
+           <CardGuarnicao formData={formData} compacto />
             <div onClick={() => setProtegerFotos(!protegerFotos)} className={`p-4 rounded-3xl border-2 flex items-center gap-4 cursor-pointer transition-colors ${protegerFotos ? 'bg-blue-600 text-white border-blue-700' : 'bg-white text-slate-400 border-slate-200'}`}>
               {protegerFotos ? <Lock size={20} /> : <Unlock size={20} />}
               <span className="font-black text-[10px] uppercase">Proteger Imagens da Ocorrência</span>
             </div>
 
-            {tipoVistoria === 'ENTRADA' ? GRUPOS_ENTRADA.map(g => (
-              <div key={g.nome} className="bg-white rounded-3xl p-4 border border-slate-200">
-                <div className="flex items-center gap-2 mb-3 text-blue-700">{g.icon} <span className="font-black text-[10px] uppercase">{g.nome}</span></div>
-                {g.itens.map(item => (
-                  <div key={item} onClick={() => setChecklist(p => ({...p, [item]: p[item] === 'OK' ? 'FALHA' : 'OK'}))} className={`flex justify-between items-center p-3 mb-1 rounded-xl border cursor-pointer transition-all ${checklist[item] === 'FALHA' ? 'border-red-500 bg-red-50' : 'bg-slate-50 border-transparent'}`}>
-                    <span className="text-[11px] font-bold uppercase">{item}</span>
-                    <span className={`text-[9px] font-black px-2 py-1 rounded ${checklist[item] === 'OK' ? 'text-green-600' : 'bg-red-600 text-white'}`}>{checklist[item]}</span>
-                  </div>
-                ))}
-              </div>
-            )) : (
+           {tipoVistoria === "ENTRADA" ? (
+
+  GRUPOS_ENTRADA.map(g => (
+    <ChecklistGrupo
+      key={g.nome}
+      titulo={g.nome}
+      icon={g.icon}
+      itens={g.itens}
+      checklist={checklist}
+      onToggle={toggleChecklist}
+    />
+  ))
+
+) : (
               <div className="bg-white rounded-3xl p-4 border border-slate-200">
                 {ITENS_SAIDA.map(item => (
                   <div key={item} onClick={() => setChecklist(p => ({...p, [item]: p[item] === 'OK' ? 'FALHA' : 'OK'}))} className={`flex justify-between items-center p-3 mb-1 rounded-xl border cursor-pointer transition-all ${checklist[item] === 'FALHA' ? 'border-red-500 bg-red-50' : 'bg-slate-50 border-transparent'}`}>
