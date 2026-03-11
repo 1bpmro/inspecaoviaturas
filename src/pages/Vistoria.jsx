@@ -42,6 +42,7 @@ const MAPA_FALHAS_SAIDA = {
 
 const ITENS_SAIDA = Object.keys(MAPA_FALHAS_SAIDA);
 const TIPOS_SERVICO = ["Patrulhamento Ordinário", "Operação", "Força Tática", "Patrulha Comunitária", "Patrulhamento Rural", "Outro"];
+const OPCOES_COMUNITARIA = ["Patrulha Comercial", "Base Móvel", "Patrulha Escolar"];
 
 const COMPRESSION_OPTIONS = {
   maxSizeMB: 0.05,
@@ -49,6 +50,30 @@ const COMPRESSION_OPTIONS = {
   useWebWorker: true,
   fileType: 'image/jpeg',
   initialQuality: 0.6
+};
+
+const ModalComunitaria = ({ isOpen, onSelect, onClose }) => {
+  if (!isOpen) return null;
+
+  return (
+    <div className="fixed inset-0 z-[110] bg-slate-900/90 backdrop-blur-sm flex items-center justify-center p-6">
+      <div className="bg-white w-full max-w-xs rounded-[2rem] p-6 shadow-2xl border-t-8 border-blue-600">
+        <h3 className="text-center font-black text-slate-800 uppercase text-xs mb-4">Selecione a Modalidade</h3>
+        <div className="space-y-2">
+          {OPCOES_COMUNITARIA.map(opcao => (
+            <button
+              key={opcao}
+              onClick={() => onSelect(opcao.toUpperCase())}
+              className="w-full p-4 bg-slate-100 hover:bg-blue-50 text-slate-700 font-bold rounded-2xl text-[10px] uppercase transition-colors border border-slate-200"
+            >
+              {opcao}
+            </button>
+          ))}
+        </div>
+        <button onClick={onClose} className="w-full mt-4 text-[10px] font-black text-slate-400 uppercase">Cancelar</button>
+      </div>
+    </div>
+  );
 };
 
 // --- SUB-COMPONENTE: MODAL TROCA DE ÓLEO ---
@@ -156,6 +181,7 @@ const Vistoria = ({ onBack, frotaInicial = [] }) => {
   const [kmReferencia, setKmReferencia] = useState(0);
   const [modalOleoOpen, setModalOleoOpen] = useState(false);
   const [reNaoEncontrado, setReNaoEncontrado] = useState({ motorista: false, comandante: false, patrulheiro: false });
+  const [modalComunitariaOpen, setModalComunitariaOpen] = useState(false);
 
   const [formData, setFormData] = useState({
     prefixo_vtr: '', placa_vtr: '', hodometro: '', videomonitoramento: '', 
@@ -352,32 +378,51 @@ const Vistoria = ({ onBack, frotaInicial = [] }) => {
             <section className="bg-white rounded-[2rem] p-6 shadow-sm border border-slate-200 space-y-4">
               <CardGuarnicao />
               <div className="grid grid-cols-2 gap-2">
-                <select className="vtr-input" value={formData.prefixo_vtr} onChange={(e) => handleVtrChange(e.target.value)}>
-                  <option value="">SELECIONE A VTR</option>
-                  {viaturas
-                    .filter(v => {
-                      const s = String(v.STATUS || v.status || "").toUpperCase();
-                      if (tipoVistoria === 'ENTRADA') {
-                        return s.includes('DISP') || s.includes('PÁTIO') || s.includes('MANUT') || s === "";
-                      } else {
-                        return s.includes('SERV') || s.includes('AGUAR');
-                      }
-                    })
-                    .map(v => {
-                      const pref = v.PREFIXO || v.prefixo || v.Prefixo;
-                      return <option key={pref} value={pref}>{pref} {v.STATUS ? `(${v.STATUS})` : ''}</option>;
-                    })
-                  }
-                </select>
-                <select className="vtr-input" value={formData.tipo_servico} onChange={(e) => setFormData({...formData, tipo_servico: e.target.value, servico_detalhe: ''})}>
-                  <option value="">SERVIÇO</option>
-                  {TIPOS_SERVICO.map(t => <option key={t} value={t}>{t}</option>)}
-                </select>
-              </div>
+  <select className="vtr-input" value={formData.prefixo_vtr} onChange={(e) => handleVtrChange(e.target.value)}>
+    <option value="">SELECIONE A VTR</option>
+    {viaturas
+      .filter(v => {
+        const s = String(v.STATUS || v.status || "").toUpperCase();
+        if (tipoVistoria === 'ENTRADA') {
+          return s.includes('DISP') || s.includes('PÁTIO') || s.includes('MANUT') || s === "";
+        } else {
+          return s.includes('SERV') || s.includes('AGUAR');
+        }
+      })
+      .map(v => {
+        const pref = v.PREFIXO || v.prefixo || v.Prefixo;
+        return <option key={pref} value={pref}>{pref} {v.STATUS ? `(${v.STATUS})` : ''}</option>;
+      })
+    }
+  </select>
 
-              {['Operação', 'Outro', 'Patrulha Comunitária'].includes(formData.tipo_servico) && (
-                <input type="text" className="vtr-input w-full uppercase" placeholder="DETALHE DO SERVIÇO" value={formData.servico_detalhe} onChange={(e) => setFormData({...formData, servico_detalhe: e.target.value.toUpperCase()})} />
-              )}
+  {/* SELETOR DE SERVIÇO COM GATILHO PARA O MODAL */}
+  <select 
+    className="vtr-input" 
+    value={formData.tipo_servico} 
+    onChange={(e) => {
+      const val = e.target.value;
+      setFormData({...formData, tipo_servico: val, servico_detalhe: ''});
+      if (val === 'Patrulha Comunitária') {
+        setModalComunitariaOpen(true);
+      }
+    }}
+  >
+    <option value="">SERVIÇO</option>
+    {TIPOS_SERVICO.map(t => <option key={t} value={t}>{t}</option>)}
+  </select>
+</div>
+
+{/* CAMPO DE DETALHE (Aparece para Operação, Outro ou após escolher no Modal) */}
+{['Operação', 'Outro', 'Patrulha Comunitária'].includes(formData.tipo_servico) && (
+  <input 
+    type="text" 
+    className="vtr-input w-full uppercase" 
+    placeholder="DETALHE DO SERVIÇO" 
+    value={formData.servico_detalhe} 
+    onChange={(e) => setFormData({...formData, servico_detalhe: e.target.value.toUpperCase()})} 
+  />
+)}
 
               <div className="grid grid-cols-2 gap-2">
                 <input type="number" className={`vtr-input ${kmInvalido ? 'border-red-500 bg-red-50' : ''}`} placeholder="KM ATUAL" value={formData.hodometro} onChange={(e) => setFormData({...formData, hodometro: e.target.value})} />
@@ -454,6 +499,14 @@ const Vistoria = ({ onBack, frotaInicial = [] }) => {
       </main>
 
       <ModalTrocaOleo isOpen={modalOleoOpen} onClose={() => setModalOleoOpen(false)} vtr={vtrSelecionada} kmEntrada={formData.hodometro} user={user} />
+      <ModalComunitaria 
+  isOpen={modalComunitariaOpen} 
+  onClose={() => setModalComunitariaOpen(false)}
+  onSelect={(escolha) => {
+    setFormData(prev => ({ ...prev, servico_detalhe: escolha }));
+    setModalComunitariaOpen(false);
+  }}
+/>
     </div>
   );
 };
