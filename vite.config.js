@@ -8,7 +8,7 @@ export default defineConfig({
 
   // nome do repositório no GitHub Pages
   base: '/inspecaoviaturas/',
-
+ 
   resolve: {
     alias: {
       "@": path.resolve(__dirname, "./src"),
