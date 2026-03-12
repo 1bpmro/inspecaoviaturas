@@ -95,10 +95,7 @@ const ModalTrocaOleo = ({ isOpen, onClose, vtr, kmEntrada, user }) => {
 
     setLoading(true);
     try {
-      // 1. Upload para Cloudinary
       const urlFoto = await photoService.uploadFoto(fotoOleo);
-
-      // 2. Salvar no Firestore
       await addDoc(collection(db, "trocas_oleo"), {
         prefixo: vtr?.Prefixo || vtr?.PREFIXO,
         data_troca: dadosOleo.data_troca,
@@ -108,7 +105,6 @@ const ModalTrocaOleo = ({ isOpen, onClose, vtr, kmEntrada, user }) => {
         militar_nome: `${user?.patente || ''} ${user?.nome || ''}`.trim(),
         createdAt: serverTimestamp()
       });
-
       alert("Troca de óleo registrada com sucesso!");
       onClose();
     } catch (e) { 
@@ -171,8 +167,6 @@ const Vistoria = ({ onBack, frotaInicial = [] }) => {
   const [modalOleoOpen, setModalOleoOpen] = useState(false);
   const [reNaoEncontrado, setReNaoEncontrado] = useState({ motorista: false, comandante: false, patrulheiro: false });
   const [modalComunitariaOpen, setModalComunitariaOpen] = useState(false);
-
-  // NOVO: Estado para fotos da vistoria
   const [fotosVistoria, setFotosVistoria] = useState([]);
   const [uploadingPhoto, setUploadingPhoto] = useState(false);
 
@@ -187,6 +181,8 @@ const Vistoria = ({ onBack, frotaInicial = [] }) => {
 
   const [checklist, setChecklist] = useState({});
 
+  const toStr = useCallback((v) => (v !== undefined && v !== null ? String(v).trim() : ''), []);
+
   const toggleChecklist = (item) => {
     setChecklist(prev => ({
       ...prev,
@@ -194,67 +190,48 @@ const Vistoria = ({ onBack, frotaInicial = [] }) => {
     }));
   };
 
-  const toStr = useCallback((v) => (v !== undefined && v !== null ? String(v) : ''), []);
+  // Sincronização inicial simplificada (confia no App.jsx)
+  useEffect(() => {
+    if (frotaInicial?.length > 0) setViaturas(frotaInicial);
+    
+    const fetchMilitar = async () => {
+      try {
+        const res = await gasApi.getEfetivoCompleto();
+        if (res.status === "success") setEfetivoLocal(res.data);
+      } catch (e) { console.error("Erro efetivo:", e); }
+    };
+    fetchMilitar();
+  }, [frotaInicial]);
 
-  // Sincroniza Checklist e Reseta Campos ao trocar tipo de vistoria
+  // Reset ao trocar tipo
   useEffect(() => {
     const itens = tipoVistoria === 'ENTRADA' ? GRUPOS_ENTRADA.flatMap(g => g.itens) : ITENS_SAIDA;
     setChecklist(itens.reduce((acc, i) => ({ ...acc, [i]: 'OK' }), {}));
-    
     setFormData(prev => ({ 
-      ...prev, 
-      placa_vtr: '', hodometro: '', 
+      ...prev, prefixo_vtr: '', placa_vtr: '', hodometro: '', 
       motorista_re: '', motorista_nome: '', comandante_re: '', comandante_nome: '', patrulheiro_re: '', patrulheiro_nome: ''
     }));
     setKmReferencia(0);
     setFotosVistoria([]);
   }, [tipoVistoria]);
 
-  // Efeito de Sincronização de Dados (Mantido)
-  useEffect(() => {
-    let isMounted = true;
-    const sync = async () => {
-      const cache = localStorage.getItem("viaturas_cache");
-      if (cache && isMounted) {
-        try { setViaturas(JSON.parse(cache)); } catch { localStorage.removeItem("viaturas_cache"); }
-      }
-      try {
-        const [resVtr, resMil] = await Promise.all([
-          gasApi.getViaturas(),
-          gasApi.getEfetivoCompleto()
-        ]);
-        if (!isMounted) return;
-        if (resVtr.status === "success") {
-          setViaturas(resVtr.data);
-          localStorage.setItem("viaturas_cache", JSON.stringify(resVtr.data));
-        }
-        if (resMil.status === "success") setEfetivoLocal(resMil.data);
-      } catch (e) { console.error("Erro ao sincronizar:", e); }
-    };
-    sync();
-    return () => { isMounted = false; };
-  }, []);
-
-  const vtrSelecionada = useMemo(() => 
-    viaturas.find(v => toStr(v.Prefixo || v.PREFIXO) === toStr(formData.prefixo_vtr)), [formData.prefixo_vtr, viaturas, toStr]);
-
   const viaturasFiltradas = useMemo(() => {
     return viaturas
       .slice()
-      .sort((a, b) => String(a.PREFIXO || a.prefixo).localeCompare(String(b.PREFIXO || b.prefixo)))
+      .sort((a, b) => toStr(a.PREFIXO || a.prefixo).localeCompare(toStr(b.PREFIXO || b.prefixo)))
       .filter(v => {
         const s = String(v.STATUS || v.status || "").toUpperCase();
-        if (tipoVistoria === "ENTRADA") {
-          return (s.includes("DISP") || s.includes("PÁTIO") || s.includes("MANUT") || s === "");
-        } else {
-          return s.includes("SERV") || s.includes("AGUAR");
-        }
+        return tipoVistoria === "ENTRADA" 
+          ? (s.includes("DISP") || s.includes("PÁTIO") || s.includes("MANUT") || s === "")
+          : (s.includes("SERV") || s.includes("AGUAR"));
       });
-  }, [viaturas, tipoVistoria]);
+  }, [viaturas, tipoVistoria, toStr]);
+
+  const vtrSelecionada = useMemo(() => 
+    viaturas.find(v => toStr(v.PREFIXO || v.prefixo || v.Prefixo) === toStr(formData.prefixo_vtr)), [formData.prefixo_vtr, viaturas, toStr]);
 
   const precisaTrocaOleo = useMemo(() => {
-    if (!vtrSelecionada || tipoVistoria !== 'ENTRADA') return false;
-    return vtrSelecionada.ALERTA_OLEO === true || vtrSelecionada.alerta_oleo === true;
+    return tipoVistoria === 'ENTRADA' && (vtrSelecionada?.ALERTA_OLEO === true || vtrSelecionada?.alerta_oleo === true);
   }, [vtrSelecionada, tipoVistoria]);
 
   const kmInvalido = useMemo(() => {
@@ -268,6 +245,44 @@ const Vistoria = ({ onBack, frotaInicial = [] }) => {
     return !formData.prefixo_vtr || servicoIncomp || !formData.hodometro || !formData.motorista_nome || !formData.comandante_nome || kmInvalido;
   }, [formData, kmInvalido]);
 
+  const handleVtrChange = (prefixo) => {
+    if (!prefixo) return;
+    const vtr = viaturas.find(v => toStr(v.PREFIXO || v.prefixo || v.Prefixo) === toStr(prefixo));
+    if (!vtr) return;
+
+    const getV = (k) => vtr[k] || vtr[k.toUpperCase()] || vtr[k.toLowerCase()] || '';
+    const pref = toStr(getV('PREFIXO') || getV('prefixo'));
+    const placa = toStr(getV('PLACA') || getV('placa'));
+    const ultKM = Number(getV('ULTIMOKM')) || Number(getV('UltimoKM')) || 0;
+
+    setKmReferencia(ultKM);
+
+    if (tipoVistoria === 'SAÍDA') {
+      const buscarNomePeloRE = (re) => {
+        const mil = efetivoLocal.find(m => String(m.re) === String(re));
+        return mil ? `${mil.patente} ${mil.nome}`.toUpperCase() : '';
+      };
+      setFormData(p => ({
+        ...p, prefixo_vtr: pref, placa_vtr: placa,
+        tipo_servico: toStr(getV('UltimoTipoServico')),
+        servico_detalhe: toStr(getV('UltimoServicoDetalhe')),
+        videomonitoramento: toStr(getV('UltimoVideo')),
+        hodometro: String(ultKM),
+        motorista_re: toStr(getV('UltimoMotoristaRE')),
+        motorista_nome: buscarNomePeloRE(getV('UltimoMotoristaRE')),
+        comandante_re: toStr(getV('UltimoComandanteRE')),
+        comandante_nome: buscarNomePeloRE(getV('UltimoComandanteRE')),
+        patrulheiro_re: toStr(getV('UltimoPatrulheiroRE')),
+        patrulheiro_nome: buscarNomePeloRE(getV('UltimoPatrulheiroRE')),
+      }));
+    } else {
+      setFormData(p => ({
+        ...p, prefixo_vtr: pref, placa_vtr: placa, hodometro: '',
+        motorista_re: '', motorista_nome: '', comandante_re: '', comandante_nome: '', patrulheiro_re: '', patrulheiro_nome: ''
+      }));
+    }
+  };
+
   const handleMatriculaChange = (valor, cargo) => {
     const reLimpo = String(valor).replace(/\D/g, '');
     setFormData(prev => ({ ...prev, [`${cargo}_re`]: reLimpo }));
@@ -278,8 +293,7 @@ const Vistoria = ({ onBack, frotaInicial = [] }) => {
 
       if (militar) {
         setFormData(prev => ({ 
-          ...prev, 
-          [`${cargo}_re`]: String(militar.re),
+          ...prev, [`${cargo}_re`]: String(militar.re),
           [`${cargo}_nome`]: `${militar.patente} ${militar.nome}`.toUpperCase(), 
           [`${cargo}_unidade`]: (militar.unidade || '1º BPM').toUpperCase()
         }));
@@ -291,66 +305,6 @@ const Vistoria = ({ onBack, frotaInicial = [] }) => {
     }
   };
 
-const handleVtrChange = (prefixo) => {
-  if (!prefixo) {
-    setFormData(p => ({ ...p, prefixo_vtr: '', placa_vtr: '' }));
-    return;
-  }
-
-  // 1. Acha a viatura na lista
-  const vtr = viaturas.find(v => 
-    toStr(v.PREFIXO || v.prefixo || v.Prefixo) === toStr(prefixo)
-  );
-  
-  if (!vtr) return;
-
-  // 2. Função auxiliar para pegar dados independente da letra (Maiúscula/Minúscula)
-  const getV = (k) => vtr[k] || vtr[k.toUpperCase()] || vtr[k.toLowerCase()] || '';
-
-  const pref = toStr(getV('PREFIXO') || getV('prefixo'));
-  const placa = toStr(getV('PLACA') || getV('placa'));
-  const ultKM = Number(getV('ULTIMOKM')) || Number(getV('UltimoKM')) || 0;
-
-  setKmReferencia(ultKM);
-
-  // 3. ATUALIZA O ESTADO (Adicionado o prefixo_vtr aqui explicitamente)
-  if (tipoVistoria === 'SAÍDA') {
-    const buscarNomePeloRE = (re) => {
-      if (!re) return '';
-      const mil = efetivoLocal.find(m => String(m.re) === String(re));
-      return mil ? `${mil.patente} ${mil.nome}`.toUpperCase() : '';
-    };
-
-    setFormData(p => ({
-      ...p,
-      prefixo_vtr: pref, // Garante que o select mude visualmente
-      placa_vtr: placa,
-      tipo_servico: toStr(getV('UltimoTipoServico')),
-      servico_detalhe: toStr(getV('UltimoServicoDetalhe')),
-      videomonitoramento: toStr(getV('UltimoVideo')),
-      hodometro: String(ultKM),
-      motorista_re: toStr(getV('UltimoMotoristaRE')),
-      motorista_nome: buscarNomePeloRE(getV('UltimoMotoristaRE')),
-      comandante_re: toStr(getV('UltimoComandanteRE')),
-      comandante_nome: buscarNomePeloRE(getV('UltimoComandanteRE')),
-      patrulheiro_re: toStr(getV('UltimoPatrulheiroRE')),
-      patrulheiro_nome: buscarNomePeloRE(getV('UltimoPatrulheiroRE')),
-    }));
-  } else {
-    // ENTRADA
-    setFormData(p => ({
-      ...p,
-      prefixo_vtr: pref, // Garante que o select mude visualmente
-      placa_vtr: placa,
-      hodometro: '',
-      motorista_re: '', motorista_nome: '', 
-      comandante_re: '', comandante_nome: '', 
-      patrulheiro_re: '', patrulheiro_nome: ''
-    }));
-  }
-};
-
-  // Captura de Foto para Vistoria
   const handleAddFotoVistoria = async (e) => {
     const file = e.target.files[0];
     if (!file) return;
@@ -365,27 +319,19 @@ const handleVtrChange = (prefixo) => {
 
   const handleFinalizar = async () => {
     if (!formData.termo_aceite) return alert("Aceite o termo para prosseguir.");
-
     setLoading(true);
     try {
-      // 1. Upload das fotos para Cloudinary
       const urlsFotos = [];
       for (const foto of fotosVistoria) {
         const url = await photoService.uploadFoto(foto);
         urlsFotos.push(url);
       }
-
-      // 2. Preparar resumo de falhas
-      const falhas = Object.entries(checklist)
-        .filter(([_, s]) => s === "FALHA")
-        .map(([i]) => i);
-
+      const falhas = Object.entries(checklist).filter(([_, s]) => s === "FALHA").map(([i]) => i);
       const resumo = falhas.length === 0 ? "SEM ALTERAÇÕES" : 
         (tipoVistoria === "ENTRADA" ? `FALHA EM: ${falhas.join(", ")}` : 
         falhas.map(i => MAPA_FALHAS_SAIDA[i] || i).join(", "));
 
-      // 3. Payload para Firestore
-      const payload = {
+      await addDoc(collection(db, "vistorias"), {
         ...formData,
         tipo_vistoria: tipoVistoria,
         checklist_resumo: resumo,
@@ -394,20 +340,11 @@ const handleVtrChange = (prefixo) => {
         militar_logado: `${user?.patente || ""} ${user?.nome || ""}`.trim(),
         createdAt: serverTimestamp(),
         status_garageiro: "PENDENTE"
-      };
-
-      // 4. Salvar no Firestore
-      await addDoc(collection(db, "vistorias"), payload);
-      
+      });
       alert("Vistoria finalizada com sucesso!");
       onBack();
-
-    } catch (e) {
-      console.error(e);
-      alert("Erro ao salvar. Tente novamente.");
-    } finally {
-      setLoading(false);
-    }
+    } catch (e) { alert("Erro ao salvar."); }
+    finally { setLoading(false); }
   };
 
   return (
@@ -435,21 +372,13 @@ const handleVtrChange = (prefixo) => {
             <section className="bg-white rounded-[2rem] p-6 shadow-sm border border-slate-200 space-y-4">
               <CardGuarnicao formData={formData} />
               <div className="grid grid-cols-2 gap-2">
-               <select 
-  className="vtr-input" 
-  value={formData.prefixo_vtr} 
-  onChange={(e) => handleVtrChange(e.target.value)}
->
-  <option value="">SELECIONE A VTR</option>
-  {viaturasFiltradas.map((v, i) => {
-    const valorOpcao = v.PREFIXO || v.prefixo || v.Prefixo;
-    return (
-      <option key={i} value={valorOpcao}>
-        {valorOpcao}
-      </option>
-    );
-  })}
-</select>
+                <select className="vtr-input" value={formData.prefixo_vtr} onChange={(e) => handleVtrChange(e.target.value)}>
+                  <option value="">SELECIONE A VTR</option>
+                  {viaturasFiltradas.map((v, i) => {
+                    const pref = v.PREFIXO || v.prefixo || v.Prefixo;
+                    return <option key={i} value={pref}>{pref}</option>;
+                  })}
+                </select>
                 <select className="vtr-input" value={formData.tipo_servico} onChange={(e) => {
                   setFormData({...formData, tipo_servico: e.target.value, servico_detalhe: ''});
                   if (e.target.value === 'Patrulha Comunitária') setModalComunitariaOpen(true);
@@ -496,8 +425,6 @@ const handleVtrChange = (prefixo) => {
         ) : (
           <div className="space-y-4">
             <CardGuarnicao formData={formData} compacto />
-
-            {/* SEÇÃO DE FOTOS DA VISTORIA */}
             <div className="bg-white rounded-3xl p-5 border border-slate-200 space-y-3">
               <h3 className="font-black text-[10px] text-slate-400 uppercase flex items-center gap-2"><Car size={14}/> Fotos da Vistoria (Opcional)</h3>
               <div className="grid grid-cols-4 gap-2">
@@ -516,7 +443,7 @@ const handleVtrChange = (prefixo) => {
 
             <div onClick={() => setProtegerFotos(!protegerFotos)} className={`p-4 rounded-3xl border-2 flex items-center gap-4 cursor-pointer transition-colors ${protegerFotos ? 'bg-blue-600 text-white border-blue-700' : 'bg-white text-slate-400 border-slate-200'}`}>
               {protegerFotos ? <Lock size={20} /> : <Unlock size={20} />}
-              <span className="font-black text-[10px] uppercase">Proteger Imagens da Ocorrência</span>
+              <span className="font-black text-[10px] uppercase">Proteger Imagens</span>
             </div>
 
             {tipoVistoria === "ENTRADA" ? (
