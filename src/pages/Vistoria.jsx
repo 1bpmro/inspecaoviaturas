@@ -99,49 +99,73 @@ const Vistoria = ({ onBack, frotaInicial = [] }) => {
   };
 
   // --- SALVAMENTO NO FIREBASE ---
-  const handleFinalizar = async () => {
-    if (!formData.termo_aceite) return alert("Aceite o termo para continuar.");
-    setLoading(true);
+ // Adicione 'doc' e 'updateDoc' nas importações do firebase
+import { db, collection, addDoc, serverTimestamp, doc, updateDoc, query, where, getDocs } from '../lib/firebase';
 
-    try {
-      // 1. Upload de fotos para o Cloudinary (via seu photoService)
-      const urlsFotos = [];
-      for (const fotoBase64 of fotosVistoria) {
+const handleFinalizar = async () => {
+  if (!formData.termo_aceite) return alert("Aceite o termo para continuar.");
+  if (!formData.hodometro) return alert("Informe o KM atual.");
+  setLoading(true);
+
+  try {
+    // 1. Upload de fotos (com tratamento de erro individual)
+    const urlsFotos = [];
+    for (const fotoBase64 of fotosVistoria) {
+      try {
         const url = await photoService.uploadFoto(fotoBase64);
         urlsFotos.push(url);
+      } catch (uploadErr) {
+        console.error("Falha em uma das fotos, continuando...", uploadErr);
       }
-
-      // 2. Preparar Resumo do Checklist
-      const falhas = Object.entries(checklist)
-        .filter(([_, status]) => status === 'FALHA')
-        .map(([item]) => item);
-      
-      const resumoChecklist = falhas.length === 0 ? "SEM ALTERAÇÕES" : `FALHAS: ${falhas.join(", ")}`;
-
-      // 3. Objeto Final para o Firebase
-      const novaVistoria = {
-        ...formData,
-        tipo_vistoria: tipoVistoria,
-        checklist_resumo: resumoChecklist,
-        fotos: urlsFotos,
-        militar_responsavel: `${user?.patente} ${user?.nome}`,
-        unidade: "1º BPM",
-        status_vtr: "PENDENTE_GARAGEIRO",
-        data_hora: serverTimestamp(), // Data oficial do servidor Firebase
-      };
-
-      // 4. Gravação no Firestore
-      await addDoc(collection(db, "vistorias"), novaVistoria);
-
-      alert("Vistoria enviada com sucesso ao banco de dados!");
-      onBack();
-    } catch (error) {
-      console.error("Erro Firebase:", error);
-      alert("Erro ao salvar no Firebase. Verifique sua conexão.");
-    } finally {
-      setLoading(false);
     }
-  };
+
+    // 2. Preparar checklist
+    const falhas = Object.entries(checklist)
+      .filter(([_, status]) => status === 'FALHA')
+      .map(([item]) => item);
+    
+    const resumoChecklist = falhas.length === 0 ? "SEM ALTERAÇÕES" : `FALHAS: ${falhas.join(", ")}`;
+
+    // 3. Objeto Final (Hodômetro convertido para Número)
+    const novaVistoria = {
+      ...formData,
+      hodometro: Number(formData.hodometro), // Crucial para o P4 Admin
+      tipo_vistoria: tipoVistoria,
+      checklist_resumo: resumoChecklist,
+      fotos: urlsFotos,
+      militar_responsavel: `${user?.patente || ''} ${user?.nome || ''}`,
+      re_responsavel: user?.re || 'N/A',
+      unidade: "1º BPM",
+      status_vtr: "PENDENTE_GARAGEIRO",
+      data_hora: serverTimestamp(),
+    };
+
+    // 4. Gravação da Vistoria
+    await addDoc(collection(db, "vistorias"), novaVistoria);
+
+    // 5. ATUALIZAÇÃO DA VIATURA (O que faltava)
+    // Buscamos a viatura pelo prefixo para atualizar o status e o último KM
+    const vtrQuery = query(collection(db, "viaturas"), where("prefixo", "==", formData.prefixo_vtr));
+    const vtrSnap = await getDocs(vtrQuery);
+    
+    if (!vtrSnap.empty) {
+      const vtrDocId = vtrSnap.docs[0].id;
+      await updateDoc(doc(db, "viaturas", vtrDocId), {
+        ultimo_km: Number(formData.hodometro),
+        status: tipoVistoria === 'ENTRADA' ? 'DISPONÍVEL' : 'EM SERVIÇO', // Lógica básica de pátio
+        ultima_atualizacao: serverTimestamp()
+      });
+    }
+
+    alert("Vistoria enviada e frota atualizada com sucesso!");
+    onBack();
+  } catch (error) {
+    console.error("Erro Geral na Vistoria:", error);
+    alert("Erro crítico: Verifique se o prefixo da viatura está correto e tente novamente.");
+  } finally {
+    setLoading(false);
+  }
+};
 
   return (
     <div className="min-h-screen bg-slate-50 pb-10">
