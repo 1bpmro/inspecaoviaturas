@@ -5,26 +5,36 @@ import { doc, updateDoc } from 'firebase/firestore';
 const GAS_URL = 'https://script.google.com/macros/s/AKfycbwFMqbY2FiDJfZcBxRWvgkqO79dMhy6rcf6149_uXzvBa8Jdm4pcpT8dVdfWo_KS_wY6Q/exec'; 
 
 /**
- * Mantemos para segurança caso algum dado Base64 escape 
- * (ex: assinaturas ou pequenas fotos de perfil que não vão pro Cloudinary)
+ * Prepara o payload para o Google Sheets:
+ * 1. Limpa Base64 (se houver)
+ * 2. Converte Arrays de URLs (Cloudinary) em Strings separadas por " | "
  */
-const cleanBase64 = (item) => {
+const preparePayload = (item) => {
+  // Se for uma string Base64, limpa os metadados
   if (typeof item === 'string' && item.includes('base64,')) {
     return item.split('base64,')[1];
   }
-  if (Array.isArray(item)) return item.map(cleanBase64);
+  
+  // Se for um Array (Ex: lista de links do Cloudinary), junta com pipe
+  if (Array.isArray(item)) {
+    // Se o array contiver strings (URLs), vira "url1 | url2"
+    if (typeof item[0] === 'string') return item.join(' | ');
+    // Se for array de objetos, processa cada um
+    return item.map(preparePayload);
+  }
+  
   if (typeof item === 'object' && item !== null) {
     const newObj = {};
-    for (const key in item) { newObj[key] = cleanBase64(item[key]); }
+    for (const key in item) { newObj[key] = preparePayload(item[key]); }
     return newObj;
   }
+  
   return item;
 };
 
 export const gasApi = {
   post: async (action, payload = {}) => {
-    const startTime = Date.now();
-    const optimizedPayload = cleanBase64(payload);
+    const optimizedPayload = preparePayload(payload);
 
     try {
       const response = await axios({
@@ -37,45 +47,46 @@ export const gasApi = {
 
       let data = response.data;
       if (typeof data === 'string') {
-        try { data = JSON.parse(data); } catch (e) { console.warn("Erro parse JSON GAS:", data); }
+        try { data = JSON.parse(data); } catch (e) { console.warn("Erro parse GAS:", data); }
       }
 
-      console.log(`%c[GAS API] ${action} (${Date.now() - startTime}ms)`, 'color: #3b82f6; font-weight: bold;', data);
       return data;
-
     } catch (error) {
-      console.error(`[GAS Network Error] ${action}`, error);
-      return { status: "error", message: "Erro de conexão com o servidor da Planilha." };
+      console.error(`[GAS Error] ${action}`, error);
+      return { status: "error", message: "Falha na conexão com o Batalhão." };
     }
   },
 
   // --- MÉTODOS DE VISTORIA ---
-  saveVistoria: (dados) => gasApi.post('saveVistoria', dados),
-  
-  // --- GESTÃO DE FROTA COM SINCRONIA FIREBASE ---
+  saveVistoria: async (dados) => {
+    // Aqui garantimos que se 'fotos' for um array, vire uma string separada por pipe
+    return await gasApi.post('saveVistoria', dados);
+  },
+
+  // --- GESTÃO DE FROTA E STATUS ---
   alterarStatusViatura: async (prefixo, novoStatus, info = {}) => {
-    // 1. Atualiza na Planilha (Registro Histórico)
     const res = await gasApi.post('alterarStatusViatura', { prefixo, novoStatus, ...info });
     
-    // 2. Sincroniza no Firebase (Visualização em Tempo Real)
+    // Sincronia Firebase: Mantém o Dashboard Admin atualizado sem delay
     try {
       const vtrRef = doc(db, "viaturas", prefixo);
       await updateDoc(vtrRef, {
         status: novoStatus,
-        ultimaAtualizacao: new Date().toISOString(),
-        ...info
+        ...info,
+        atualizadoEm: new Date().toISOString()
       });
-    } catch (e) {
-      console.warn("Vtr não monitorada no Firebase, atualizada apenas na planilha.");
-    }
+    } catch (e) { console.warn("Firebase Sync Offline"); }
     
-    await new Promise(r => setTimeout(r, 800));
     return res;
   },
 
-  // --- DEMAIS MÉTODOS ---
+  // --- SEGURANÇA E USUÁRIO ---
+  changePassword: async (re, senhaAtual, novaSenha) => {
+    // Atualiza na Planilha (para o P4 ter o registro)
+    return await gasApi.post('changePassword', { re, senhaAtual, novaSenha });
+  },
+
+  buscarMilitar: (re) => gasApi.post('buscarMilitar', { re }),
   getViaturas: () => gasApi.post('getViaturas'),
   registrarManutencao: (dados) => gasApi.post('registrarManutencao', dados),
-  changePassword: (re, atual, nova) => gasApi.post('changePassword', { re, atual, nova }),
-  buscarMilitar: (re) => gasApi.post('buscarMilitar', { re }),
 };
