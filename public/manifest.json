@@ -1,22 +1,25 @@
 {
-  "short_name": "VISTORIA 1BPM",
-  "name": "BATALHÃO RONDON - Vistoria de Viaturas",
+  "short_name": "Vistoria 1BPM",
+  "name": "1º BPM Rondon - Sistema de Vistorias",
+  "description": "Controle tático de frotas e vistorias - PMRO",
+  "id": "/inspecaoviaturas/",
   "icons": [
     {
-      "src": "icon-512.png", // <--- Caminho direto, sem subpasta
+      "src": "icon-512.png",
       "type": "image/png",
       "sizes": "192x192"
     },
     {
-      "src": "icon-512.png", // <--- Caminho direto, sem subpasta
+      "src": "icon-512.png",
       "type": "image/png",
       "sizes": "512x512",
       "purpose": "any maskable"
     }
   ],
-  "start_url": ".",
+  "start_url": "./index.html",
   "display": "standalone",
   "theme_color": "#0f172a",
-  "background_color": "#0f172a",
-  "orientation": "portrait"
+  "background_color": "#f1f5f9",
+  "orientation": "portrait",
+  "scope": "./"
 }
