@@ -14,19 +14,24 @@ const Login = () => {
 
   const handleLogin = async (e) => {
     e.preventDefault();
-    if (!credentials.email || !credentials.password) {
-      return setError('Preencha todos os campos.');
+    const reLimpo = credentials.matricula.replace(/\D/g, ''); // Garante só números
+    
+    if (!reLimpo || !credentials.password) {
+      return setError('Preencha matrícula e senha.');
     }
 
     setLoading(true);
     setError('');
 
     try {
-      await login(credentials.email, credentials.password);
-      // O redirecionamento acontece automaticamente via AuthContext
+      const { needsPasswordChange } = await login(reLimpo, credentials.password);
+      
+      if (needsPasswordChange) {
+        alert("⚠️ ATENÇÃO: Você está usando a senha padrão. Por segurança, altere sua senha no perfil.");
+        // Aqui você pode redirecionar para uma página de "Trocar Senha"
+      }
     } catch (err) {
-      console.error(err);
-      setError('E-mail ou senha incorretos.');
+      setError('Matrícula ou senha incorretos.');
     } finally {
       setLoading(false);
     }
