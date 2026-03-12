@@ -1,31 +1,39 @@
-<!doctype html>
+<!DOCTYPE html>
 <html lang="pt-br">
 <head>
+  <meta charset="UTF-8" />
+  <link rel="icon" type="image/png" href="./icon-512.png" />
+  <link rel="manifest" href="./manifest.json" />
+  
+  <link rel="apple-touch-icon" href="./icon-512.png" />
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="Vistoria 1BPM">
 
-<link rel="manifest" href="/manifest.json" />
-<link rel="apple-touch-icon" href="/icon-512.png" />
+  <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
+  <meta name="theme-color" content="#0f172a" />
+  
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
 
-<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
-<meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
-<meta name="theme-color" content="#0f172a" />
-<meta name="mobile-web-app-capable" content="yes">
+  <title>Inspeção de Viaturas - 1º BPM</title>
 
-<meta charset="UTF-8" />
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;700;900&display=swap" rel="stylesheet">
 
-<meta name="viewport" content="width=device-width, initial-scale=1.0" />
-
-<title>Inspeção de Viaturas - 1º BPM</title>
-
+  <style>
+    /* Splash Screen Simples (Evita tela branca enquanto o React carrega) */
+    body { background-color: #0f172a; margin: 0; display: flex; justify-content: center; align-items: center; min-height: 100vh; }
+    #loader-inicial { border: 4px solid #1e293b; border-top: 4px solid #3b82f6; border-radius: 50%; width: 40px; height: 40px; animation: spin 1s linear infinite; }
+    @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+  </style>
 </head>
 
 <body>
-  <div id="root"></div>
+  <div id="root">
+    <div id="loader-inicial"></div>
+  </div>
 
-  <script type="module" src="./src/main.jsx"></script>
-
-  <script>
-  
-  </script>
-
+  <script type="module" src="/src/main.jsx"></script>
 </body>
 </html>
