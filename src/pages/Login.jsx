@@ -1,164 +1,109 @@
-import React, { useState, useEffect, useMemo } from 'react'; 
+import React, { useState } from 'react';
 import { useAuth } from '../lib/AuthContext';
-import { gasApi } from '../api/gasClient';
-import { Lock, User, Loader2, ArrowRight } from 'lucide-react';
-
+import { Loader2, ShieldCheck, Lock, User } from 'lucide-react';
 
 const Login = () => {
-  const [re, setRe] = useState('');
-  const [senha, setSenha] = useState('');
-  const [perfil, setPerfil] = useState(null); 
-  const [efetivoLocal, setEfetivoLocal] = useState([]); // Armazena a lista para busca instantânea
-  const [loadingPerfil, setLoadingPerfil] = useState(false);
-  const [isSubmitting, setIsSubmitting] = useState(false);
+  const { login } = useAuth(); // Função que criaremos no AuthContext
+  const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
-  const { login } = useAuth();
+  
+  const [credentials, setCredentials] = useState({
+    email: '', // Firebase usa email/senha por padrão
+    password: ''
+  });
 
-  // FORMATAR RE (Mantido original)
-  const formatarRE = (reRaw) => {
-    const apenasNumeros = reRaw.replace(/\D/g, ''); 
-    if (!apenasNumeros) return '';
-    return apenasNumeros.length <= 6 ? `1000${apenasNumeros}` : apenasNumeros;
-  };
-
-  // 1. CARREGAMENTO INICIAL: Busca a lista de perfis assim que o app abre
-  useEffect(() => {
-    const carregarEfetivo = async () => {
-      setLoadingPerfil(true);
-      try {
-        const res = await gasApi.getEfetivoCompleto();
-        if (res.status === 'success') {
-          setEfetivoLocal(res.data);
-        }
-      } catch (err) {
-        console.error("Erro ao sincronizar perfis");
-      } finally {
-        setLoadingPerfil(false);
-      }
-    };
-    carregarEfetivo();
-  }, []);
-
-  // 2. BUSCA INSTANTÂNEA: Verifica o perfil sem chamar a API de novo
-  useEffect(() => {
-    const reLimpo = formatarRE(re);
-    if (reLimpo.length >= 7) {
-      // Procura na lista que já foi baixada
-      const militar = efetivoLocal.find(m => m.re === reLimpo);
-      if (militar) {
-        setPerfil(militar.role);
-      } else {
-        // Se não achar na lista baixada, pode ser um militar novo 
-        // Aqui mantemos o fallback para POLICIAL
-        setPerfil('POLICIAL');
-      }
-    } else {
-      setPerfil(null);
-      setSenha('');
-    }
-  }, [re, efetivoLocal]);
-
-  const precisaSenha = perfil === 'ADMIN' || perfil === 'GARAGEIRO';
-
-  const handleSubmit = async (e) => {
+  const handleLogin = async (e) => {
     e.preventDefault();
-    setError('');
-    
-    if (precisaSenha && !senha) {
-      setError('SENHA OBRIGATÓRIA PARA ESTE NÍVEL DE ACESSO');
-      return;
+    if (!credentials.email || !credentials.password) {
+      return setError('Preencha todos os campos.');
     }
 
-    setIsSubmitting(true);
+    setLoading(true);
+    setError('');
+
     try {
-      const reFinal = formatarRE(re);
-      const result = await login(reFinal, precisaSenha ? senha : "");
-      
-      if (!result.success) {
-        setError(result.message);
-      } else {
-        // --- ADICIONE ESTA LÓGICA AQUI ---
-        if (precisaSenha && senha === "123456") {
-          // Se o login deu certo mas a senha é a padrão, 
-          // você pode disparar um alerta ou abrir o modal.
-          alert("Atenção: Sua senha é o padrão (123456). Por segurança, altere-a no menu de perfil após entrar.");
-        }
-      }
+      await login(credentials.email, credentials.password);
+      // O redirecionamento acontece automaticamente via AuthContext
     } catch (err) {
-      setError('ERRO DE COMUNICAÇÃO COM O SERVIDOR');
+      console.error(err);
+      setError('E-mail ou senha incorretos.');
     } finally {
-      setIsSubmitting(false);
+      setLoading(false);
     }
   };
 
   return (
-    <div className="min-h-screen flex flex-col items-center justify-center bg-[var(--bg-app)] p-4 relative transition-colors duration-500">
-      <div className="max-w-md w-full bg-[var(--bg-card)] rounded-[2.5rem] shadow-2xl overflow-hidden border-b-[8px] border-[var(--accent)] border-2 border-[var(--border-color)]">
-        
-        {/* CABEÇALHO (Mantido original) */}
-        <div className="bg-slate-900 dark:bg-slate-950 p-8 text-center transition-colors">
-          <img src="./icon-512.png" alt="Brasão 1º BPM" className="w-24 h-24 mx-auto mb-4 drop-shadow-2xl object-contain" />
-          <h1 className="text-xl font-black text-white uppercase tracking-tighter">1º BPM - BATALHÃO RONDON</h1>
-          <p className="text-blue-400 text-[10px] font-bold tracking-widest uppercase mt-1 opacity-90">
-            {loadingPerfil ? "SINCRONIZANDO ACESSOS..." : "Sistema de inspeção de viaturas do 1º BPM - RO"}
-          </p>
+    <div className="min-h-screen bg-slate-900 flex flex-col items-center justify-center p-6">
+      {/* Logo / Header */}
+      <div className="mb-10 text-center">
+        <div className="bg-blue-600 w-20 h-20 rounded-3xl flex items-center justify-center mx-auto mb-4 shadow-2xl shadow-blue-500/20">
+          <ShieldCheck size={40} className="text-white" />
         </div>
+        <h1 className="text-white font-black text-2xl tracking-tighter uppercase">
+          Garagem <span className="text-blue-500">1º BPM</span>
+        </h1>
+        <p className="text-slate-500 text-xs font-bold uppercase tracking-widest mt-1">
+          Sistema de Vistorias
+        </p>
+      </div>
 
-        <form onSubmit={handleSubmit} className="p-8 space-y-6">
+      {/* Card de Login */}
+      <div className="bg-white w-full max-w-sm rounded-[2.5rem] p-8 shadow-2xl">
+        <form onSubmit={handleLogin} className="space-y-4">
+          
           {error && (
-            <div className="bg-red-50 dark:bg-red-900/20 border-l-4 border-red-500 p-3 text-red-700 dark:text-red-400 text-xs font-bold animate-pulse rounded-r-lg">
+            <div className="bg-red-50 text-red-600 text-[10px] font-black p-3 rounded-xl border border-red-100 uppercase text-center">
               {error}
             </div>
           )}
 
-          {/* CAMPO RE */}
-          <div className="relative">
-            <label className="text-[10px] font-black text-[var(--text-muted)] uppercase absolute left-3 top-2">Matrícula (RE)</label>
-            <User className="absolute right-4 top-1/2 -translate-y-1/2 text-[var(--text-muted)]" size={20} />
-            <input 
-              type="text" 
-              value={re} 
-              onChange={(e) => setRe(e.target.value)} 
-              className="vtr-input pt-7 pb-3 px-3 w-full" 
-              placeholder="Digite seu RE"
-              maxLength={11}
-            />
-            {/* O loader agora só aparece na sincronização inicial ou se você quiser indicar busca */}
-            {loadingPerfil && re.length > 0 && (
-              <Loader2 className="absolute right-12 top-1/2 -translate-y-1/2 animate-spin text-[var(--accent)]" size={16} />
-            )}
-          </div>
-
-          {/* CAMPO SENHA CONDICIONAL (Aparecerá sem delay) */}
-          {precisaSenha && (
-            <div className="relative animate-in slide-in-from-top-4 duration-300">
-              <label className="text-[10px] font-black text-[var(--text-muted)] uppercase absolute left-3 top-2">Senha de Acesso</label>
-              <Lock className="absolute right-4 top-1/2 -translate-y-1/2 text-[var(--text-muted)]" size={20} />
+          <div className="space-y-1">
+            <label className="text-[10px] font-black text-slate-400 uppercase ml-2">E-mail Corporativo</label>
+            <div className="relative">
+              <User className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" size={18} />
               <input 
-                type="password" 
-                value={senha} 
-                onChange={(e) => setSenha(e.target.value)}
-                className="vtr-input pt-7 pb-3 px-3 border-[var(--accent)]/30 w-full"
-                placeholder="••••••••"
-                autoFocus
+                type="email" 
+                className="w-full bg-slate-100 border-none rounded-2xl py-4 pl-12 pr-4 text-sm font-bold focus:ring-2 focus:ring-blue-500 transition-all"
+                placeholder="exemplo@pm.sp.gov.br"
+                value={credentials.email}
+                onChange={(e) => setCredentials({...credentials, email: e.target.value})}
               />
             </div>
-          )}
+          </div>
+
+          <div className="space-y-1">
+            <label className="text-[10px] font-black text-slate-400 uppercase ml-2">Senha</label>
+            <div className="relative">
+              <Lock className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" size={18} />
+              <input 
+                type="password" 
+                className="w-full bg-slate-100 border-none rounded-2xl py-4 pl-12 pr-4 text-sm font-bold focus:ring-2 focus:ring-blue-500 transition-all"
+                placeholder="••••••••"
+                value={credentials.password}
+                onChange={(e) => setCredentials({...credentials, password: e.target.value})}
+              />
+            </div>
+          </div>
 
           <button 
             type="submit" 
-            disabled={isSubmitting || (re.length < 3) || loadingPerfil} 
-            className={`btn-tatico w-full flex items-center justify-center gap-2 ${isSubmitting ? 'opacity-70' : ''}`}
+            disabled={loading}
+            className="w-full bg-slate-900 text-white py-4 rounded-2xl font-black text-xs uppercase tracking-widest hover:bg-blue-600 transition-all shadow-lg active:scale-95 disabled:opacity-50 flex items-center justify-center gap-2"
           >
-            {isSubmitting ? <Loader2 className="animate-spin" size={20} /> : <>Acessar <ArrowRight size={20} /></>}
+            {loading ? <Loader2 className="animate-spin" size={18} /> : "Entrar no Sistema"}
           </button>
         </form>
+
+        <div className="mt-8 text-center">
+          <p className="text-[9px] text-slate-400 font-bold uppercase leading-tight">
+            Uso restrito a Policiais Militares do 1º BPM.<br/>
+            O acesso é monitorado.
+          </p>
+        </div>
       </div>
 
-      <footer className="mt-8 mb-4">
-        <p className="text-[10px] text-[var(--text-muted)] font-black uppercase tracking-[0.3em] opacity-60 text-center">
-          Sistema criado para uso exclusivo do 1º BPM - RO
-        </p>
+      <footer className="mt-10">
+        <p className="text-slate-600 text-[10px] font-black uppercase">v2.0 • Firebase Realtime</p>
       </footer>
     </div>
   );
