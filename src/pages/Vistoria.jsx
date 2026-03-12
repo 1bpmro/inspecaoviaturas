@@ -442,10 +442,11 @@ const handleVtrChange = (prefixo) => {
 >
   <option value="">SELECIONE A VTR</option>
   {viaturasFiltradas.map((v, i) => {
-    // Tenta pegar o prefixo de qualquer jeito (Maiúsculo ou Minúsculo)
-    const pref = v.PREFIXO || v.prefixo || v.Prefixo;
+    const valorOpcao = v.PREFIXO || v.prefixo || v.Prefixo;
     return (
-      <option key={i} value={pref}>{pref}</option>
+      <option key={i} value={valorOpcao}>
+        {valorOpcao}
+      </option>
     );
   })}
 </select>
