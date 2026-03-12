@@ -13,6 +13,5 @@ const firebaseConfig = {
 
 const app = initializeApp(firebaseConfig);
 
-// Exportamos apenas o necessário do Firestore
 export const db = getFirestore(app);
 export { collection, addDoc, serverTimestamp };
