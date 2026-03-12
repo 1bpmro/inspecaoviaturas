@@ -5,7 +5,6 @@ import {
   signOut,
   updatePassword 
 } from 'firebase/auth';
-// Adicionado serverTimestamp na importação abaixo:
 import { auth, db, doc, getDoc, setDoc, serverTimestamp } from './firebase';
 
 const AuthContext = createContext({});
@@ -41,14 +40,18 @@ export const AuthProvider = ({ children }) => {
   }, []);
 
   const login = async (matricula, senha) => {
-    // Tratamento preventivo para evitar erro de .trim() em valores vazios
-    const re = String(matricula || "").trim().toLowerCase();
-    let re = matricula.trim();
-// Se o cara digitar 5 ou 6 dígitos, o sistema coloca o "1000" na frente sozinho
-if (re.length <= 6) {
-  re = "1000" + re; 
-}
-const email = `${re.toLowerCase()}@pm.br`;
+    // 1. Limpa e garante que é string
+    let reProcessado = String(matricula || "").trim();
+
+    // 2. Lógica Inteligente: Se o policial digitar apenas 5 ou 6 dígitos, 
+    // o sistema completa com "1000" para bater com o banco de dados.
+    if (reProcessado.length > 0 && reProcessado.length <= 6) {
+      reProcessado = "1000" + reProcessado; 
+    }
+
+    // 3. Monta o e-mail para o Firebase Auth
+    const email = `${reProcessado.toLowerCase()}@pm.br`;
+
     const result = await signInWithEmailAndPassword(auth, email, senha);
     
     const isFirstAccess = senha === '123456';
