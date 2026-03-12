@@ -1,6 +1,5 @@
 const CACHE_NAME = 'inspecao-vtr-v1';
 
-// Recursos críticos para o app abrir sem internet
 const urlsToCache = [
   './',
   './index.html',
@@ -8,7 +7,6 @@ const urlsToCache = [
   './icon-512.png'
 ];
 
-// Instalação: Salva o "esqueleto" do app
 self.addEventListener('install', event => {
   event.waitUntil(
     caches.open(CACHE_NAME).then(cache => {
@@ -22,16 +20,21 @@ self.addEventListener('install', event => {
   self.skipWaiting();
 });
 
-// Intercepta requisições
 self.addEventListener('fetch', event => {
-  // Ignora requisições para Cloudinary e Google Script (sempre rede)
+  // --- CORREÇÃO TÁTICA ---
+  // Se não for GET (ex: Login, Gravar Vistoria), não tenta fazer cache.
+  // Isso impede o erro de 'Request method POST is unsupported'
+  if (event.request.method !== 'GET') {
+    return; 
+  }
+
+  // Ignora requisições para Cloudinary e Google Script
   if (event.request.url.includes('cloudinary') || event.request.url.includes('script.google')) {
     return;
   }
 
   event.respondWith(
     caches.match(event.request).then(response => {
-      // Retorna cache se houver, mas tenta atualizar em background
       const fetchPromise = fetch(event.request).then(networkResponse => {
         if (networkResponse && networkResponse.status === 200) {
           const responseToCache = networkResponse.clone();
