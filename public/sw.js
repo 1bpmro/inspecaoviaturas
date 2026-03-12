@@ -1,31 +1,46 @@
-const CACHE_NAME = 'inspecao-viaturas-1bpm';
+const CACHE_NAME = 'inspecao-vtr-v1';
 
-// Ajuste os caminhos para incluir o nome do repositório
+// Recursos críticos para o app abrir sem internet
 const urlsToCache = [
-  '/inspecaoviaturas/',
-  '/inspecaoviaturas/index.html',
-  '/inspecaoviaturas/manifest.json',
-  '/inspecaoviaturas/icon-512.png'
+  './',
+  './index.html',
+  './manifest.json',
+  './icon-512.png'
 ];
 
+// Instalação: Salva o "esqueleto" do app
 self.addEventListener('install', event => {
   event.waitUntil(
     caches.open(CACHE_NAME).then(cache => {
-      // Usamos cache.addAll apenas para o que for ESSENCIAL
-      // Se um arquivo falhar, ele não trava o resto
       return Promise.all(
         urlsToCache.map(url => {
-          return cache.add(url).catch(err => console.warn('Falha ao cachear:', url));
+          return cache.add(url).catch(err => console.log('Aviso: Offline skip para', url));
         })
       );
     })
   );
+  self.skipWaiting();
 });
 
+// Intercepta requisições
 self.addEventListener('fetch', event => {
+  // Ignora requisições para Cloudinary e Google Script (sempre rede)
+  if (event.request.url.includes('cloudinary') || event.request.url.includes('script.google')) {
+    return;
+  }
+
   event.respondWith(
     caches.match(event.request).then(response => {
-      return response || fetch(event.request);
+      // Retorna cache se houver, mas tenta atualizar em background
+      const fetchPromise = fetch(event.request).then(networkResponse => {
+        if (networkResponse && networkResponse.status === 200) {
+          const responseToCache = networkResponse.clone();
+          caches.open(CACHE_NAME).then(cache => cache.put(event.request, responseToCache));
+        }
+        return networkResponse;
+      }).catch(() => null);
+
+      return response || fetchPromise;
     })
   );
 });
