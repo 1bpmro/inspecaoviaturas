@@ -43,7 +43,12 @@ export const AuthProvider = ({ children }) => {
   const login = async (matricula, senha) => {
     // Tratamento preventivo para evitar erro de .trim() em valores vazios
     const re = String(matricula || "").trim().toLowerCase();
-    const email = `${re}@pm.br`;
+    let re = matricula.trim();
+// Se o cara digitar 5 ou 6 dígitos, o sistema coloca o "1000" na frente sozinho
+if (re.length <= 6) {
+  re = "1000" + re; 
+}
+const email = `${re.toLowerCase()}@pm.br`;
     const result = await signInWithEmailAndPassword(auth, email, senha);
     
     const isFirstAccess = senha === '123456';
