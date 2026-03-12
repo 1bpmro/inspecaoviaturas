@@ -97,7 +97,23 @@ export const gasApi = {
   },
 
   // --- GESTÃO DE FROTA ---
-  getViaturas: () => gasApi.post('getViaturas'),
+ getViaturas: async () => {
+    try {
+      // Tentamos buscar via GET simples, que o Google processa mais rápido para listas
+      const response = await fetch(`${GAS_URL}?action=getViaturas`);
+      const data = await response.json();
+      
+      if (data && data.data) {
+        return data;
+      }
+      
+      // Se o GET falhar ou não estiver implementado no seu Script, tenta o POST original
+      return await gasApi.post('getViaturas');
+    } catch (error) {
+      console.warn("Falha no fetch direto, tentando via POST proxy...");
+      return await gasApi.post('getViaturas');
+    }
+  },
   addViatura: (dados) => gasApi.post('addViatura', dados),
   updateViatura: (dados) => gasApi.post('updateViatura', dados),
   baixarViatura: (prefixo, motivo) => gasApi.post('baixarViatura', { prefixo, motivo }),
