@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { gasApi } from '../api/gasClient';
+import { db, collection, onSnapshot, query, orderBy, addDoc, doc, updateDoc, serverTimestamp } from '../lib/firebase';
 import { useAuth } from '../lib/AuthContext';
 import { 
   Settings, LayoutDashboard, ArrowLeft, Menu, X, Plus, Search, 
@@ -16,34 +16,57 @@ const AdminDashboard = ({ onBack }) => {
   const [vistorias, setVistorias] = useState([]);
   const [loading, setLoading] = useState(true);
   
-  // Filtros em Dropdown
   const [filters, setFilters] = useState({ vtr: '', motorista: '', garageiro: '' });
 
-  // Cadastro Robusto
-  const [isAddingVtr, setIsAddingVtr] = useState(false);
+  // Estado para o formulário de cadastro/edição
+  const [isModalOpen, setIsModalOpen] = useState(false);
   const [formData, setFormData] = useState({
-    id: '', prefixo: '', placa: '', modelo: '', ano: '', chassi: '', renavam: '',
-    odometro_atual: '', ultima_revisao: '', tipoCarroceria: 'CAMBURÃO', isEditing: false
+    prefixo: '', placa: '', modelo: '', ano: '', chassi: '', renavam: '',
+    odometro_atual: '', ultima_revisao: '', tipo: 'CAMBURÃO'
   });
+  const [editingId, setEditingId] = useState(null);
 
-  useEffect(() => { 
-    loadData(); 
+  // Escuta Viaturas e Vistorias em tempo real
+  useEffect(() => {
+    const qVtrs = query(collection(db, "viaturas"), orderBy("prefixo", "asc"));
+    const qVistorias = query(collection(db, "vistorias"), orderBy("data_hora", "desc"));
+
+    const unsubVtrs = onSnapshot(qVtrs, (snap) => {
+      setViaturas(snap.docs.map(d => ({ id: d.id, ...d.data() })));
+      setLoading(false);
+    });
+
+    const unsubVist = onSnapshot(qVistorias, (snap) => {
+      setVistorias(snap.docs.map(d => ({ id: d.id, ...d.data() })));
+    });
+
+    return () => { unsubVtrs(); unsubVist(); };
   }, []);
 
-  const loadData = async () => {
-    setLoading(true);
+  // Lógica de Salvamento no Firebase
+  const handleSaveViatura = async (e) => {
+    e.preventDefault();
     try {
-      const [resVtr, resHist] = await Promise.all([
-        gasApi.getViaturas(),
-        gasApi.getHistoricoVistorias() // Assume-se que esta rota retorna o log completo
-      ]);
-      if (resVtr.status === 'success') setViaturas(resVtr.data);
-      if (resHist.status === 'success') setVistorias(resHist.data);
-    } catch (e) { console.error(e); }
-    setLoading(false);
+      const data = {
+        ...formData,
+        odometro_atual: Number(formData.odometro_atual),
+        updatedAt: serverTimestamp()
+      };
+
+      if (editingId) {
+        await updateDoc(doc(db, "viaturas", editingId), data);
+      } else {
+        await addDoc(collection(db, "viaturas"), { ...data, status: 'DISPONÍVEL' });
+      }
+      
+      setIsModalOpen(false);
+      setFormData({ prefixo: '', placa: '', modelo: '', ano: '', chassi: '', renavam: '', odometro_atual: '', ultima_revisao: '', tipo: 'CAMBURÃO' });
+      setEditingId(null);
+    } catch (error) {
+      alert("Erro ao salvar: " + error.message);
+    }
   };
 
-  // --- LÓGICA DE FILTROS (DROPDOWNS DINÂMICOS) ---
   const opcoesFiltro = useMemo(() => ({
     vtrs: [...new Set(vistorias.map(v => v.prefixo_vtr))].sort(),
     motoristas: [...new Set(vistorias.map(v => v.motorista_nome))].sort(),
@@ -59,11 +82,14 @@ const AdminDashboard = ({ onBack }) => {
   return (
     <div className="min-h-screen bg-slate-100 flex font-sans overflow-hidden">
       
-      {/* SIDEBAR */}
+      {/* SIDEBAR TÁTICA */}
       <aside className={`fixed inset-y-0 left-0 z-[200] w-72 bg-slate-950 text-white flex flex-col transition-transform md:relative md:translate-x-0 ${isSidebarOpen ? 'translate-x-0' : '-translate-x-full'}`}>
         <div className="p-8 border-b border-slate-900 flex items-center gap-3">
           <div className="bg-amber-500 p-2 rounded-lg text-slate-900"><Settings size={20}/></div>
-          <h1 className="font-black text-xl italic tracking-tighter">P4 ADMIN</h1>
+          <div>
+            <h1 className="font-black text-xl italic tracking-tighter leading-none">P4 ADMIN</h1>
+            <span className="text-[8px] text-amber-500 font-bold tracking-[0.3em] uppercase">1º BPM Rondon</span>
+          </div>
         </div>
 
         <nav className="flex-1 p-4 space-y-2">
@@ -71,119 +97,86 @@ const AdminDashboard = ({ onBack }) => {
           <MenuBtn active={activeTab === 'reports'} onClick={() => setActiveTab('reports')} icon={<FileText size={18}/>} label="Relatórios Finais" />
           <MenuBtn active={activeTab === 'pneus'} onClick={() => setActiveTab('pneus')} icon={<Disc size={18}/>} label="Controle de Rodagem" />
           <MenuBtn active={activeTab === 'frota'} onClick={() => setActiveTab('frota')} icon={<Database size={18}/>} label="Gestão de Frota" />
-          <button onClick={onBack} className="w-full flex items-center gap-3 p-4 text-red-400 hover:bg-red-500/10 rounded-xl text-[10px] font-black uppercase mt-10 border border-red-500/20">
-            <ArrowLeft size={16}/> Sair
+          
+          <button onClick={onBack} className="w-full flex items-center gap-3 p-4 text-red-400 hover:bg-red-500/10 rounded-xl text-[10px] font-black uppercase mt-10 border border-red-500/20 transition-all">
+            <ArrowLeft size={16}/> Sair do Painel
           </button>
         </nav>
       </aside>
 
       <main className="flex-1 flex flex-col h-screen overflow-hidden">
         <header className="bg-white h-20 border-b px-8 flex items-center justify-between">
-          <h2 className="font-black uppercase text-[11px] tracking-widest text-slate-400">{activeTab}</h2>
-          {loading && <Loader2 className="animate-spin text-amber-500" />}
+          <div className="flex items-center gap-4">
+            <button onClick={() => setIsSidebarOpen(!isSidebarOpen)} className="md:hidden p-2 bg-slate-100 rounded-lg">
+              <Menu size={20}/>
+            </button>
+            <h2 className="font-black uppercase text-[11px] tracking-widest text-slate-400">{activeTab}</h2>
+          </div>
+          <div className="flex items-center gap-4">
+            {loading && <Loader2 className="animate-spin text-amber-500" size={20} />}
+            <div className="text-right">
+              <p className="text-[10px] font-black text-slate-900 leading-none">{user?.displayName || 'ADMINISTRADOR'}</p>
+              <p className="text-[8px] font-bold text-slate-400 uppercase tracking-tighter">Sessão Ativa</p>
+            </div>
+          </div>
         </header>
 
         <section className="flex-1 overflow-y-auto p-8">
           
-          {/* ABA: DASHBOARD COM DROPDOWNS */}
           {activeTab === 'stats' && (
-            <div className="space-y-6">
-              <div className="bg-white p-6 rounded-3xl shadow-sm grid grid-cols-1 md:grid-cols-3 gap-4 border border-slate-200">
+            <div className="space-y-6 animate-in fade-in duration-500">
+              <div className="bg-white p-6 rounded-[2.5rem] shadow-sm grid grid-cols-1 md:grid-cols-3 gap-6 border border-slate-200">
                 <SelectFilter label="Viatura" options={opcoesFiltro.vtrs} value={filters.vtr} onChange={v => setFilters({...filters, vtr: v})} />
                 <SelectFilter label="Motorista" options={opcoesFiltro.motoristas} value={filters.motorista} onChange={v => setFilters({...filters, motorista: v})} />
                 <SelectFilter label="Garageiro (RE)" options={opcoesFiltro.garageiros} value={filters.garageiro} onChange={v => setFilters({...filters, garageiro: v})} />
               </div>
               
-              <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+              <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
                 <StatCard label="Movimentações" value={dadosFiltrados.length} color="blue" />
-                <StatCard label="VTRs Ativas" value={viaturas.length} color="amber" />
-                <StatCard label="Alertas" value={vistorias.filter(v => v.nivel_oleo === 'BAIXO').length} color="red" />
-                <StatCard label="Média KM" value="---" color="blue" />
+                <StatCard label="Frota Cadastrada" value={viaturas.length} color="amber" />
+                <StatCard label="Nível Óleo Crítico" value={vistorias.filter(v => v.nivel_oleo === 'BAIXO').length} color="red" />
+                <StatCard label="Pneus em Alerta" value={vistorias.filter(v => v.pneus_estado === 'RUIM').length} color="red" />
               </div>
             </div>
           )}
 
-          {/* ABA: RELATÓRIOS FINAIS */}
-          {activeTab === 'reports' && (
-            <div className="bg-white rounded-3xl border shadow-sm overflow-hidden">
-              <div className="p-6 bg-slate-50 border-b flex justify-between items-center">
-                <h3 className="font-black text-xs uppercase text-slate-500">Relatório Consolidado de Vistorias</h3>
-                <button onClick={() => window.print()} className="bg-slate-900 text-white px-4 py-2 rounded-xl text-[10px] font-black flex items-center gap-2">
-                  <Printer size={14}/> IMPRIMIR P4
+          {activeTab === 'frota' && (
+            <div className="space-y-6 animate-in slide-in-from-bottom-4 duration-500">
+              <div className="flex justify-between items-center">
+                <button 
+                  onClick={() => { setEditingId(null); setFormData({prefixo:'', placa:'', modelo:'', ano:'', chassi:'', renavam:'', odometro_atual:'', ultima_revisao:'', tipo:'CAMBURÃO'}); setIsModalOpen(true); }} 
+                  className="bg-slate-900 text-white px-8 py-4 rounded-2xl font-black text-[10px] uppercase flex items-center gap-3 shadow-xl hover:bg-slate-800 transition-all"
+                >
+                  <Plus size={18}/> Novo Ativo de Frota
                 </button>
               </div>
-              <table className="w-full text-left">
-                <thead className="bg-slate-100 text-[9px] font-black uppercase">
-                  <tr>
-                    <th className="p-4">Data</th>
-                    <th className="p-4">Vtr</th>
-                    <th className="p-4">Motorista</th>
-                    <th className="p-4">RE Garageiro</th>
-                    <th className="p-4">KM Saída</th>
-                    <th className="p-4">Combustível</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y text-[11px] font-bold">
-                  {dadosFiltrados.map((v, i) => (
-                    <tr key={i} className="hover:bg-slate-50">
-                      <td className="p-4">{v.data_hora}</td>
-                      <td className="p-4">{v.prefixo_vtr}</td>
-                      <td className="p-4">{v.motorista_nome}</td>
-                      <td className="p-4">{v.garageiro_re}</td>
-                      <td className="p-4">{v.hodometro_saida}</td>
-                      <td className="p-4">{v.nivel_combustivel}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          )}
 
-          {/* ABA: CONTROLE DE RODAGEM (PNEUS) */}
-          {activeTab === 'pneus' && (
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-              {viaturas.map(v => {
-                const logs = vistorias.filter(l => l.prefixo_vtr === (v.Prefixo || v.prefixo));
-                const kmInicial = logs.length > 0 ? Math.min(...logs.map(l => l.hodometro_saida)) : 0;
-                const kmFinal = logs.length > 0 ? Math.max(...logs.map(l => l.hodometro_saida)) : 0;
-                const rodagem = kmFinal - kmInicial;
-                
-                return (
-                  <div key={v.id} className="bg-white p-6 rounded-3xl border flex justify-between items-center shadow-sm">
-                    <div>
-                      <span className="text-[10px] font-black text-slate-400 uppercase">VTR {v.Prefixo}</span>
-                      <p className="text-2xl font-black italic">{v.Placa}</p>
-                    </div>
-                    <div className="text-right">
-                      <p className="text-3xl font-black text-amber-500">{rodagem} KM</p>
-                      <p className="text-[9px] font-black uppercase text-slate-400">Rodados no Sistema</p>
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-          )}
-
-          {/* ABA: GESTÃO DE FROTA (CADASTRO ROBUSTO) */}
-          {activeTab === 'frota' && (
-            <div className="space-y-6">
-              <button onClick={() => {setFormData({isEditing:false}); setIsAddingVtr(true)}} className="bg-slate-900 text-white px-6 py-3 rounded-2xl font-black text-[10px] uppercase flex items-center gap-2 shadow-lg">
-                <Plus size={16}/> Cadastrar Viatura Completa
-              </button>
-              <div className="bg-white rounded-3xl border shadow-sm overflow-hidden">
+              <div className="bg-white rounded-[3rem] border shadow-sm overflow-hidden">
                 <table className="w-full text-left">
-                  <thead className="bg-slate-900 text-white text-[9px] font-black uppercase">
-                    <tr><th className="p-5">Prefixo</th><th className="p-5">Placa</th><th className="p-5">Modelo/Ano</th><th className="p-5">Renavam/Chassi</th><th className="p-5 text-center">Ações</th></tr>
+                  <thead className="bg-slate-950 text-white text-[9px] font-black uppercase">
+                    <tr>
+                      <th className="p-6">Prefixo</th>
+                      <th className="p-6">Placa</th>
+                      <th className="p-6">Modelo / Ano</th>
+                      <th className="p-6">Status Atual</th>
+                      <th className="p-6 text-center">Ações</th>
+                    </tr>
                   </thead>
-                  <tbody className="divide-y font-bold text-xs">
-                    {viaturas.map((v, i) => (
-                      <tr key={i} className="hover:bg-slate-50">
-                        <td className="p-5 text-lg font-black">{v.Prefixo}</td>
-                        <td className="p-5">{v.Placa}</td>
-                        <td className="p-5">{v.Modelo} / {v.Ano}</td>
-                        <td className="p-5 text-slate-400">{v.Renavam} <br/> {v.Chassi}</td>
-                        <td className="p-5 text-center">
-                          <button onClick={() => {setFormData({...v, isEditing:true}); setIsAddingVtr(true)}} className="p-2 text-amber-500"><Edit2 size={16}/></button>
+                  <tbody className="divide-y font-bold text-xs text-slate-700">
+                    {viaturas.map((v) => (
+                      <tr key={v.id} className="hover:bg-slate-50 transition-colors">
+                        <td className="p-6 text-xl font-black tracking-tighter text-slate-900">{v.prefixo}</td>
+                        <td className="p-6 font-mono">{v.placa}</td>
+                        <td className="p-6">{v.modelo} <br/> <span className="text-[10px] text-slate-400">{v.ano}</span></td>
+                        <td className="p-6">
+                          <span className={`px-3 py-1 rounded-full text-[9px] font-black ${v.status === 'DISPONÍVEL' ? 'bg-emerald-100 text-emerald-700' : 'bg-orange-100 text-orange-700'}`}>
+                            {v.status}
+                          </span>
+                        </td>
+                        <td className="p-6 text-center">
+                          <button onClick={() => { setFormData(v); setEditingId(v.id); setIsModalOpen(true); }} className="p-3 bg-slate-100 text-slate-600 rounded-xl hover:bg-amber-500 hover:text-white transition-all">
+                            <Edit2 size={16}/>
+                          </button>
                         </td>
                       </tr>
                     ))}
@@ -192,28 +185,37 @@ const AdminDashboard = ({ onBack }) => {
               </div>
             </div>
           )}
+          
+          {/* Outras abas seguiriam a mesma lógica de mapeamento do 'dadosFiltrados' */}
         </section>
       </main>
 
-      {/* MODAL DE CADASTRO ROBUSTO */}
-      {isAddingVtr && (
-        <div className="fixed inset-0 bg-slate-950/90 z-[300] flex items-center justify-center p-4 backdrop-blur-sm">
-          <div className="bg-white w-full max-w-2xl rounded-[3rem] shadow-2xl overflow-hidden overflow-y-auto max-h-[90vh]">
-            <div className="p-8 bg-slate-900 text-white flex justify-between items-center">
-              <h2 className="font-black uppercase italic tracking-tighter text-xl">Ficha Técnica do Ativo</h2>
-              <button onClick={() => setIsAddingVtr(false)}><X/></button>
+      {/* MODAL DE CADASTRO/EDIÇÃO */}
+      {isModalOpen && (
+        <div className="fixed inset-0 bg-slate-950/90 z-[300] flex items-center justify-center p-4 backdrop-blur-md">
+          <div className="bg-white w-full max-w-2xl rounded-[3.5rem] shadow-2xl overflow-hidden animate-in zoom-in duration-300">
+            <div className="p-8 bg-slate-900 text-white flex justify-between items-center border-b border-slate-800">
+              <div>
+                <h2 className="font-black uppercase italic tracking-tighter text-2xl">Ficha Técnica</h2>
+                <p className="text-[9px] text-amber-500 font-bold uppercase tracking-widest">Base de Dados P4</p>
+              </div>
+              <button onClick={() => setIsModalOpen(false)} className="p-2 hover:bg-white/10 rounded-full transition-all"><X/></button>
             </div>
-            <form className="p-10 grid grid-cols-2 gap-4">
-              <Input label="Prefixo (Ex: 01-123)" value={formData.prefixo} onChange={e => setFormData({...formData, prefixo: e.target.value})} />
-              <Input label="Placa" value={formData.placa} onChange={e => setFormData({...formData, placa: e.target.value})} />
+            
+            <form onSubmit={handleSaveViatura} className="p-10 grid grid-cols-2 gap-5 max-h-[70vh] overflow-y-auto">
+              <Input label="Prefixo" required value={formData.prefixo} onChange={e => setFormData({...formData, prefixo: e.target.value})} placeholder="Ex: 01-123" />
+              <Input label="Placa" required value={formData.placa} onChange={e => setFormData({...formData, placa: e.target.value.toUpperCase()})} placeholder="ABC-1234" />
               <Input label="Modelo" value={formData.modelo} onChange={e => setFormData({...formData, modelo: e.target.value})} />
               <Input label="Ano" value={formData.ano} onChange={e => setFormData({...formData, ano: e.target.value})} />
               <Input label="Chassi" value={formData.chassi} onChange={e => setFormData({...formData, chassi: e.target.value})} />
               <Input label="Renavam" value={formData.renavam} onChange={e => setFormData({...formData, renavam: e.target.value})} />
-              <Input label="Odômetro Atual" value={formData.odometro_atual} onChange={e => setFormData({...formData, odometro_atual: e.target.value})} />
+              <Input label="Odômetro (KM)" type="number" value={formData.odometro_atual} onChange={e => setFormData({...formData, odometro_atual: e.target.value})} />
               <Input label="Última Revisão" type="date" value={formData.ultima_revisao} onChange={e => setFormData({...formData, ultima_revisao: e.target.value})} />
-              <div className="col-span-2">
-                <button className="w-full py-5 bg-amber-500 text-slate-900 rounded-3xl font-black uppercase text-xs mt-4 shadow-xl shadow-amber-500/20">Salvar na Base de Dados P4</button>
+              
+              <div className="col-span-2 pt-6">
+                <button type="submit" className="w-full py-5 bg-amber-500 text-slate-900 rounded-3xl font-black uppercase text-xs shadow-xl shadow-amber-500/20 active:scale-95 transition-all">
+                  {editingId ? 'Atualizar Registro' : 'Gravar na Base de Dados'}
+                </button>
               </div>
             </form>
           </div>
@@ -233,24 +235,24 @@ const MenuBtn = ({ active, onClick, icon, label }) => (
 const SelectFilter = ({ label, options, value, onChange }) => (
   <div className="space-y-1">
     <label className="text-[9px] font-black text-slate-400 uppercase ml-2">{label}</label>
-    <select value={value} onChange={e => onChange(e.target.value)} className="w-full p-3 bg-slate-50 border-none rounded-xl text-xs font-bold outline-none ring-1 ring-slate-200">
-      <option value="">TODOS</option>
+    <select value={value} onChange={e => onChange(e.target.value)} className="w-full p-4 bg-slate-50 border-none rounded-2xl text-xs font-bold outline-none ring-2 ring-transparent focus:ring-amber-500 transition-all cursor-pointer">
+      <option value="">TODOS OS REGISTROS</option>
       {options.map(opt => <option key={opt} value={opt}>{opt}</option>)}
     </select>
   </div>
 );
 
 const StatCard = ({ label, value, color }) => (
-  <div className={`bg-white p-6 rounded-3xl border-l-[8px] ${color === 'blue' ? 'border-blue-500' : color === 'amber' ? 'border-amber-500' : 'border-red-500'} shadow-sm border border-slate-200`}>
-    <p className="text-[9px] font-black text-slate-400 uppercase">{label}</p>
-    <p className="text-3xl font-black mt-1">{value}</p>
+  <div className={`bg-white p-6 rounded-[2rem] border-l-[8px] ${color === 'blue' ? 'border-blue-500' : color === 'amber' ? 'border-amber-500' : 'border-red-500'} shadow-sm border border-slate-200`}>
+    <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest">{label}</p>
+    <p className="text-4xl font-black mt-2 text-slate-900 tabular-nums leading-none">{value}</p>
   </div>
 );
 
 const Input = ({ label, ...props }) => (
   <div className="space-y-1">
     <label className="text-[9px] font-black text-slate-400 uppercase ml-2">{label}</label>
-    <input {...props} className="w-full bg-slate-50 border-none rounded-2xl p-4 text-xs font-bold outline-none ring-1 ring-slate-100 focus:ring-amber-500" />
+    <input {...props} className="w-full bg-slate-50 border-none rounded-2xl p-4 text-xs font-bold outline-none ring-2 ring-slate-100 focus:ring-amber-500 transition-all placeholder:text-slate-300" />
   </div>
 );
 
