@@ -24,6 +24,9 @@ body {
   font-family: 'Inter', system-ui, -apple-system, sans-serif;
   -webkit-font-smoothing: antialiased;
   min-height: 100vh;
+  /* Suporte para Notch de iPhones modernos */
+  padding-top: env(safe-area-inset-top);
+  padding-bottom: env(safe-area-inset-bottom);
 }
 
 /* 3. COMPONENTES TÁTICOS (REUTILIZÁVEIS) */
@@ -42,6 +45,8 @@ body {
     border-color: var(--border-color);
     @apply w-full p-4 border-2 rounded-2xl font-bold outline-none focus:border-[var(--accent)] 
            placeholder:text-[var(--text-muted)] transition-all;
+    /* Previne zoom no iOS */
+    font-size: 16px !important;
   }
 
   /* Botão principal 'Blindado' - Agora com cor fixa para evitar sumir no modo noturno do sistema */
@@ -65,13 +70,42 @@ body {
     @apply p-4 rounded-2xl border-2 border-red-500 flex justify-between items-center 
            cursor-pointer active:scale-95 transition-all;
   }
+
+  /* Badge de status (ex: Operacional, Baixada) */
+  .badge-status {
+    @apply px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-tighter;
+  }
 }
 
+/* 4. ANIMAÇÕES E OVERRIDES */
 #root {
   width: 100%;
 }
 
-/* 4. OVERRIDE PARA GARANTIR QUE NADA SUMA */
 * {
   text-rendering: optimizeLegibility;
+  /* Evita que o texto seja selecionado por acidente em cliques rápidos (checklist) */
+  -webkit-tap-highlight-color: transparent;
+}
+
+/* Esconde barras de rolagem mas mantém funcionalidade */
+.scrollbar-hide::-webkit-scrollbar {
+  display: none;
+}
+.scrollbar-hide {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
+
+/* Transição de entrada das páginas */
+.page-transition {
+  @apply animate-in fade-in slide-in-from-bottom-2 duration-300;
+}
+
+/* Garante que o fundo branco não mude com o Dark Mode do sistema */
+@media (prefers-color-scheme: dark) {
+  body {
+    background-color: var(--bg-app) !important;
+    color: var(--text-main) !important;
+  }
 }
