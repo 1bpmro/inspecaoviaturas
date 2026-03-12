@@ -292,46 +292,63 @@ const Vistoria = ({ onBack, frotaInicial = [] }) => {
   };
 
 const handleVtrChange = (prefixo) => {
-  // Busca ignorando se é maiúsculo ou minúsculo
+  if (!prefixo) {
+    setFormData(p => ({ ...p, prefixo_vtr: '', placa_vtr: '' }));
+    return;
+  }
+
+  // 1. Acha a viatura na lista
   const vtr = viaturas.find(v => 
     toStr(v.PREFIXO || v.prefixo || v.Prefixo) === toStr(prefixo)
   );
   
   if (!vtr) return;
 
-  // Função auxiliar para pegar dados independente da letra
+  // 2. Função auxiliar para pegar dados independente da letra (Maiúscula/Minúscula)
   const getV = (k) => vtr[k] || vtr[k.toUpperCase()] || vtr[k.toLowerCase()] || '';
 
-  const pref = toStr(getV('PREFIXO'));
-  const placa = toStr(getV('PLACA'));
+  const pref = toStr(getV('PREFIXO') || getV('prefixo'));
+  const placa = toStr(getV('PLACA') || getV('placa'));
   const ultKM = Number(getV('ULTIMOKM')) || Number(getV('UltimoKM')) || 0;
 
-    setKmReferencia(ultKM);
-    if (tipoVistoria === 'SAÍDA') {
-      const buscarNomePeloRE = (re) => {
-        const mil = efetivoLocal.find(m => String(m.re) === String(re));
-        return mil ? `${mil.patente} ${mil.nome}`.toUpperCase() : '';
-      };
-      setFormData(p => ({
-        ...p, prefixo_vtr: pref, placa_vtr: placa,
-        tipo_servico: toStr(getV('UltimoTipoServico')),
-        servico_detalhe: toStr(getV('UltimoServicoDetalhe')),
-        videomonitoramento: toStr(getV('UltimoVideo')),
-        hodometro: String(ultKM),
-        motorista_re: toStr(getV('UltimoMotoristaRE')),
-        motorista_nome: buscarNomePeloRE(getV('UltimoMotoristaRE')),
-        comandante_re: toStr(getV('UltimoComandanteRE')),
-        comandante_nome: buscarNomePeloRE(getV('UltimoComandanteRE')),
-        patrulheiro_re: toStr(getV('UltimoPatrulheiroRE')),
-        patrulheiro_nome: buscarNomePeloRE(getV('UltimoPatrulheiroRE')),
-      }));
-    } else {
-      setFormData(p => ({
-        ...p, prefixo_vtr: pref, placa_vtr: placa, hodometro: '',
-        motorista_re: '', motorista_nome: '', comandante_re: '', comandante_nome: '', patrulheiro_re: '', patrulheiro_nome: ''
-      }));
-    }
-  };
+  setKmReferencia(ultKM);
+
+  // 3. ATUALIZA O ESTADO (Adicionado o prefixo_vtr aqui explicitamente)
+  if (tipoVistoria === 'SAÍDA') {
+    const buscarNomePeloRE = (re) => {
+      if (!re) return '';
+      const mil = efetivoLocal.find(m => String(m.re) === String(re));
+      return mil ? `${mil.patente} ${mil.nome}`.toUpperCase() : '';
+    };
+
+    setFormData(p => ({
+      ...p,
+      prefixo_vtr: pref, // Garante que o select mude visualmente
+      placa_vtr: placa,
+      tipo_servico: toStr(getV('UltimoTipoServico')),
+      servico_detalhe: toStr(getV('UltimoServicoDetalhe')),
+      videomonitoramento: toStr(getV('UltimoVideo')),
+      hodometro: String(ultKM),
+      motorista_re: toStr(getV('UltimoMotoristaRE')),
+      motorista_nome: buscarNomePeloRE(getV('UltimoMotoristaRE')),
+      comandante_re: toStr(getV('UltimoComandanteRE')),
+      comandante_nome: buscarNomePeloRE(getV('UltimoComandanteRE')),
+      patrulheiro_re: toStr(getV('UltimoPatrulheiroRE')),
+      patrulheiro_nome: buscarNomePeloRE(getV('UltimoPatrulheiroRE')),
+    }));
+  } else {
+    // ENTRADA
+    setFormData(p => ({
+      ...p,
+      prefixo_vtr: pref, // Garante que o select mude visualmente
+      placa_vtr: placa,
+      hodometro: '',
+      motorista_re: '', motorista_nome: '', 
+      comandante_re: '', comandante_nome: '', 
+      patrulheiro_re: '', patrulheiro_nome: ''
+    }));
+  }
+};
 
   // Captura de Foto para Vistoria
   const handleAddFotoVistoria = async (e) => {
