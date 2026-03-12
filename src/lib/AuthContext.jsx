@@ -54,15 +54,16 @@ export const AuthProvider = ({ children }) => {
   const logout = () => signOut(auth);
 
   const mudarSenha = async (novaSenha) => {
-    if (auth.currentUser) {
-      await updatePassword(auth.currentUser, novaSenha);
-      // Marca no banco que o militar já cumpriu a exigência de segurança
-      await setDoc(doc(db, "usuarios", auth.currentUser.uid), {
-        senhaAlterada: true,
-        dataUltimaTroca: new Date().toISOString()
-      }, { merge: true });
-    }
-  };
+  if (auth.currentUser) {
+    await updatePassword(auth.currentUser, novaSenha);
+    
+    // Marca no banco com o tempo oficial do servidor do Firebase
+    await setDoc(doc(db, "usuarios", auth.currentUser.uid), {
+      senhaAlterada: true,
+      dataUltimaTroca: serverTimestamp() // Alterado para ser consistente com o sistema
+    }, { merge: true });
+  }
+};
 
   return (
     <AuthContext.Provider value={{ user, login, logout, mudarSenha, loading }}>
