@@ -5,7 +5,7 @@ import imageCompression from 'browser-image-compression';
 
 // Firebase e Cloudinary
 import { db, collection, addDoc, serverTimestamp } from '../lib/firebase';
-import { photoService } from '../api/photoService';
+import { photoService } from '../api/photoService'; 
 
 import ModalComunitaria from "../components/vistoria/ModalComunitaria";
 import CardGuarnicao from "../components/vistoria/CardGuarnicao";
