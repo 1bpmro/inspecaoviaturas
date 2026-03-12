@@ -5,6 +5,7 @@ import {
   collection, 
   addDoc, 
   doc, 
+  setDoc, // Adicionado aqui
   updateDoc, 
   deleteDoc,
   getDoc,
@@ -33,9 +34,9 @@ const app = initializeApp(firebaseConfig);
 export const auth = getAuth(app);
 export const db = getFirestore(app);
 
-// Exportações de utilitários (para facilitar o import nas páginas)
+// Exportações de utilitários
 export { 
-  collection, addDoc, doc, updateDoc, deleteDoc, 
+  collection, addDoc, doc, setDoc, updateDoc, deleteDoc, 
   getDoc, getDocs, onSnapshot, query, where, 
   orderBy, serverTimestamp 
 };
