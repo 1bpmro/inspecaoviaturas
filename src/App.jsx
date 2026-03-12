@@ -119,30 +119,36 @@ const Dashboard = ({ onNavigate, frotaCarregada, onRefresh }) => {
 function App() {
   const { isAuthenticated, isGarageiro, isAdmin } = useAuth();
   const [view, setView] = useState('dashboard');
-  const [dadosFrota, setDadosFrota] = useState([]);
+  const [dadosFrota, setDadosFrota] = useState(() => {
+    // Tenta carregar do cache imediatamente ao abrir o app
+    const cache = localStorage.getItem("viaturas_cache");
+    return cache ? JSON.parse(cache) : [];
+  });
   const [carregado, setCarregado] = useState(false);
 
-  // FUNÇÃO ÚNICA DE CARREGAMENTO (PODE SER CHAMADA NO REFRESH OU NO USEEFFECT)
   const sincronizarFrota = useCallback(async () => {
     setCarregado(false);
     try {
       const res = await gasApi.getViaturas();
       if (res.status === 'success') {
         setDadosFrota(res.data);
-        console.log("Frota atualizada com sucesso.");
+        // Salva no cache para uso offline posterior
+        localStorage.setItem("viaturas_cache", JSON.stringify(res.data));
+        console.log("Frota sincronizada e em cache.");
       }
     } catch (error) {
       console.error("Erro na sincronização:", error);
+      // Se der erro (ex: sem rede), o dadosFrota continua com o que tinha no cache
     } finally {
       setCarregado(true);
     }
   }, []);
 
   useEffect(() => {
-    if (isAuthenticated && dadosFrota.length === 0) {
+    if (isAuthenticated) {
       sincronizarFrota();
     }
-  }, [isAuthenticated, sincronizarFrota, dadosFrota.length]);
+  }, [isAuthenticated, sincronizarFrota]);
 
   if (!isAuthenticated) return <Login />;
 
@@ -175,5 +181,4 @@ function App() {
 
   return renderView();
 }
-
 export default App;
