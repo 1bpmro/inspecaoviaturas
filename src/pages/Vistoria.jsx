@@ -291,13 +291,20 @@ const Vistoria = ({ onBack, frotaInicial = [] }) => {
     }
   };
 
-  const handleVtrChange = (prefixo) => {
-    const vtr = viaturas.find(v => toStr(v.Prefixo || v.PREFIXO || v.prefixo) === toStr(prefixo));
-    if (!vtr) return;
-    const getV = (k) => vtr[k] || vtr[k.toUpperCase()] || vtr[k.toLowerCase()] || '';
-    const pref = toStr(getV('PREFIXO') || getV('Prefixo'));
-    const placa = toStr(getV('PLACA'));
-    const ultKM = Number(getV('UltimoKM')) || 0;
+const handleVtrChange = (prefixo) => {
+  // Busca ignorando se é maiúsculo ou minúsculo
+  const vtr = viaturas.find(v => 
+    toStr(v.PREFIXO || v.prefixo || v.Prefixo) === toStr(prefixo)
+  );
+  
+  if (!vtr) return;
+
+  // Função auxiliar para pegar dados independente da letra
+  const getV = (k) => vtr[k] || vtr[k.toUpperCase()] || vtr[k.toLowerCase()] || '';
+
+  const pref = toStr(getV('PREFIXO'));
+  const placa = toStr(getV('PLACA'));
+  const ultKM = Number(getV('ULTIMOKM')) || Number(getV('UltimoKM')) || 0;
 
     setKmReferencia(ultKM);
     if (tipoVistoria === 'SAÍDA') {
@@ -411,12 +418,20 @@ const Vistoria = ({ onBack, frotaInicial = [] }) => {
             <section className="bg-white rounded-[2rem] p-6 shadow-sm border border-slate-200 space-y-4">
               <CardGuarnicao formData={formData} />
               <div className="grid grid-cols-2 gap-2">
-                <select className="vtr-input" value={formData.prefixo_vtr} onChange={(e) => handleVtrChange(e.target.value)}>
-                  <option value="">SELECIONE A VTR</option>
-                  {viaturasFiltradas.map((v, i) => (
-                    <option key={i} value={v.PREFIXO || v.prefixo}>{v.PREFIXO || v.prefixo}</option>
-                  ))}
-                </select>
+               <select 
+  className="vtr-input" 
+  value={formData.prefixo_vtr} 
+  onChange={(e) => handleVtrChange(e.target.value)}
+>
+  <option value="">SELECIONE A VTR</option>
+  {viaturasFiltradas.map((v, i) => {
+    // Tenta pegar o prefixo de qualquer jeito (Maiúsculo ou Minúsculo)
+    const pref = v.PREFIXO || v.prefixo || v.Prefixo;
+    return (
+      <option key={i} value={pref}>{pref}</option>
+    );
+  })}
+</select>
                 <select className="vtr-input" value={formData.tipo_servico} onChange={(e) => {
                   setFormData({...formData, tipo_servico: e.target.value, servico_detalhe: ''});
                   if (e.target.value === 'Patrulha Comunitária') setModalComunitariaOpen(true);
