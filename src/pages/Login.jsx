@@ -1,11 +1,9 @@
 import React, { useState } from 'react';
 import { useAuth } from '../lib/AuthContext';
-import { useNavigate } from 'react-router-dom'; // 1. Importar o hook de navegação
 import { Loader2, ShieldCheck, Lock, User } from 'lucide-react';
 
 const Login = () => {
   const { login } = useAuth();
-  const navigate = useNavigate(); // 2. Inicializar o navigate
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   
@@ -37,9 +35,8 @@ const Login = () => {
         alert("⚠️ ATENÇÃO: Você está usando a senha padrão (123456).\nPor segurança, altere sua senha após entrar.");
       }
       
-      // 3. REDIRECIONAMENTO TÁTICO:
-      // Após o login com sucesso (e após o alert), manda para a rota principal
-      navigate('/dashboard'); 
+      // O App.jsx monitora o AuthContext. Quando o login tiver sucesso, 
+      // a tela mudará automaticamente pois isAuthenticated ficará true.
 
     } catch (err) {
       console.error(err);
@@ -51,7 +48,6 @@ const Login = () => {
 
   return (
     <div className="min-h-screen bg-slate-900 flex flex-col items-center justify-center p-6">
-      {/* ... (resto do seu código de UI igual ao que você enviou) ... */}
       <div className="mb-10 text-center">
         <div className="bg-blue-600 w-20 h-20 rounded-3xl flex items-center justify-center mx-auto mb-4 shadow-2xl shadow-blue-500/20">
           <ShieldCheck size={40} className="text-white" />
@@ -66,7 +62,6 @@ const Login = () => {
 
       <div className="bg-white w-full max-w-sm rounded-[2.5rem] p-8 shadow-2xl">
         <form onSubmit={handleLogin} className="space-y-4">
-          
           {error && (
             <div className="bg-red-50 text-red-600 text-[10px] font-black p-3 rounded-xl border border-red-100 uppercase text-center">
               {error}
@@ -112,13 +107,6 @@ const Login = () => {
             {loading ? <Loader2 className="animate-spin" size={18} /> : "Entrar no Sistema"}
           </button>
         </form>
-
-        <div className="mt-8 text-center">
-          <p className="text-[9px] text-slate-400 font-bold uppercase leading-tight">
-            Uso restrito a Policiais Militares do 1º BPM.<br/>
-            O acesso é monitorado e requer RE válido.
-          </p>
-        </div>
       </div>
 
       <footer className="mt-10">
