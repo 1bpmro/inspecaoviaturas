@@ -1,5 +1,20 @@
 import { initializeApp } from "firebase/app";
-import { getFirestore, collection, addDoc, serverTimestamp } from "firebase/firestore";
+import { getAuth } from "firebase/auth";
+import { 
+  getFirestore, 
+  collection, 
+  addDoc, 
+  doc, 
+  updateDoc, 
+  deleteDoc,
+  getDoc,
+  getDocs,
+  onSnapshot, 
+  query, 
+  where, 
+  orderBy, 
+  serverTimestamp 
+} from "firebase/firestore";
 
 const firebaseConfig = {
   apiKey: "AIzaSyDuFFlCVg8pAF6h2bv3XMTamOMaQMe0zx4",
@@ -11,7 +26,16 @@ const firebaseConfig = {
   measurementId: "G-2VNSCZN9JP"
 };
 
+// Inicialização
 const app = initializeApp(firebaseConfig);
 
+// Exportações de serviços
+export const auth = getAuth(app);
 export const db = getFirestore(app);
-export { collection, addDoc, serverTimestamp };
+
+// Exportações de utilitários (para facilitar o import nas páginas)
+export { 
+  collection, addDoc, doc, updateDoc, deleteDoc, 
+  getDoc, getDocs, onSnapshot, query, where, 
+  orderBy, serverTimestamp 
+};
