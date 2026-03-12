@@ -5,7 +5,8 @@ import {
   signOut,
   updatePassword 
 } from 'firebase/auth';
-import { auth, db, doc, getDoc, setDoc } from './firebase';
+// Adicionado serverTimestamp na importação abaixo:
+import { auth, db, doc, getDoc, setDoc, serverTimestamp } from './firebase';
 
 const AuthContext = createContext({});
 
@@ -17,15 +18,13 @@ export const AuthProvider = ({ children }) => {
     const unsubscribe = onAuthStateChanged(auth, async (firebaseUser) => {
       if (firebaseUser) {
         try {
-          // Busca os dados táticos do militar (Patente, Nome de Guerra, RE)
           const userDoc = await getDoc(doc(db, "usuarios", firebaseUser.uid));
           if (userDoc.exists()) {
             setUser({ uid: firebaseUser.uid, ...userDoc.data() });
           } else {
-            // Caso seja um usuário novo ainda sem perfil no Firestore
             setUser({ 
               uid: firebaseUser.uid, 
-              re: firebaseUser.email.split('@')[0],
+              re: firebaseUser.email?.split('@')[0] || "---",
               nome: "Militar",
               patente: "SD" 
             });
@@ -42,11 +41,11 @@ export const AuthProvider = ({ children }) => {
   }, []);
 
   const login = async (matricula, senha) => {
-    // Converte RE/Matrícula para o formato de e-mail do Firebase
-    const email = `${matricula.trim().toLowerCase()}@pm.br`;
+    // Tratamento preventivo para evitar erro de .trim() em valores vazios
+    const re = String(matricula || "").trim().toLowerCase();
+    const email = `${re}@pm.br`;
     const result = await signInWithEmailAndPassword(auth, email, senha);
     
-    // Se a senha for a padrão, avisamos o app para forçar a troca
     const isFirstAccess = senha === '123456';
     return { user: result.user, needsPasswordChange: isFirstAccess };
   };
@@ -54,16 +53,15 @@ export const AuthProvider = ({ children }) => {
   const logout = () => signOut(auth);
 
   const mudarSenha = async (novaSenha) => {
-  if (auth.currentUser) {
-    await updatePassword(auth.currentUser, novaSenha);
-    
-    // Marca no banco com o tempo oficial do servidor do Firebase
-    await setDoc(doc(db, "usuarios", auth.currentUser.uid), {
-      senhaAlterada: true,
-      dataUltimaTroca: serverTimestamp() // Alterado para ser consistente com o sistema
-    }, { merge: true });
-  }
-};
+    if (auth.currentUser) {
+      await updatePassword(auth.currentUser, novaSenha);
+      
+      await setDoc(doc(db, "usuarios", auth.currentUser.uid), {
+        senhaAlterada: true,
+        dataUltimaTroca: serverTimestamp() 
+      }, { merge: true });
+    }
+  };
 
   return (
     <AuthContext.Provider value={{ user, login, logout, mudarSenha, loading }}>
