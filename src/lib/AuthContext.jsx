@@ -1,90 +1,68 @@
-import React, { createContext, useState, useContext, useEffect, useRef } from 'react';
-import { gasApi } from '../api/gasClient';
+import React, { createContext, useContext, useState, useEffect } from 'react';
+import { 
+  signInWithEmailAndPassword, 
+  onAuthStateChanged, 
+  signOut,
+  updatePassword 
+} from 'firebase/auth';
+import { auth, db } from './firebase';
+import { doc, getDoc, setDoc } from 'firebase/firestore';
 
-const AuthContext = createContext();
+const AuthContext = createContext({});
 
 export const AuthProvider = ({ children }) => {
   const [user, setUser] = useState(null);
   const [loading, setLoading] = useState(true);
-  const inactivityTimer = useRef(null);
 
-  // 1. LOGOUT: Limpa tudo e para o cronômetro
-  const logout = () => {
-    setUser(null);
-    sessionStorage.removeItem('1bpm_user_session');
-    if (inactivityTimer.current) clearTimeout(inactivityTimer.current);
-  };
-
-  // 2. TIMER DE INATIVIDADE (5 MINUTOS)
-  const resetInactivityTimer = () => {
-    if (inactivityTimer.current) clearTimeout(inactivityTimer.current);
-    
-    inactivityTimer.current = setTimeout(() => {
-      logout();
-    }, 5 * 60 * 1000); 
-  };
-
-  // 3. EFEITO DE INICIALIZAÇÃO E MONITORAMENTO
+  // Monitora o estado do login no Firebase
   useEffect(() => {
-    // Mantemos sua regra: F5 desloga (user começa null)
-    setLoading(false);
-
-    if (user) {
-      const events = ['mousedown', 'mousemove', 'keypress', 'scroll', 'touchstart'];
-      const handleInteraction = () => resetInactivityTimer();
-
-      events.forEach(event => window.addEventListener(event, handleInteraction));
-      resetInactivityTimer();
-
-      return () => {
-        events.forEach(event => window.removeEventListener(event, handleInteraction));
-        if (inactivityTimer.current) clearTimeout(inactivityTimer.current);
-      };
-    }
-  }, [user]);
-
-  // 4. FUNÇÃO DE LOGIN
-  const login = async (re, senha) => {
-    try {
-      // Passamos a senha (que pode ser "" para policiais comuns)
-      const res = await gasApi.login(re, senha);
-      
-      if (res.status === 'success') {
-        // O res.user deve conter { re, nome, patente, role }
-        setUser(res.user);
-        
-        // Guardamos no sessionStorage apenas para persistência temporária se necessário
-        sessionStorage.setItem('1bpm_user_session', JSON.stringify(res.user));
-        return { success: true };
+    const unsubscribe = onAuthStateChanged(auth, async (firebaseUser) => {
+      if (firebaseUser) {
+        // Busca os dados complementares no Firestore (patente, nome, cargo)
+        const userDoc = await getDoc(doc(db, "usuarios", firebaseUser.uid));
+        if (userDoc.exists()) {
+          setUser({ uid: firebaseUser.uid, ...userDoc.data() });
+        } else {
+          // Caso o usuário exista no Auth mas não no Firestore (fallback)
+          setUser({ uid: firebaseUser.uid, re: firebaseUser.email.split('@')[0] });
+        }
       } else {
-        return { success: false, message: res.message || 'Credenciais inválidas' };
+        setUser(null);
       }
-    } catch (error) {
-      return { success: false, message: 'Erro de conexão com o servidor' };
+      setLoading(false);
+    });
+    return unsubscribe;
+  }, []);
+
+  // Função de Login adaptada para Matrícula
+  const login = async (matricula, senha) => {
+    // Transforma matrícula em um "e-mail" para o Firebase
+    const email = `${matricula.trim()}@pm.br`;
+    const result = await signInWithEmailAndPassword(auth, email, senha);
+    
+    // Verifica se é o primeiro acesso (senha 123456)
+    const isFirstAccess = senha === '123456';
+    
+    return { user: result.user, needsPasswordChange: isFirstAccess };
+  };
+
+  const logout = () => signOut(auth);
+
+  const mudarSenha = async (novaSenha) => {
+    if (auth.currentUser) {
+      await updatePassword(auth.currentUser, novaSenha);
+      // Atualiza no Firestore que ele já mudou a senha (opcional)
+      await setDoc(doc(db, "usuarios", auth.currentUser.uid), {
+        senhaAlterada: true
+      }, { merge: true });
     }
   };
 
   return (
-    <AuthContext.Provider value={{ 
-      user, 
-      login, 
-      logout, 
-      loading, 
-      isAuthenticated: !!user,
-      // Verificações de permissão baseadas no role da Coluna D
-      isAdmin: user?.role === 'ADMIN',
-      isGarageiro: user?.role === 'GARAGEIRO',
-      isPolicial: user?.role === 'POLICIAL' || !user?.role 
-    }}>
+    <AuthContext.Provider value={{ user, login, logout, mudarSenha, loading }}>
       {!loading && children}
     </AuthContext.Provider>
   );
 };
 
-export const useAuth = () => {
-  const context = useContext(AuthContext);
-  if (!context) {
-    throw new Error('useAuth deve ser usado dentro de um AuthProvider');
-  }
-  return context;
-};
+export const useAuth = () => useContext(AuthContext);
