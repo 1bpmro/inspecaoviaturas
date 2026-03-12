@@ -1,3 +1,5 @@
+// src/api/photoService.js
+
 const CLOUD_NAME = "dy3kkwoli";
 const UPLOAD_PRESET = "vistorias_preset";
 
@@ -9,6 +11,8 @@ export const photoService = {
    */
   uploadFoto: async (base64) => {
     try {
+      // Garante que se o base64 for muito grande ou tiver caracteres especiais, 
+      // ele seja tratado corretamente pelo FormData
       const formData = new FormData();
       formData.append("file", base64);
       formData.append("upload_preset", UPLOAD_PRESET);
@@ -21,10 +25,14 @@ export const photoService = {
         }
       );
 
-      if (!response.ok) throw new Error("Falha no upload para o Cloudinary");
-
       const data = await response.json();
-      return data.secure_url; // Esta é a URL que salvaremos no Firestore
+
+      if (!response.ok) {
+        console.error("Erro detalhado do Cloudinary:", data);
+        throw new Error(data.error?.message || "Falha no upload para o Cloudinary");
+      }
+
+      return data.secure_url; 
     } catch (error) {
       console.error("Erro no PhotoService:", error);
       throw error;
