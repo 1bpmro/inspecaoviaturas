@@ -20,19 +20,24 @@ export const AuthProvider = ({ children }) => {
   const isAdmin = user?.nivelAcesso === 'ADMIN' || user?.nivelAcesso === 'Admin';
   const isGarageiro = user?.nivelAcesso === 'GARAGEIRO';
 
-  useEffect(() => {
+ useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, async (firebaseUser) => {
       if (firebaseUser) {
         try {
           const userDoc = await getDoc(doc(db, "usuarios", firebaseUser.uid));
+          
           if (userDoc.exists()) {
-            setUser({ uid: firebaseUser.uid, ...userDoc.data() });
+            const dados = userDoc.data();
+            console.log("Dados encontrados no Firestore:", dados); // Veja isso no F12
+            setUser({ uid: firebaseUser.uid, ...dados });
           } else {
+            // Se cair aqui, o usuário está no Auth mas não está no Firestore
+            console.warn("Usuário sem documento no Firestore. UID:", firebaseUser.uid);
             setUser({ 
               uid: firebaseUser.uid, 
               re: firebaseUser.email?.split('@')[0] || "---",
-              nome: "Militar",
-              patente: "SD" 
+              nome: "Não Cadastrado", // Mudamos aqui para você identificar o erro
+              patente: "2° SGT PM" 
             });
           }
         } catch (error) {
@@ -45,6 +50,7 @@ export const AuthProvider = ({ children }) => {
     });
     return unsubscribe;
   }, []);
+  
 
   const login = async (matricula, senha) => {
     let reProcessado = String(matricula || "").trim();
