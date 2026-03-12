@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
-import { gasApi } from '../api/gasClient';
-import { ArrowLeft, Car, Search, AlertCircle, CheckCircle2, Loader2 } from 'lucide-react';
+// Firebase
+import { db, collection, onSnapshot, query, orderBy } from '../lib/firebase';
+import { ArrowLeft, Car, Search, AlertCircle, CheckCircle2, Loader2, Gauge } from 'lucide-react';
 
 const ConsultarFrota = ({ onBack }) => {
   const [viaturas, setViaturas] = useState([]);
@@ -8,103 +9,104 @@ const ConsultarFrota = ({ onBack }) => {
   const [busca, setBusca] = useState('');
 
   useEffect(() => {
-    const carregar = async () => {
-      setLoading(true);
-      try {
-        // Chamada sem argumentos para pegar a frota completa
-        const res = await gasApi.getViaturas(); 
-        if (res.status === 'success') {
-          setViaturas(res.data);
-        }
-      } catch (error) {
-        console.error("Erro ao carregar frota:", error);
-      } finally {
-        setLoading(false);
-      }
-    };
-    carregar();
+    // Escuta a coleção "viaturas" em tempo real
+    // Ordenamos pelo prefixo para facilitar a leitura
+    const q = query(collection(db, "viaturas"), orderBy("prefixo", "asc"));
+
+    const unsubscribe = onSnapshot(q, (snapshot) => {
+      const listaViaturas = snapshot.docs.map(doc => ({
+        id: doc.id,
+        ...doc.data()
+      }));
+      setViaturas(listaViaturas);
+      setLoading(false);
+    }, (error) => {
+      console.error("Erro ao escutar frota:", error);
+      setLoading(false);
+    });
+
+    return () => unsubscribe(); // Limpa a escuta ao fechar a página
   }, []);
 
-  // Filtro inteligente (busca em tempo real) - Ajustado para ser insensível a maiúsculas na planilha
+  // Filtro de busca (Prefixo ou Placa)
   const frotaFiltrada = viaturas.filter(vtr => {
-    const prefixo = (vtr.Prefixo || vtr.prefixo || "").toString().toLowerCase();
-    const placa = (vtr.Placa || vtr.placa || "").toString().toLowerCase();
-    const termoBusca = busca.toLowerCase();
-    
-    return prefixo.includes(termoBusca) || placa.includes(termoBusca);
+    const termo = busca.toLowerCase();
+    return (
+      vtr.prefixo?.toLowerCase().includes(termo) || 
+      vtr.placa?.toLowerCase().includes(termo)
+    );
   });
 
   return (
-    <div className="min-h-screen bg-slate-50 pb-10 transition-all">
-      {/* HEADER PADRONIZADO 1º BPM */}
-      <header className="bg-slate-900 text-white p-5 shadow-2xl sticky top-0 z-50 border-b-4 border-blue-900">
+    <div className="min-h-screen bg-slate-50 pb-10">
+      {/* HEADER ESTILO TÁTICO */}
+      <header className="bg-slate-900 text-white p-5 shadow-2xl sticky top-0 z-50 border-b-4 border-blue-600">
         <div className="max-w-xl mx-auto flex items-center justify-between">
-          <button onClick={onBack} className="p-2 hover:bg-slate-800 rounded-full transition-all active:scale-90">
+          <button onClick={onBack} className="p-2 hover:bg-white/10 rounded-full transition-all">
             <ArrowLeft size={24} />
           </button>
           <div className="text-center">
-            <h1 className="font-black text-[10px] tracking-[0.3em] uppercase opacity-50">1º BPM - Rondon</h1>
-            <p className="text-xs font-black text-blue-400 uppercase tracking-widest">Status da Frota</p>
+            <h1 className="font-black text-[10px] tracking-[0.2em] uppercase text-blue-400">1º BPM - Rondon</h1>
+            <p className="text-xs font-black uppercase tracking-widest">Painel da Frota</p>
           </div>
-          <div className="w-10" />
+          <div className="w-10 flex justify-end">
+             <div className={`w-2 h-2 rounded-full animate-pulse ${loading ? 'bg-slate-500' : 'bg-emerald-500'}`} />
+          </div>
         </div>
       </header>
 
-      <main className="max-w-xl mx-auto p-4 space-y-6">
+      <main className="max-w-xl mx-auto p-4 space-y-4">
         
-        {/* BARRA DE BUSCA TÁTICA */}
-        <div className="relative group">
-          <div className="absolute inset-y-0 left-4 flex items-center pointer-events-none">
-            <Search className="text-slate-400 group-focus-within:text-blue-500 transition-colors" size={20} />
-          </div>
+        {/* BUSCA */}
+        <div className="relative">
+          <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" size={18} />
           <input 
             type="text" 
-            placeholder="Buscar por Prefixo ou Placa..." 
-            className="w-full pl-12 pr-4 py-4 bg-white border border-slate-200 rounded-2xl shadow-sm focus:ring-2 focus:ring-blue-500 outline-none transition-all font-bold text-slate-700"
+            placeholder="PREFIXO OU PLACA..." 
+            className="w-full pl-12 pr-4 py-4 bg-white border-2 border-slate-100 rounded-[2rem] shadow-sm outline-none focus:border-blue-500 transition-all font-bold text-xs uppercase"
             onChange={(e) => setBusca(e.target.value)}
           />
         </div>
 
         {loading ? (
           <div className="flex flex-col items-center justify-center py-20 text-slate-400">
-            <Loader2 className="animate-spin mb-4" size={40} />
-            <p className="font-black text-[10px] uppercase tracking-widest">Acessando Banco de Dados...</p>
+            <Loader2 className="animate-spin mb-4 text-blue-600" size={32} />
+            <p className="font-black text-[9px] uppercase tracking-[0.3em]">Sincronizando Frota...</p>
           </div>
         ) : (
-          <div className="grid gap-4 animate-in fade-in slide-in-from-bottom-4 duration-500">
-            {frotaFiltrada.map((vtr, index) => {
-              // Normalização dos dados para evitar erro de Case Sensitivity
-              const prefixo = vtr.Prefixo || vtr.prefixo || "S/ PREFIXO";
-              const placa = vtr.Placa || vtr.placa || "S/ PLACA";
-              const statusRaw = (vtr.Status || vtr.status || "").toString().toUpperCase();
-              const isDisponivel = statusRaw.includes("DISPON") || statusRaw === "OK";
+          <div className="space-y-3">
+            {frotaFiltrada.map((vtr) => {
+              const status = (vtr.status || "DESCONHECIDO").toUpperCase();
+              const isDisponivel = status === "DISPONÍVEL" || status === "OK";
+              const isManutencao = status.includes("MANUTEN");
 
               return (
-                <div key={placa + index} className="bg-white p-5 rounded-3xl flex items-center justify-between shadow-sm border border-slate-100 group active:scale-[0.98] transition-all">
+                <div key={vtr.id} className="bg-white p-4 rounded-[2.5rem] flex items-center justify-between shadow-sm border border-slate-100 active:scale-[0.98] transition-all">
                   <div className="flex items-center gap-4">
-                    <div className="p-3 bg-slate-100 rounded-2xl text-slate-600 group-hover:bg-blue-50 group-hover:text-blue-600 transition-colors">
-                      <Car size={24} />
+                    <div className={`p-4 rounded-3xl transition-colors ${isDisponivel ? 'bg-emerald-50 text-emerald-600' : 'bg-slate-100 text-slate-400'}`}>
+                      <Car size={26} />
                     </div>
                     <div>
-                      <h3 className="font-black text-lg text-slate-800 tracking-tight leading-none">{prefixo}</h3>
-                      <p className="text-[10px] font-bold text-slate-400 uppercase tracking-tighter mt-1">Placa: {placa}</p>
+                      <h3 className="font-black text-xl text-slate-800 leading-none">{vtr.prefixo}</h3>
+                      <div className="flex items-center gap-2 mt-1">
+                        <span className="text-[10px] font-bold text-slate-400 uppercase tracking-tighter">{vtr.placa}</span>
+                        <span className="text-slate-200 text-[10px]">|</span>
+                        <div className="flex items-center gap-1 text-slate-500 font-bold text-[9px]">
+                          <Gauge size={10} /> {vtr.ultimo_km || '---'} KM
+                        </div>
+                      </div>
                     </div>
                   </div>
 
                   <div className="text-right">
-                    {!isDisponivel ? (
-                      <div className="flex items-center justify-end gap-1.5 text-orange-600">
-                        <span className="text-[10px] font-black uppercase tracking-tighter">Em Serviço</span>
-                        <AlertCircle size={16} />
-                      </div>
-                    ) : (
-                      <div className="flex items-center justify-end gap-1.5 text-green-600">
-                        <span className="text-[10px] font-black uppercase tracking-tighter">Disponível</span>
-                        <CheckCircle2 size={16} />
-                      </div>
-                    )}
-                    <p className="text-[9px] font-medium text-slate-400 mt-1 italic">
-                      Visto em: {vtr.UltimaVistoria || vtr.ultimaVistoria || 'N/A'}
+                    <div className={`flex items-center justify-end gap-1.5 font-black text-[10px] uppercase ${
+                      isDisponivel ? 'text-emerald-600' : isManutencao ? 'text-red-600' : 'text-orange-500'
+                    }`}>
+                      <span>{status}</span>
+                      {isDisponivel ? <CheckCircle2 size={14} /> : <AlertCircle size={14} />}
+                    </div>
+                    <p className="text-[8px] font-bold text-slate-300 mt-1 uppercase">
+                      Atualizado há: {vtr.data_ultima_atualizacao ? 'Recém' : 'N/A'}
                     </p>
                   </div>
                 </div>
@@ -112,9 +114,9 @@ const ConsultarFrota = ({ onBack }) => {
             })}
 
             {frotaFiltrada.length === 0 && (
-              <div className="text-center py-20 opacity-40">
-                <Car className="mx-auto mb-2 text-slate-300" size={48} />
-                <p className="font-black text-xs uppercase tracking-widest">Nenhuma viatura encontrada</p>
+              <div className="text-center py-20 bg-white rounded-[3rem] border-2 border-dashed border-slate-200">
+                <Car className="mx-auto mb-2 text-slate-200" size={48} />
+                <p className="font-black text-[10px] text-slate-400 uppercase tracking-widest">Nenhuma viatura na lista</p>
               </div>
             )}
           </div>
