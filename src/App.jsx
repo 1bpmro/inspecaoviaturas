@@ -204,8 +204,8 @@ function App() {
   // Roteamento simples baseado no estado 'view'
   const renderView = () => {
     switch(view) {
-      case 'vistoria': 
-        return <Vistoria onBack={() => setView('dashboard')} frotaInicial={dadosFrota} />;
+     case 'vistoria': 
+  return <Vistoria onBack={() => setView('dashboard')} PATRIMONIO={dadosFrota} />;
       
       case 'frota': 
         if (isAdmin) return <AdminDashboard onBack={() => setView('dashboard')} />;
