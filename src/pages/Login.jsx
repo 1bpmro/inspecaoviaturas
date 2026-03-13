@@ -7,18 +7,11 @@ const Login = () => {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   
-  const [credentials, setCredentials] = useState({
-    matricula: '',
-    password: ''
-  });
+  const [credentials, setCredentials] = useState({ matricula: '', password: '' });
 
   const handleLogin = async (e) => {
     e.preventDefault();
     setError('');
-
-    if (!credentials.matricula) {
-      return setError('Digite a matrícula.');
-    }
 
     const reLimpo = credentials.matricula.replace(/\D/g, ''); 
     
@@ -30,14 +23,9 @@ const Login = () => {
 
     try {
       const { needsPasswordChange } = await login(reLimpo, credentials.password);
-      
       if (needsPasswordChange) {
-        alert("⚠️ ATENÇÃO: Você está usando a senha padrão (123456).\nPor segurança, altere sua senha após entrar.");
+        alert("⚠️ ATENÇÃO: Você está usando a senha padrão (123456).\nAltere sua senha no menu principal.");
       }
-      
-      // O App.jsx monitora o AuthContext. Quando o login tiver sucesso, 
-      // a tela mudará automaticamente pois isAuthenticated ficará true.
-
     } catch (err) {
       console.error(err);
       setError('Matrícula ou senha incorretos.');
@@ -55,7 +43,7 @@ const Login = () => {
         <h1 className="text-white font-black text-2xl tracking-tighter uppercase">
           Garagem <span className="text-blue-500">1º BPM</span>
         </h1>
-        <p className="text-slate-500 text-xs font-bold uppercase tracking-widest mt-1">
+        <p className="text-slate-500 text-[10px] font-bold uppercase tracking-[0.2em] mt-1">
           Sistema de Vistorias
         </p>
       </div>
@@ -75,7 +63,6 @@ const Login = () => {
               <input 
                 type="text" 
                 inputMode="numeric"
-                autoComplete="username"
                 className="w-full bg-slate-100 border-none rounded-2xl py-4 pl-12 pr-4 text-sm font-bold focus:ring-2 focus:ring-blue-500 transition-all text-slate-900"
                 placeholder="Ex: 123456"
                 value={credentials.matricula}
@@ -90,7 +77,6 @@ const Login = () => {
               <Lock className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" size={18} />
               <input 
                 type="password" 
-                autoComplete="current-password"
                 className="w-full bg-slate-100 border-none rounded-2xl py-4 pl-12 pr-4 text-sm font-bold focus:ring-2 focus:ring-blue-500 transition-all text-slate-900"
                 placeholder="••••••••"
                 value={credentials.password}
@@ -102,7 +88,7 @@ const Login = () => {
           <button 
             type="submit" 
             disabled={loading}
-            className="w-full bg-slate-900 text-white py-4 rounded-2xl font-black text-xs uppercase tracking-widest hover:bg-blue-600 transition-all shadow-lg active:scale-95 disabled:opacity-50 flex items-center justify-center gap-2"
+            className="w-full bg-slate-900 text-white py-4 rounded-2xl font-black text-xs uppercase tracking-widest hover:bg-blue-600 transition-all active:scale-95 disabled:opacity-50 flex items-center justify-center gap-2"
           >
             {loading ? <Loader2 className="animate-spin" size={18} /> : "Entrar no Sistema"}
           </button>
