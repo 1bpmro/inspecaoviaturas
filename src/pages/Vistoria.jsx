@@ -43,32 +43,36 @@ const Vistoria = ({ onBack, PATRIMONIO = [] }) => {
   const [checklist, setChecklist] = useState({});
 
   // --- FUNÇÃO DE BUSCA ---
-  const pesquisarRE = async (reDigitado, tipo) => {
-    // Limpa 1000 inicial e espaços
-    const reLimpo = reDigitado.toString().trim().replace(/^1000/, '');
-    
-    // Só pesquisa se tiver entre 4 e 7 dígitos (padrão RE)
-    if (reLimpo.length < 4) return;
+ const pesquisarRE = async (reDigitado, tipo) => {
+  // 1. Limpeza rigorosa: remove tudo que não for número e tira o 1000
+  const reLimpo = reDigitado.toString().replace(/\D/g, '').replace(/^1000/, '');
+  
+  // 2. Só dispara se tiver um tamanho mínimo real
+  if (reLimpo.length < 4) {
+    // Limpa o nome no card se o campo for apagado
+    setFormData(prev => ({ ...prev, [`${tipo}_nome`]: '' }));
+    return;
+  }
 
-    try {
-      const res = await gasApi.buscarMilitar(reLimpo);
-      
-      if (res && res.status === 'success' && res.data) {
-        setFormData(prev => ({ 
-          ...prev, 
-          [`${tipo}_nome`]: res.data.NOME,
-          ...(tipo === 'motorista' ? { motorista_unidade: res.data.UNIDADE } : {})
-        }));
-        setManual(prev => ({ ...prev, [tipo.slice(0,3)]: false }));
-      } else {
-        // Se não encontrou no DB, permite digitar
-        setManual(prev => ({ ...prev, [tipo.slice(0,3)]: true }));
-      }
-    } catch (error) {
-      console.error("Erro na busca:", error);
+  try {
+    const res = await gasApi.buscarMilitar(reLimpo);
+    
+    if (res && res.status === 'success' && res.data) {
+      setFormData(prev => ({ 
+        ...prev, 
+        [`${tipo}_nome`]: res.data.NOME,
+        ...(tipo === 'motorista' ? { motorista_unidade: res.data.UNIDADE } : {})
+      }));
+      setManual(prev => ({ ...prev, [tipo.slice(0,3)]: false }));
+    } else {
+      // Se não retornar sucesso, abre o campo manual mas limpa o "Aguardando"
+      setFormData(prev => ({ ...prev, [`${tipo}_nome`]: 'NÃO ENCONTRADO' }));
       setManual(prev => ({ ...prev, [tipo.slice(0,3)]: true }));
     }
-  };
+  } catch (error) {
+    setManual(prev => ({ ...prev, [tipo.slice(0,3)]: true }));
+  }
+};
 
   // Efeitos para busca automática (Debounce)
   useEffect(() => {
