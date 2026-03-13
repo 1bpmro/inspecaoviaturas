@@ -12,7 +12,7 @@ self.addEventListener('install', event => {
     caches.open(CACHE_NAME).then(cache => {
       return Promise.all(
         urlsToCache.map(url => {
-          return cache.add(url).catch(err => console.log('Aviso: Offline skip para', url));
+          return cache.add(url).catch(err => console.log('Erro no cache:', url));
         })
       );
     })
@@ -21,14 +21,10 @@ self.addEventListener('install', event => {
 });
 
 self.addEventListener('fetch', event => {
-  // --- CORREÇÃO TÁTICA ---
-  // Se não for GET (ex: Login, Gravar Vistoria), não tenta fazer cache.
-  // Isso impede o erro de 'Request method POST is unsupported'
-  if (event.request.method !== 'GET') {
-    return; 
-  }
+  // BLINDAGEM: Firebase Auth usa POST. O Cache Storage só aceita GET.
+  if (event.request.method !== 'GET') return;
 
-  // Ignora requisições para Cloudinary e Google Script
+  // Ignora APIs externas e Google Scripts
   if (event.request.url.includes('cloudinary') || event.request.url.includes('script.google')) {
     return;
   }
