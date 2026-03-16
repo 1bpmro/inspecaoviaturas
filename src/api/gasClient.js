@@ -91,3 +91,6 @@ export const gasApi = {
   getEfetivoCompleto: () => gasApi.post('getEfetivoCompleto'),
   registrarManutencao: (dados) => gasApi.post('registrarManutencao', dados),
 };
+
+
+window.gasApi = gasApi;
