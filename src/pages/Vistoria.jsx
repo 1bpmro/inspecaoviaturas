@@ -27,23 +27,39 @@ const COMPRESSION_OPTIONS = {
     initialQuality: 0.6,
 };
 
-const uploadParaCloudinary = async (base64) => {
-    const formData = new FormData();
-    formData.append("file", base64);
-    formData.append("upload_preset", CLOUDINARY_PRESET);
+const uploadParaCloudinary = async (
+  base64,
+  prefixo,
+  tipoVistoria,
+  km,
+  indice
+) => {
 
-    const res = await fetch(CLOUDINARY_URL, {
-        method: "POST",
-        body: formData,
-    });
+  const hoje = new Date().toISOString().slice(0,10);
 
-    const data = await res.json();
+  const nomeArquivo = `${prefixo}_${tipoVistoria}_KM${km}_${indice+1}`;
 
-    if (!data.secure_url) {
-        throw new Error("Falha no upload da imagem");
-    }
+  const pasta = `vistorias/1BPM/${prefixo}/${hoje}`;
 
-    return data.secure_url;
+  const formData = new FormData();
+
+  formData.append("file", base64);
+  formData.append("upload_preset", CLOUDINARY_PRESET);
+  formData.append("folder", pasta);
+  formData.append("public_id", nomeArquivo);
+
+  const res = await fetch(CLOUDINARY_URL, {
+    method: "POST",
+    body: formData
+  });
+
+  const data = await res.json();
+
+  if (!data.secure_url) {
+    throw new Error("Falha no upload da imagem");
+  }
+
+  return data.secure_url;
 };
 
 const Vistoria = ({ onBack, frotaInicial = [] }) => {
@@ -181,15 +197,21 @@ const Vistoria = ({ onBack, frotaInicial = [] }) => {
             if (fotos.length > 0) {
                 let linksFotos = [];
 
-                for (let i = 0; i < fotos.length; i++) {
-                    setUploadStatus(
-                        `Enviando foto ${i + 1} de ${fotos.length}...`
-                    );
+for (let i = 0; i < fotos.length; i++) {
 
-                    const link = await uploadParaCloudinary(fotos[i]);
+  setUploadStatus(`Enviando foto ${i + 1} de ${fotos.length}...`);
 
-                    linksFotos.push(link);
-                }
+  const link = await uploadParaCloudinary(
+    fotos[i],
+    formData.prefixo_vtr,
+    tipoVistoria,
+    formData.hodometro,
+    i
+  );
+
+  linksFotos.push(link);
+
+}
 
                 await gasApi.saveVistoria({
                     id_referencia: idVistoria,
