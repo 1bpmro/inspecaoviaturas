@@ -3,12 +3,7 @@ import { useAuth } from "../lib/AuthContext";
 import { gasApi } from "../api/gasClient";
 import imageCompression from "browser-image-compression";
 
-import {
-ArrowLeft,
-Loader2,
-X,
-Plus
-} from "lucide-react";
+import { ArrowLeft, Loader2, X, Plus } from "lucide-react";
 
 const CLOUDINARY_URL = "https://api.cloudinary.com/v1_1/dy3kkwoli/image/upload";
 const CLOUDINARY_PRESET = "vistorias_preset";
@@ -16,11 +11,11 @@ const CLOUDINARY_PRESET = "vistorias_preset";
 const MAX_FOTOS = 6;
 
 const COMPRESSION_OPTIONS = {
-maxSizeMB: 0.05,
-maxWidthOrHeight: 900,
-useWebWorker: true,
-fileType: "image/jpeg",
-initialQuality: 0.6
+maxSizeMB:0.05,
+maxWidthOrHeight:900,
+useWebWorker:true,
+fileType:"image/jpeg",
+initialQuality:0.6
 };
 
 const uploadParaCloudinary = async (base64,prefixo,tipo,km,index)=>{
@@ -59,9 +54,7 @@ const [loading,setLoading] = useState(false);
 const [uploading,setUploading] = useState(false);
 const [uploadStatus,setUploadStatus] = useState("");
 
-const [viaturas,setViaturas] = useState(frotaInicial);
-const [efetivoLocal,setEfetivoLocal] = useState([]);
-
+const [viaturas,setViaturas] = useState([]);
 const [tipoVistoria,setTipoVistoria] = useState("ENTRADA");
 
 const [fotos,setFotos] = useState([]);
@@ -77,7 +70,7 @@ comandante_nome:"",
 termo_aceite:false
 });
 
-const toStr = useCallback((v)=> v ? String(v) : "",[]);
+const toStr = useCallback((v)=> v!==undefined && v!==null ? String(v) : "",[]);
 
 useEffect(()=>{
 
@@ -85,16 +78,18 @@ const carregar = async ()=>{
 
 try{
 
-const [resVtr,resMil] = await Promise.all([
-gasApi.getViaturas(),
-gasApi.getEfetivoCompleto()
-]);
+const res = await gasApi.getViaturas();
 
-if(resVtr?.status==="success") setViaturas(resVtr.data);
-if(resMil?.status==="success") setEfetivoLocal(resMil.data);
+if(res?.status==="success"){
+
+setViaturas(res.data);
+
+}
 
 }catch(e){
+
 console.error(e);
+
 }
 
 };
@@ -103,26 +98,79 @@ carregar();
 
 },[]);
 
+/* ---------- LISTA DE VIATURAS ROBUSTA (DO SEGUNDO CÓDIGO) ---------- */
+
+const viaturasFiltradas = useMemo(()=>{
+
+return (viaturas || [])
+.filter(Boolean)
+.slice()
+.sort((a,b)=>{
+
+const pa = String(a.PREFIXO || a.Prefixo || a.prefixo || "");
+const pb = String(b.PREFIXO || b.Prefixo || b.prefixo || "");
+
+return pa.localeCompare(pb);
+
+});
+
+},[viaturas]);
+
+/* ---------- PROCURAR VIATURA POR PREFIXO ---------- */
+
+const findVtrByPrefixo = useCallback((prefixo)=>{
+
+if(!prefixo) return undefined;
+
+return (viaturas || []).find(v=>{
+
+const p = toStr(v.PREFIXO || v.Prefixo || v.prefixo);
+
+return p === prefixo;
+
+});
+
+},[viaturas,toStr]);
+
+/* ---------- ALTERAÇÃO DE VIATURA ---------- */
+
 const handleVtrChange=(prefixo)=>{
 
-const vtr = viaturas.find(
-v=>toStr(v.Prefixo||v.PREFIXO)===toStr(prefixo)
-);
+setFormData(p=>({...p,prefixo_vtr:prefixo}));
 
-if(!vtr) return;
+const vtr = findVtrByPrefixo(prefixo);
 
-const ultKM = vtr.UltimoKM || vtr.ULTIMOKM || 0;
+if(!vtr){
+
+setFormData(p=>({...p,placa_vtr:"",hodometro:""}));
+return;
+
+}
+
+const placa = toStr(vtr.PLACA || vtr.Placa || vtr.placa);
+
+const ultKM =
+vtr.ULTIMOKM ||
+vtr.UltimoKM ||
+vtr.ultimoKM ||
+vtr.ULTIMO_KM ||
+0;
 
 setKmReferencia(Number(ultKM));
 
 setFormData(p=>({
+
 ...p,
-prefixo_vtr:toStr(vtr.Prefixo||vtr.PREFIXO),
-placa_vtr:toStr(vtr.Placa||vtr.PLACA),
+
+prefixo_vtr:prefixo,
+placa_vtr:placa,
 hodometro: tipoVistoria==="SAÍDA" ? ultKM : ""
+
 }));
 
 };
+
+/* ---------- VALIDAÇÃO KM ---------- */
 
 const kmInvalido = useMemo(()=>{
 
@@ -140,6 +188,8 @@ if(km - ref > 2000) return true;
 return false;
 
 },[formData.hodometro,kmReferencia,tipoVistoria]);
+
+/* ---------- FOTO ---------- */
 
 const adicionarFoto = async(file)=>{
 
@@ -176,23 +226,15 @@ setFotos(p=>p.filter((_,i)=>i!==index));
 
 };
 
+/* ---------- FINALIZAR ---------- */
+
 const handleFinalizar = async ()=>{
 
 if(loading) return;
 
-if(kmInvalido){
-return alert("KM inválido.");
-}
+if(kmInvalido) return alert("KM inválido");
 
-if(!formData.prefixo_vtr || !formData.hodometro){
-return alert("Preencha os campos obrigatórios.");
-}
-
-if(!formData.termo_aceite){
-return alert("Aceite o termo.");
-}
-
-if(!window.confirm("Finalizar vistoria?")) return;
+if(!formData.termo_aceite) return alert("Aceite o termo");
 
 setLoading(true);
 
@@ -201,9 +243,13 @@ try{
 setUploadStatus("Salvando vistoria...");
 
 const payload = {
+
 ...formData,
+
 tipo_vistoria:tipoVistoria,
+
 militar_logado:`${user.patente} ${user.nome}`
+
 };
 
 const res = await gasApi.saveVistoria(payload);
@@ -246,8 +292,7 @@ onBack();
 }catch(e){
 
 console.error(e);
-
-alert("Erro envio.");
+alert("Erro envio");
 
 }finally{
 
@@ -257,6 +302,8 @@ setUploadStatus("");
 }
 
 };
+
+/* ---------- UI ---------- */
 
 return(
 
@@ -290,14 +337,23 @@ onChange={(e)=>handleVtrChange(e.target.value)}
 
 <option value="">Selecione VTR</option>
 
-{(tipoVistoria==="ENTRADA"
-? viaturas.filter(v=>String(v.Status||v.STATUS).toUpperCase().includes("DISPON"))
-: viaturas.filter(v=>String(v.Status||v.STATUS).toUpperCase().includes("EM SERV"))
-).map(v=>(
-<option key={v.Prefixo||v.PREFIXO}>
-{v.Prefixo||v.PREFIXO}
+{viaturasFiltradas.map((v,i)=>{
+
+const pref = toStr(v.PREFIXO || v.Prefixo || v.prefixo);
+
+if(!pref) return null;
+
+return(
+
+<option key={pref+"-"+i} value={pref}>
+
+{pref}
+
 </option>
-))}
+
+);
+
+})}
 
 </select>
 
@@ -321,7 +377,9 @@ onChange={(e)=>setFormData({...formData,hodometro:e.target.value})}
 onClick={()=>removerFoto(i)}
 className="absolute top-1 right-1 bg-red-600 text-white rounded-full p-1"
 >
+
 <X size={12}/>
+
 </button>
 
 </div>
@@ -330,11 +388,9 @@ className="absolute top-1 right-1 bg-red-600 text-white rounded-full p-1"
 
 {fotos.length<MAX_FOTOS &&(
 
-<label className="border-2 border-dashed flex items-center justify-center text-sm">
+<label className="border-2 border-dashed flex items-center justify-center">
 
-{uploading
-? <Loader2 className="animate-spin"/>
-: <Plus/>}
+{uploading ? <Loader2 className="animate-spin"/> : <Plus/>}
 
 <input
 type="file"
@@ -356,7 +412,9 @@ if(file) adicionarFoto(file);
 </div>
 
 <div className="text-xs text-gray-500">
+
 {fotos.length}/{MAX_FOTOS} fotos
+
 </div>
 
 <label className="flex gap-2 text-[10px] font-bold uppercase">
@@ -370,8 +428,7 @@ onChange={(e)=>setFormData({...formData,termo_aceite:e.target.checked})}
 <span>
 
 EU, {formData.motorista_nome || "MOTORISTA"}, DECLARO QUE REALIZEI A
-VISTORIA DA VIATURA {formData.prefixo_vtr} E QUE AS INFORMAÇÕES
-PRESTADAS SÃO VERDADEIRAS.
+VISTORIA DA VIATURA {formData.prefixo_vtr}.
 
 </span>
 
