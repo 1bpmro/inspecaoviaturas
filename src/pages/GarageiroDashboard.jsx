@@ -1,5 +1,5 @@
-import React, { useState, useEffect, useRef } from 'react';
-import { useAuth } from '../lib/AuthContext';
+import React, { useState, useEffect, useRef, useMemo } from "react";
+import { useAuth } from "../lib/AuthContext";
 
 import {
   db,
@@ -9,70 +9,42 @@ import {
   onSnapshot,
   doc,
   updateDoc,
-  serverTimestamp,
-  getDocs
-} from '../lib/firebase';
-
-import { photoService } from '../api/photoService';
+  serverTimestamp
+} from "../lib/firebase";
 
 import {
   Car,
-  CheckCircle2,
-  AlertTriangle,
   Clock,
-  RefreshCw,
-  Search,
   ShieldCheck,
-  Lock,
-  Unlock,
-  Camera,
-  User,
-  X,
-  Inbox,
+  Search,
+  RefreshCw,
   Volume2,
-  VolumeX
-} from 'lucide-react';
+  VolumeX,
+  AlertTriangle,
+  Wrench,
+  CheckCircle
+} from "lucide-react";
 
 const GarageiroDashboard = ({ onBack }) => {
 
   const { user } = useAuth();
 
-  const [tab, setTab] = useState('pendentes');
+  const [tab, setTab] = useState("pendentes");
+
   const [vistorias, setVistorias] = useState([]);
   const [viaturas, setViaturas] = useState([]);
-  const [motoristas, setMotoristas] = useState([]);
 
   const [loading, setLoading] = useState(true);
-  const [isSubmitting, setIsSubmitting] = useState(false);
 
-  const [searchTerm, setSearchTerm] = useState('');
+  const [searchTerm, setSearchTerm] = useState("");
 
   const [soundEnabled, setSoundEnabled] = useState(false);
 
   const previousCount = useRef(0);
 
   const audioRef = useRef(
-    new Audio('https://assets.mixkit.co/active_storage/sfx/2869/2869-preview.mp3')
+    new Audio("https://assets.mixkit.co/active_storage/sfx/2869/2869-preview.mp3")
   );
-
-  const [showModal, setShowModal] = useState(false);
-  const [selectedVtr, setSelectedVtr] = useState(null);
-
-  const [fotoAvaria, setFotoAvaria] = useState(null);
-
-  const [conf, setConf] = useState({
-    limpezaInterna: true,
-    limpezaExterna: true,
-    avaria: false,
-    obs: ''
-  });
-
-  const [showLockModal, setShowLockModal] = useState(false);
-  const [lockData, setLockData] = useState({
-    id: '',
-    prefixo: '',
-    motivo: 'manutencao'
-  });
 
   useEffect(() => {
 
@@ -113,18 +85,6 @@ const GarageiroDashboard = ({ onBack }) => {
       }
     );
 
-    const carregarEfetivo = async () => {
-
-      const snap = await getDocs(collection(db, "usuarios"));
-
-      const lista = snap.docs.map(d => d.data());
-
-      setMotoristas(lista);
-
-    };
-
-    carregarEfetivo();
-
     return () => {
 
       unsubVistorias();
@@ -134,184 +94,94 @@ const GarageiroDashboard = ({ onBack }) => {
 
   }, [soundEnabled]);
 
-  const finalizarConferencia = async () => {
-
-    if (!selectedVtr) return;
-
-    if (conf.avaria && !fotoAvaria) {
-      alert("Anexe a foto da avaria.");
-      return;
-    }
-
-    setIsSubmitting(true);
-
-    try {
-
-      let urlAvaria = "";
-
-      if (fotoAvaria) {
-        urlAvaria = await photoService.uploadFoto(fotoAvaria);
-      }
-
-      const vistoriaRef = doc(db, "vistorias", selectedVtr.id);
-
-      await updateDoc(vistoriaRef, {
-        status_vtr: "CONCLUIDO",
-        conferido_por: user?.re || "DESCONHECIDO",
-        data_conferencia: serverTimestamp(),
-        conferencia_detalhes: {
-          limpeza:
-            conf.limpezaInterna && conf.limpezaExterna
-              ? "OK"
-              : "SUJA",
-          avaria_detectada: conf.avaria,
-          foto_avaria: urlAvaria,
-          obs_garageiro: conf.obs
-        }
-      });
-
-      const qVtr = query(
-        collection(db, "viaturas"),
-        where("prefixo", "==", selectedVtr.prefixo_vtr)
-      );
-
-      const snapVtr = await getDocs(qVtr);
-
-      if (!snapVtr.empty) {
-
-        const vtrDocId = snapVtr.docs[0].id;
-
-        await updateDoc(
-          doc(db, "viaturas", vtrDocId),
-          {
-            status: conf.avaria
-              ? "MANUTENÇÃO"
-              : "DISPONÍVEL",
-            ultimo_km: selectedVtr.hodometro || 0,
-            data_ultima_atualizacao: serverTimestamp()
-          }
-        );
-
-      }
-
-      setShowModal(false);
-      setSelectedVtr(null);
-      setFotoAvaria(null);
-
-      alert("Viatura liberada com sucesso!");
-
-    } catch (e) {
-
-      console.error(e);
-      alert("Erro ao salvar conferência.");
-
-    }
-
-    setIsSubmitting(false);
-
-  };
-
-  const toggleStatusVtr = async () => {
-
-    if (!lockData.id) return;
-
-    setIsSubmitting(true);
-
-    try {
-
-      const vtrRef = doc(db, "viaturas", lockData.id);
-
-      await updateDoc(vtrRef, {
-
-        status:
-          lockData.motivo === 'disponivel'
-            ? 'DISPONÍVEL'
-            : 'MANUTENÇÃO',
-
-        atualizado_por: user?.re || "DESCONHECIDO",
-
-        data_ultima_atualizacao: serverTimestamp()
-
-      });
-
-      setShowLockModal(false);
-
-    } catch (e) {
-
-      console.error(e);
-      alert("Erro ao alterar status.");
-
-    }
-
-    setIsSubmitting(false);
-
-  };
-
   const calcularEspera = (ts) => {
 
     if (!ts) return 0;
 
-    const data = ts?.toDate
-      ? ts.toDate()
-      : new Date(ts);
+    const data = ts?.toDate ? ts.toDate() : new Date(ts);
 
     return Math.floor((new Date() - data) / 60000);
 
   };
 
-  const filtroFrota = viaturas.filter((v) => {
+  const estatisticas = useMemo(() => {
+
+    const disponiveis = viaturas.filter(v => v.status === "DISPONÍVEL").length;
+    const manutencao = viaturas.filter(v => v.status === "MANUTENÇÃO").length;
+
+    const tempos = vistorias.map(v => calcularEspera(v.data_hora));
+
+    const media =
+      tempos.length > 0
+        ? Math.round(tempos.reduce((a, b) => a + b, 0) / tempos.length)
+        : 0;
+
+    return {
+      pendentes: vistorias.length,
+      disponiveis,
+      manutencao,
+      tempoMedio: media
+    };
+
+  }, [vistorias, viaturas]);
+
+  const filtroFrota = useMemo(() => {
 
     const termo = searchTerm.toUpperCase();
 
-    const prefixo = (v.prefixo || "").toUpperCase();
-    const placa = (v.placa || "").toUpperCase();
+    return viaturas.filter(v => {
 
-    return prefixo.includes(termo) || placa.includes(termo);
+      const prefixo = (v.prefixo || "").toUpperCase();
+      const placa = (v.placa || "").toUpperCase();
+      const status = (v.status || "").toUpperCase();
 
-  });
+      return (
+        prefixo.includes(termo) ||
+        placa.includes(termo) ||
+        status.includes(termo)
+      );
+
+    });
+
+  }, [viaturas, searchTerm]);
 
   return (
 
     <div className="min-h-screen bg-slate-100 flex flex-col">
 
-      <header className="bg-slate-900 text-white p-4 shadow-xl border-b-4 border-amber-500">
+      <header className="bg-slate-900 text-white p-4 border-b-4 border-amber-500">
 
-        <div className="max-w-6xl mx-auto flex justify-between items-center">
+        <div className="max-w-7xl mx-auto flex justify-between items-center">
 
           <div className="flex items-center gap-3">
-
-            <button
-              onClick={onBack}
-              className="p-2 hover:bg-slate-800 rounded-lg"
-            >
-              <X size={20}/>
-            </button>
 
             <div className="bg-amber-500 p-2 rounded-lg text-slate-900">
               <ShieldCheck size={24}/>
             </div>
 
-            <h1 className="font-black uppercase tracking-tighter text-lg">
-              Fiscalização de Pátio
-            </h1>
+            <div>
+
+              <h1 className="font-black uppercase text-lg">
+                Controle de Pátio
+              </h1>
+
+              <p className="text-xs text-amber-400">
+                Monitoramento em tempo real
+              </p>
+
+            </div>
 
           </div>
 
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-3">
 
             <button
               onClick={() => setSoundEnabled(!soundEnabled)}
-              className={`p-2 rounded-xl ${
-                soundEnabled
-                  ? 'bg-emerald-500'
-                  : 'bg-slate-800'
+              className={`p-2 rounded-lg ${
+                soundEnabled ? "bg-emerald-500" : "bg-slate-800"
               }`}
             >
-
-              {soundEnabled
-                ? <Volume2 size={20}/>
-                : <VolumeX size={20}/>}
-
+              {soundEnabled ? <Volume2 size={20}/> : <VolumeX size={20}/>}
             </button>
 
             {loading && (
@@ -327,114 +197,106 @@ const GarageiroDashboard = ({ onBack }) => {
 
       </header>
 
+      <section className="max-w-7xl mx-auto w-full p-4 grid grid-cols-2 md:grid-cols-4 gap-4">
+
+        <div className="bg-white rounded-2xl p-4 shadow">
+          <Clock className="text-amber-500"/>
+          <p className="text-xs text-slate-400">Pendentes</p>
+          <p className="text-2xl font-black">{estatisticas.pendentes}</p>
+        </div>
+
+        <div className="bg-white rounded-2xl p-4 shadow">
+          <CheckCircle className="text-emerald-500"/>
+          <p className="text-xs text-slate-400">Disponíveis</p>
+          <p className="text-2xl font-black">{estatisticas.disponiveis}</p>
+        </div>
+
+        <div className="bg-white rounded-2xl p-4 shadow">
+          <Wrench className="text-red-500"/>
+          <p className="text-xs text-slate-400">Manutenção</p>
+          <p className="text-2xl font-black">{estatisticas.manutencao}</p>
+        </div>
+
+        <div className="bg-white rounded-2xl p-4 shadow">
+          <AlertTriangle className="text-orange-500"/>
+          <p className="text-xs text-slate-400">Tempo médio</p>
+          <p className="text-2xl font-black">
+            {estatisticas.tempoMedio} min
+          </p>
+        </div>
+
+      </section>
+
       <nav className="bg-white border-b flex">
 
         <button
-          onClick={() => setTab('pendentes')}
+          onClick={() => setTab("pendentes")}
           className={`flex-1 p-4 text-xs font-black uppercase ${
-            tab === 'pendentes'
-              ? 'text-amber-600'
-              : 'text-slate-400'
+            tab === "pendentes"
+              ? "text-amber-600"
+              : "text-slate-400"
           }`}
         >
-
-          <Clock size={16} className="inline mr-2"/>
-
-          Pendentes ({vistorias.length})
-
+          Pendentes
         </button>
 
         <button
-          onClick={() => setTab('frota')}
+          onClick={() => setTab("frota")}
           className={`flex-1 p-4 text-xs font-black uppercase ${
-            tab === 'frota'
-              ? 'text-amber-600'
-              : 'text-slate-400'
+            tab === "frota"
+              ? "text-amber-600"
+              : "text-slate-400"
           }`}
         >
-
-          <Car size={16} className="inline mr-2"/>
-
-          Frota Total
-
+          Frota
         </button>
 
       </nav>
 
-      <main className="p-4 max-w-6xl mx-auto w-full flex-1">
+      <main className="max-w-7xl mx-auto w-full p-4">
 
-        {tab === 'pendentes' ? (
+        {tab === "pendentes" ? (
 
           <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-4">
 
-            {vistorias.length === 0 && (
+            {vistorias.map(v => {
 
-              <div className="col-span-full py-20 flex flex-col items-center bg-white rounded-3xl">
+              const espera = calcularEspera(v.data_hora);
 
-                <Inbox size={48} className="text-slate-200 mb-2"/>
+              const alerta = espera > 10;
 
-                <p className="text-slate-400 font-black uppercase text-xs">
+              return (
 
-                  Nenhuma pendência
+                <div
+                  key={v.id}
+                  className={`bg-white rounded-3xl p-6 border ${
+                    alerta
+                      ? "border-red-400 animate-pulse"
+                      : "border-slate-200"
+                  }`}
+                >
 
-                </p>
+                  <p className="text-3xl font-black">
+                    {v.prefixo_vtr}
+                  </p>
 
-              </div>
+                  <p className="text-xs text-slate-400">
 
-            )}
+                    {v.motorista_nome}
 
-            {vistorias.map((vtr) => (
+                  </p>
 
-              <div
-                key={vtr.id}
-                className="bg-white border rounded-3xl p-6"
-              >
+                  <p className="text-xs mt-2 font-bold">
 
-                <div className="flex justify-between mb-4">
-
-                  <span className="text-4xl font-black">
-
-                    {vtr.prefixo_vtr}
-
-                  </span>
-
-                  <span className="text-xs font-bold text-slate-400">
-
-                    {calcularEspera(vtr.data_hora)} MIN
-
-                  </span>
-
-                </div>
-
-                <div className="flex items-center gap-2 mb-6">
-
-                  <User size={14}/>
-
-                  <p className="text-xs font-bold truncate">
-
-                    {vtr.motorista_nome}
+                    Espera: {espera} min
 
                   </p>
 
                 </div>
 
-                <button
-                  onClick={() => {
+              );
 
-                    setSelectedVtr(vtr);
-                    setShowModal(true);
-
-                  }}
-                  className="w-full bg-slate-900 text-white py-3 rounded-xl"
-                >
-
-                  Iniciar Conferência
-
-                </button>
-
-              </div>
-
-            ))}
+            })}
 
           </div>
 
@@ -442,76 +304,56 @@ const GarageiroDashboard = ({ onBack }) => {
 
           <div>
 
-            <input
-              type="text"
-              placeholder="BUSCAR PREFIXO OU PLACA"
-              className="w-full p-4 border rounded-xl mb-4"
-              value={searchTerm}
-              onChange={(e) =>
-                setSearchTerm(e.target.value)
-              }
-            />
+            <div className="relative mb-4">
 
-            <table className="w-full bg-white rounded-xl overflow-hidden">
+              <Search
+                className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400"
+                size={18}
+              />
 
-              <tbody>
+              <input
+                type="text"
+                placeholder="Buscar prefixo, placa ou status"
+                className="w-full pl-10 p-3 border rounded-xl"
+                value={searchTerm}
+                onChange={(e) =>
+                  setSearchTerm(e.target.value)
+                }
+              />
 
-                {filtroFrota.map((v) => (
+            </div>
 
-                  <tr key={v.id} className="border-b">
+            <div className="bg-white rounded-2xl overflow-hidden">
 
-                    <td className="p-4">
+              <table className="w-full text-sm">
 
-                      <b>{v.prefixo}</b>
+                <tbody>
 
-                      <div className="text-xs text-slate-400">
+                  {filtroFrota.map(v => (
 
+                    <tr key={v.id} className="border-b">
+
+                      <td className="p-3 font-bold">
+                        {v.prefixo}
+                      </td>
+
+                      <td className="p-3 text-slate-500">
                         {v.placa}
+                      </td>
 
-                      </div>
+                      <td className="p-3">
+                        {v.status}
+                      </td>
 
-                    </td>
+                    </tr>
 
-                    <td className="p-4">
+                  ))}
 
-                      {v.status}
+                </tbody>
 
-                    </td>
+              </table>
 
-                    <td className="p-4 text-right">
-
-                      <button
-                        onClick={() => {
-
-                          setLockData({
-                            id: v.id,
-                            prefixo: v.prefixo,
-                            motivo:
-                              v.status === 'DISPONÍVEL'
-                                ? 'manutencao'
-                                : 'disponivel'
-                          });
-
-                          setShowLockModal(true);
-
-                        }}
-                      >
-
-                        {v.status === 'DISPONÍVEL'
-                          ? <Unlock size={18}/>
-                          : <Lock size={18}/>}
-
-                      </button>
-
-                    </td>
-
-                  </tr>
-
-                ))}
-
-              </tbody>
-
-            </table>
+            </div>
 
           </div>
 
