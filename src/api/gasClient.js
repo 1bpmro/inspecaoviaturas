@@ -88,5 +88,6 @@ export const gasApi = {
 
   buscarMilitar: (re) => gasApi.post('buscarMilitar', { re }),
   getViaturas: () => gasApi.post('getViaturas'),
+  getEfetivoCompleto: () => gasApi.post('getEfetivoCompleto'),
   registrarManutencao: (dados) => gasApi.post('registrarManutencao', dados),
 };
