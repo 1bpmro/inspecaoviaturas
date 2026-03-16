@@ -146,12 +146,14 @@ const Vistoria = ({ onBack, PATRIMONIO = [] }) => {
     }
     try {
       const res = await gasApi.buscarMilitar(reLimpo);
-      if (res && res.status === 'success' && res.data) {
-        setFormData(prev => ({ 
-          ...prev,
-          [`${tipo}_nome`]: (res.data.NOME || `${res.data.patente || ''} ${res.data.nome || ''}`).toString().toUpperCase(),
-          ...(tipo === 'motorista' ? { motorista_unidade: (res.data.UNIDADE || '').toString().toUpperCase() } : {})
-        }));
+     if (res && res.status === 'success' && res.found) {
+  setFormData(prev => ({ 
+    ...prev,
+    [`${tipo}_nome`]: (res.nome || "").toUpperCase(),
+    ...(tipo === 'motorista'
+      ? { motorista_unidade: (res.unidade || "").toUpperCase() }
+      : {})
+  }));
         // marca como não-manual
         setManual(prev => ({ ...prev, [tipo.slice(0,3)]: false }));
       } else {
