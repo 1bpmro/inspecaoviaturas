@@ -306,67 +306,57 @@ CHECKLIST <ChevronRight/>
 </>
 )}
 
-{/* STEP 2 */}
 {step===2 &&(
 <>
+  <CardGuarnicao formData={formData} compacto/>
 
-<CardGuarnicao formData={formData} compacto/>
+  <div className="grid grid-cols-3 gap-2">
+    {fotos.map((f,i)=>(
+      <div key={i} className="relative">
+        <img src={f}/>
+        <button onClick={()=>removerFoto(i)}><X/></button>
+      </div>
+    ))}
 
-<div className="grid grid-cols-3 gap-2">
-{fotos.map((f,i)=>(
-<div key={i} className="relative">
-<img src={f}/>
-<button onClick={()=>removerFoto(i)}><X/></button>
-</div>
-))}
-<label>
-<input type="file" hidden onChange={(e)=>adicionarFoto(e.target.files[0])}/>
-<Plus/>
-</label>
-</div>
+    <label>
+      <input type="file" hidden onChange={(e)=>adicionarFoto(e.target.files[0])}/>
+      <Plus/>
+    </label>
+  </div>
 
-{GRUPOS_ENTRADA.map(g=>(
-<ChecklistGrupo
-key={g.nome}
-titulo={g.nome}
-itens={g.itens}
-checklist={checklist}
-onToggle={(item)=>setChecklist(p=>({
-...p,
-[item]:p[item]==="FALHA"?"OK":"FALHA"
-}))}
-/>
-))}
+  {GRUPOS_ENTRADA.map(g=>(
+    <ChecklistGrupo
+      key={g.nome}
+      titulo={g.nome}
+      itens={g.itens}
+      checklist={checklist}
+      onToggle={(item)=>setChecklist(p=>({
+        ...p,
+        [item]:p[item]==="FALHA"?"OK":"FALHA"
+      }))}
+    />
+  ))}
 
-<label>
-<input type="checkbox"
-checked={formData.termo_aceite}
-onChange={(e)=>setFormData({...formData,termo_aceite:e.target.checked})}/>
-{termo}
-</label>
+  <label>
+    <input
+      type="checkbox"
+      checked={formData.termo_aceite}
+      onChange={(e)=>setFormData({...formData,termo_aceite:e.target.checked})}
+    />
+    {termo}
+  </label>
 
-<button onClick={handleFinalizar} className="btn-tatico w-full">
-{loading ? (
-<>
-<Loader2 className="animate-spin mx-auto"/>
-<div className="text-[10px]">{uploadStatus}</div>
+  <button onClick={handleFinalizar} className="btn-tatico w-full">
+    {loading ? (
+      <>
+        <Loader2 className="animate-spin mx-auto"/>
+        <div className="text-[10px]">{uploadStatus}</div>
+      </>
+    ) : "FINALIZAR"}
+  </button>
+
+  <button onClick={()=>setStep(1)}>VOLTAR</button>
 </>
-) : "FINALIZAR"}
-</button>
-
-<button onClick={()=>setStep(1)}>VOLTAR</button>
-
-</>
-
-  <ModalComunitaria
-isOpen={modalComunitaria}
-onClose={()=>setModalComunitaria(false)}
-onSelect={(valor)=>{
-setFormData(p=>({...p,modalidade:valor}));
-setModalComunitaria(false);
-}}
-/>
-  
 )}
 
 </main>
