@@ -7,7 +7,7 @@ const CardGuarnicao = ({ formData, compacto=false }) => {
     { l: "CMD", c: "comandante" },
     { l: "PTR", c: "patrulheiro" }
   ];
-
+ 
   return (
     <div className={`${compacto ? "bg-slate-800 p-4 rounded-2xl" : "bg-slate-900 p-6 rounded-[2.5rem]"} mb-4 border-b-[6px] border-blue-600 shadow-xl`}>
       <div className="flex items-center gap-2 mb-4 border-b border-white/10 pb-2">
