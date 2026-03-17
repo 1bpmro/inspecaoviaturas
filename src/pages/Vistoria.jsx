@@ -162,7 +162,7 @@ const Vistoria = ({ onBack }) => {
   const buscarMilitar = async (re) => {
     if (!re) return null;
     try {
-      const res = await gasApi.getMilitarPorRe(re);
+      const res = await gasApi.buscarMilitar(re);;
       if (res?.status === "success" && res.data) {
         return res.data;
       }
