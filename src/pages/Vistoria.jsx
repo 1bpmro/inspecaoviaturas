@@ -104,7 +104,7 @@ const Vistoria = ({ onBack }) => {
   const buscarMilitar = async (re) => {
     if (!re) return null;
     try {
-      const res = await gasApi.getMilitarPorRe(re);
+      const res = await gasApi.buscarMilitar(re);
       console.log("RETORNO API MILITAR:", res); // Debug para verificar nomes das chaves
       if (res?.status === "success" && res.data) return res.data;
       return null;
