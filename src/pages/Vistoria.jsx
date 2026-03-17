@@ -6,7 +6,7 @@ import imageCompression from "browser-image-compression";
 import CardGuarnicao from "../components/vistoria/CardGuarnicao";
 import ChecklistGrupo from "../components/vistoria/ChecklistGrupo";
 import ModalComunitaria from "../components/vistoria/ModalComunitaria";
-import ModalTrocaOleo from "../components/vistoria/ModalTrocaOleo";
+import ModalTrocaOleo from "../components/vistoria/ModalOleo";
 
 import { ArrowLeft, Loader2, X, Plus, ChevronRight, Car, Shield } from "lucide-react";
 
