@@ -367,6 +367,7 @@ CHECKLIST <ChevronRight/>
     setFormData(p=>({...p,modalidade:valor}));
     setModalComunitaria(false);
   }}
+   /> 
 
 </main>
 </div>
