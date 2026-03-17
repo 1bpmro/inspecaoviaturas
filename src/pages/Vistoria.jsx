@@ -4,7 +4,7 @@ import { gasApi } from "../api/gasClient";
 
 import CardGuarnicao from "../components/vistoria/CardGuarnicao";
 import ModalComunitaria from "../components/vistoria/ModalComunitaria";
-import ModalTrocaOleo from "../components/vistoria/ModalTrocaOleo";
+import ModalTrocaOleo from "../components/vistoria/ModalOleo";
 
 import { ArrowLeft, Loader2, ChevronRight, Car, Shield, AlertCircle } from "lucide-react";
 
