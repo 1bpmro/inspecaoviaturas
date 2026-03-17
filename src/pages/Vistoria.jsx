@@ -5,6 +5,7 @@ import imageCompression from "browser-image-compression";
 
 import CardGuarnicao from "../components/vistoria/CardGuarnicao";
 import ChecklistGrupo from "../components/vistoria/ChecklistGrupo";
+import ModalComunitaria from "../components/vistoria/ModalComunitaria";
 
 import { ArrowLeft, Loader2, X, Plus, ChevronRight, Car, Shield } from "lucide-react";
 
@@ -358,6 +359,14 @@ CHECKLIST <ChevronRight/>
   <button onClick={()=>setStep(1)}>VOLTAR</button>
 </>
 )}
+
+  <ModalComunitaria
+  isOpen={modalComunitaria}
+  onClose={()=>setModalComunitaria(false)}
+  onSelect={(valor)=>{
+    setFormData(p=>({...p,modalidade:valor}));
+    setModalComunitaria(false);
+  }}
 
 </main>
 </div>
