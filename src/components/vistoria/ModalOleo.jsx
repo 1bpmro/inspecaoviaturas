@@ -1,68 +1,115 @@
 import React, { useState } from "react";
+import { X, Upload, Check } from "lucide-react";
 
-const ModalOleo = ({ isOpen, onClose, onSave }) => {
-  const [status, setStatus] = useState("");
-  const [quantidade, setQuantidade] = useState("");
-  const [obs, setObs] = useState("");
+const ModalTrocaOleo = ({
+  isOpen,
+  onClose,
+  onConfirm,
+  kmAtual
+}) => {
+
+  const hoje = new Date().toISOString().slice(0,10);
+
+  const [dataTroca, setDataTroca] = useState(hoje);
+  const [kmTroca, setKmTroca] = useState(kmAtual || "");
+  const [foto, setFoto] = useState(null);
+  const [preview, setPreview] = useState(null);
 
   if (!isOpen) return null;
 
+  const handleFoto = (file) => {
+    if (!file) return;
+
+    const reader = new FileReader();
+    reader.onloadend = () => {
+      setFoto(reader.result);
+      setPreview(reader.result);
+    };
+    reader.readAsDataURL(file);
+  };
+
+  const handleConfirmar = () => {
+    if (!dataTroca || !kmTroca || !foto) {
+      alert("Preencha todos os campos");
+      return;
+    }
+
+    onConfirm({
+      dataTroca,
+      kmTroca,
+      foto
+    });
+  };
+
   return (
-    <div className="fixed inset-0 z-[110] bg-slate-900/90 flex items-center justify-center p-6">
-      <div className="bg-white w-full max-w-sm rounded-2xl p-6 shadow-2xl">
+    <div className="fixed inset-0 bg-black/80 flex items-center justify-center z-50">
 
-        <h3 className="text-center font-black text-xs mb-4 uppercase">
-          Verificação de Óleo
-        </h3>
+      <div className="bg-slate-900 p-6 rounded-2xl w-full max-w-md border border-white/10">
 
-        <div className="space-y-2">
-          {["OK", "BAIXO", "COMPLETADO"].map(op => (
-            <button
-              key={op}
-              onClick={() => setStatus(op)}
-              className={`w-full p-3 rounded-xl border font-bold text-xs ${
-                status === op ? "bg-blue-100 border-blue-500" : "bg-slate-100"
-              }`}
-            >
-              {op}
-            </button>
-          ))}
+        {/* HEADER */}
+        <div className="flex justify-between items-center mb-4">
+          <h2 className="text-white font-bold text-sm">
+            TROCA DE ÓLEO OBRIGATÓRIA
+          </h2>
+          <button onClick={onClose}>
+            <X className="text-white"/>
+          </button>
         </div>
 
-        {status === "COMPLETADO" && (
+        {/* DATA */}
+        <div className="mb-3">
+          <label className="text-xs text-white/60">Data da troca</label>
           <input
-            placeholder="Quantidade (ml)"
-            className="vtr-input w-full mt-3"
-            value={quantidade}
-            onChange={(e) => setQuantidade(e.target.value)}
+            type="date"
+            value={dataTroca}
+            onChange={(e)=>setDataTroca(e.target.value)}
+            className="vtr-input w-full"
           />
-        )}
-
-        <input
-          placeholder="Observação (opcional)"
-          className="vtr-input w-full mt-3"
-          value={obs}
-          onChange={(e) => setObs(e.target.value)}
-        />
-
-        <div className="flex gap-2 mt-4">
-          <button
-            onClick={onClose}
-            className="flex-1 text-xs font-bold text-slate-400"
-          >
-            Cancelar
-          </button>
-
-          <button
-            onClick={() => onSave({ status, quantidade, obs })}
-            className="flex-1 bg-blue-600 text-white text-xs font-bold rounded-xl p-2"
-          >
-            Salvar
-          </button>
         </div>
+
+        {/* KM */}
+        <div className="mb-3">
+          <label className="text-xs text-white/60">KM da troca</label>
+          <input
+            type="number"
+            value={kmTroca}
+            onChange={(e)=>setKmTroca(e.target.value)}
+            className="vtr-input w-full"
+          />
+        </div>
+
+        {/* FOTO */}
+        <div className="mb-4">
+          <label className="text-xs text-white/60">
+            Comprovante
+          </label>
+
+          <label className="flex items-center justify-center border border-dashed border-white/20 rounded-xl p-4 cursor-pointer mt-2">
+            <input
+              type="file"
+              hidden
+              onChange={(e)=>handleFoto(e.target.files[0])}
+            />
+            <Upload className="text-white/50"/>
+          </label>
+
+          {preview && (
+            <img src={preview} className="mt-2 rounded-xl"/>
+          )}
+        </div>
+
+        {/* ACTIONS */}
+        <button
+          onClick={handleConfirmar}
+          className="btn-tatico w-full flex items-center justify-center gap-2"
+        >
+          <Check size={16}/>
+          CONFIRMAR TROCA
+        </button>
+
       </div>
     </div>
   );
 };
 
-export default ModalOleo;
+export default ModalTrocaOleo;
