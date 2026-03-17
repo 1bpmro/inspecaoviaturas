@@ -6,7 +6,34 @@ import CardGuarnicao from "../components/vistoria/CardGuarnicao";
 import ModalComunitaria from "../components/vistoria/ModalComunitaria";
 import ModalTrocaOleo from "../components/vistoria/ModalOleo";
 
-import { ArrowLeft, Loader2, ChevronRight, Car, Shield, AlertCircle } from "lucide-react";
+import { ArrowLeft, Loader2, ChevronRight, Car, Shield, AlertCircle, Users, CheckCircle2 } from "lucide-react";
+
+// --- CONFIGURAÇÕES DE CHECKLIST ---
+const GRUPOS_ENTRADA = [
+  {
+    nome: "Documentação e Equipamentos",
+    icon: <Shield size={16} />,
+    itens: ["Documento da Viatura", "Estepe", "Chave de Roda", "Macaco", "Triângulo", "Extintor", "Giroscópio", "Sirene", "Rádio"]
+  },
+  {
+    nome: "Estado Externo",
+    icon: <Car size={16} />,
+    itens: ["Pneus", "Capô", "Paralama Dianteiro", "Paralama Traseiro", "Parachoque Dianteiro", "Parachoque Traseiro", "Lanternas", "Caçamba", "Vidros e Portas", "Retrovisor Externo", "Maçanetas", "Para-brisas", "Protetor Dianteiro"]
+  },
+  {
+    nome: "Interior e Conforto",
+    icon: <Users size={16} />,
+    itens: ["Cinto", "Retrovisor Interno", "Painel de Instrumentos", "Bancos", "Forro Interno", "Tapetes", "Regulador dos Bancos", "Porta Traseira", "Porta Dianteira"]
+  }
+];
+
+const GRUPOS_SAIDA = [
+  {
+    nome: "Checklist Rápido de Saída",
+    icon: <CheckCircle2 size={16} />,
+    itens: ["Limpeza Interna", "Nível de Combustível", "Avarias Recentes", "Objetos Esquecidos", "Funcionamento de Luzes/Sirene"]
+  }
+];
 
 const CLOUDINARY_URL = "https://api.cloudinary.com/v1_1/dy3kkwoli/image/upload";
 const CLOUDINARY_PRESET = "vistorias_preset";
@@ -30,17 +57,11 @@ const uploadParaCloudinary = async (base64, prefixo, tipo, km, index) => {
 
 const Vistoria = ({ onBack }) => {
   const { user } = useAuth();
-
-  // Estados de Fluxo e UI
   const [step, setStep] = useState(1);
   const [loading, setLoading] = useState(false);
   const [uploadStatus, setUploadStatus] = useState("");
-  
-  // Modais
   const [modalComunitaria, setModalComunitaria] = useState(false);
   const [modalOleo, setModalOleo] = useState(false);
-  
-  // Dados
   const [viaturas, setViaturas] = useState([]);
   const [tipoVistoria, setTipoVistoria] = useState("ENTRADA");
   const [dadosOleo, setDadosOleo] = useState(null);
@@ -49,7 +70,10 @@ const Vistoria = ({ onBack }) => {
   const [kmReferencia, setKmReferencia] = useState(0);
 
   const [formData, setFormData] = useState({
-    prefixo_vtr: "", placa_vtr: "", hodometro: "",
+    prefixo_vtr: "", 
+    placa_vtr: "", 
+    hodometro_entrada: "", // SEPARADO
+    hodometro_saida: "",   // SEPARADO
     motorista_re: "", motorista_nome: "", motorista_unidade: "",
     comandante_re: "", comandante_nome: "", comandante_unidade: "",
     patrulheiro_re: "", patrulheiro_nome: "", patrulheiro_unidade: "",
@@ -59,7 +83,6 @@ const Vistoria = ({ onBack }) => {
 
   const [tipoServico, setTipoServico] = useState("");
 
-  // Carregar Viaturas
   useEffect(() => {
     (async () => {
       try {
@@ -69,28 +92,28 @@ const Vistoria = ({ onBack }) => {
     })();
   }, []);
 
-  // Sincronizar KM ao trocar Tipo de Vistoria (Refino 4)
+  // Sincronizar KM ao trocar Tipo de Vistoria
   useEffect(() => {
     if (!formData.prefixo_vtr) return;
     const vtr = viaturas.find(v => String(v.PREFIXO || v.Prefixo) === formData.prefixo_vtr);
     if (!vtr) return;
     const km = vtr.ULTIMOKM || vtr.UltimoKM || 0;
-    setFormData(p => ({
-      ...p,
-      hodometro: tipoVistoria === "SAÍDA" ? km : ""
-    }));
-  }, [tipoVistoria]);
-
-  // Monitorar KM para Troca de Óleo (Refino 3)
-  useEffect(() => {
-    if (!kmReferencia || !formData.hodometro || dadosOleo) return;
-    const kmDiff = Number(formData.hodometro) - kmReferencia;
-    if (kmDiff >= 9800) {
-      setModalOleo(true);
+    
+    // Se for SAÍDA, auto-preenche o KM de Saída com o último registro
+    if (tipoVistoria === "SAÍDA") {
+      setFormData(p => ({ ...p, hodometro_saida: km }));
     }
-  }, [formData.hodometro, kmReferencia, dadosOleo]);
+  }, [tipoVistoria, formData.prefixo_vtr, viaturas]); // Dependência corrigida (removido [] extra)
 
-  // Ajustes de Tipo de Serviço
+  // Monitorar KM para Troca de Óleo
+  useEffect(() => {
+    const kmAtual = tipoVistoria === "ENTRADA" ? formData.hodometro_entrada : formData.hodometro_saida;
+    if (kmAtual && !dadosOleo) {
+      const kmDiff = Number(kmAtual) - Number(kmReferencia || 0);
+      if (kmDiff >= 9800) setModalOleo(true);
+    }
+  }, [formData.hodometro_entrada, formData.hodometro_saida, kmReferencia, dadosOleo, tipoVistoria]);
+
   useEffect(() => {
     if (tipoServico === "PATRULHA COMUNITÁRIA") {
       setModalComunitaria(true);
@@ -102,7 +125,22 @@ const Vistoria = ({ onBack }) => {
     }
   }, [tipoServico]);
 
-  /* ---------- BUSCA MILITAR + SALVAR RE (Refino 1) ---------- */
+  const carregarDadosUltimaVistoria = async (prefixo) => {
+    try {
+      const res = await gasApi.getUltimaVistoria(prefixo);
+      if (res?.status === "success" && res.data) {
+        const v = res.data;
+        setFormData(p => ({
+          ...p,
+          motorista_nome: v.motorista_nome,
+          comandante_nome: v.comandante_nome,
+          patrulheiro_nome: v.patrulheiro_nome,
+          hodometro_saida: v.hodometro // Preenche o KM de saída com o que foi gravado na última
+        }));
+      }
+    } catch (e) { console.error(e); }
+  };
+
   const buscarMilitarAction = async (re, campo) => {
     if (!re) return;
     try {
@@ -131,26 +169,36 @@ const Vistoria = ({ onBack }) => {
       setFormData(p => ({ ...p, prefixo_vtr: "", placa_vtr: "" }));
       return;
     }
+    if (tipoVistoria === "SAÍDA") carregarDadosUltimaVistoria(prefixo);
     const km = vtr.ULTIMOKM || vtr.UltimoKM || 0;
     setKmReferencia(Number(km));
     setFormData(p => ({
       ...p,
       prefixo_vtr: prefixo,
       placa_vtr: String(vtr.PLACA || vtr.Placa),
-      hodometro: tipoVistoria === "SAÍDA" ? km : ""
+      // Atribui ao campo correto baseado no fluxo
+      [tipoVistoria === "ENTRADA" ? "hodometro_entrada" : "hodometro_saida"]: tipoVistoria === "SAÍDA" ? km : ""
     }));
   };
 
+  const toggleCheck = (item) => {
+    setChecklist(prev => ({ ...prev, [item]: !prev[item] }));
+  };
+
   const handleFinalizar = async () => {
+    const kmFinal = tipoVistoria === "ENTRADA" ? formData.hodometro_entrada : formData.hodometro_saida;
+    
     if (!formData.prefixo_vtr) return alert("Selecione a viatura");
     if (!formData.motorista_nome) return alert("Preencha o nome do motorista");
-    if (!formData.termo_aceite) return alert("Aceite o termo");
+    if (!kmFinal) return alert("Preencha o hodômetro");
+    if (!formData.termo_aceite) return alert("Aceite o termo de responsabilidade");
 
     setLoading(true);
     try {
       setUploadStatus("Processando...");
       const payload = {
         ...formData,
+        hodometro: kmFinal, // Envia o valor correto para a coluna única do banco
         tipo_vistoria: tipoVistoria,
         tipo_servico: tipoServico,
         checklist: JSON.stringify(checklist),
@@ -169,7 +217,7 @@ const Vistoria = ({ onBack }) => {
         let links = [];
         for (let i = 0; i < fotos.length; i++) {
           setUploadStatus(`Fotos: ${i + 1}/${fotos.length}`);
-          const link = await uploadParaCloudinary(fotos[i], formData.prefixo_vtr, tipoVistoria, formData.hodometro, i);
+          const link = await uploadParaCloudinary(fotos[i], formData.prefixo_vtr, tipoVistoria, kmFinal, i);
           links.push(link);
         }
         await gasApi.saveVistoria({ id_referencia: res.id, links_fotos: links });
@@ -182,6 +230,8 @@ const Vistoria = ({ onBack }) => {
     } finally { setLoading(false); }
   };
 
+  const gruposAtivos = tipoVistoria === "ENTRADA" ? GRUPOS_ENTRADA : GRUPOS_SAIDA;
+
   return (
     <div className="min-h-screen bg-slate-50">
       <header className="bg-slate-900 text-white p-4 flex justify-between items-center sticky top-0 z-50">
@@ -193,32 +243,20 @@ const Vistoria = ({ onBack }) => {
       <main className="max-w-xl mx-auto p-4 space-y-4 pb-20">
         {step === 1 && (
           <>
-            {/* Seletor de Tipo de Vistoria */}
             <div className="flex bg-slate-200 p-1 rounded-xl gap-1">
-              <button
-                onClick={() => setTipoVistoria("ENTRADA")}
-                className={`flex-1 py-2 rounded-lg text-xs font-bold transition-all ${tipoVistoria === "ENTRADA" ? "bg-slate-900 text-white shadow" : "text-slate-600"}`}
-              >
-                ENTRADA
-              </button>
-              <button
-                onClick={() => setTipoVistoria("SAÍDA")}
-                className={`flex-1 py-2 rounded-lg text-xs font-bold transition-all ${tipoVistoria === "SAÍDA" ? "bg-slate-900 text-white shadow" : "text-slate-600"}`}
-              >
-                SAÍDA
-              </button>
+              <button onClick={() => setTipoVistoria("ENTRADA")} className={`flex-1 py-2 rounded-lg text-xs font-bold transition-all ${tipoVistoria === "ENTRADA" ? "bg-slate-900 text-white shadow" : "text-slate-600"}`}>ENTRADA</button>
+              <button onClick={() => setTipoVistoria("SAÍDA")} className={`flex-1 py-2 rounded-lg text-xs font-bold transition-all ${tipoVistoria === "SAÍDA" ? "bg-slate-900 text-white shadow" : "text-slate-600"}`}>SAÍDA</button>
             </div>
 
             <CardGuarnicao formData={formData} />
 
             <div className="space-y-3 bg-white p-4 rounded-2xl shadow-sm border border-slate-100">
-              <h3 className="text-xs font-black text-slate-400 flex items-center gap-2">
-                <Car size={14} /> DADOS DA VIATURA
-              </h3>
-              
+              <h3 className="text-xs font-black text-slate-400 flex items-center gap-2"><Car size={14} /> DADOS DA VIATURA</h3>
               <select className="vtr-input w-full" value={formData.prefixo_vtr} onChange={(e) => handleVtrChange(e.target.value)}>
                 <option value="">Selecione VTR</option>
-                {viaturas.map((v, i) => <option key={i} value={v.PREFIXO || v.Prefixo}>{v.PREFIXO || v.Prefixo}</option>)}
+                {viaturas.filter(v => (tipoVistoria === "SAÍDA" ? (v.STATUS || v.Status) === "EM SERVICO" : (v.STATUS || v.Status) === "DISPONIVEL")).map((v, i) => (
+                  <option key={i} value={v.PREFIXO || v.Prefixo}>{v.PREFIXO || v.Prefixo}</option>
+                ))}
               </select>
 
               <select className="vtr-input w-full" value={tipoServico} onChange={(e) => setTipoServico(e.target.value)}>
@@ -230,21 +268,10 @@ const Vistoria = ({ onBack }) => {
                 <option value="OUTROS">OUTROS</option>
               </select>
 
-              {/* Modalidade Escolhida (Refino 5) */}
-              {formData.modalidade && (
-                <div className="text-[10px] text-blue-600 font-bold px-2">
-                  MODALIDADE: {formData.modalidade}
-                </div>
-              )}
+              {formData.modalidade && <div className="text-[10px] text-blue-600 font-bold px-2">MODALIDADE: {formData.modalidade}</div>}
 
-              {/* Nome da Operação Dinâmico */}
               {(tipoServico === "OPERACAO" || tipoServico === "OUTROS") && (
-                <input
-                  placeholder="NOME DA OPERAÇÃO / SERVIÇO"
-                  className="vtr-input w-full border-blue-200 animate-in fade-in zoom-in duration-300"
-                  value={formData.operacao_nome}
-                  onChange={(e) => setFormData(p => ({ ...p, operacao_nome: e.target.value.toUpperCase() }))}
-                />
+                <input placeholder="NOME DA OPERAÇÃO / SERVIÇO" className="vtr-input w-full border-blue-200" value={formData.operacao_nome} onChange={(e) => setFormData(p => ({ ...p, operacao_nome: e.target.value.toUpperCase() }))} />
               )}
 
               <div className="relative">
@@ -252,135 +279,103 @@ const Vistoria = ({ onBack }) => {
                   placeholder="HODÔMETRO (KM)" 
                   type="number" 
                   className="vtr-input w-full" 
-                  value={formData.hodometro} 
-                  onChange={(e) => setFormData({ ...formData, hodometro: e.target.value })} 
+                  value={tipoVistoria === "ENTRADA" ? formData.hodometro_entrada : formData.hodometro_saida} 
+                  onChange={(e) => {
+                    const valor = e.target.value;
+                    const field = tipoVistoria === "ENTRADA" ? "hodometro_entrada" : "hodometro_saida";
+
+                    if (valor === "") {
+                      setFormData({ ...formData, [field]: "" });
+                      return;
+                    }
+
+                    const numero = Number(valor);
+                    if (numero < kmReferencia) {
+                      alert(`KM não pode ser menor que ${kmReferencia}`);
+                      return;
+                    }
+
+                    setFormData({ ...formData, [field]: numero });
+                  }} 
                 />
                 {tipoVistoria === "SAÍDA" && <span className="absolute right-3 top-3 text-[10px] text-blue-500 font-bold">KM INICIAL</span>}
               </div>
             </div>
 
             <div className="space-y-3 bg-white p-4 rounded-2xl shadow-sm border border-slate-100">
-              <h3 className="text-xs font-black text-slate-400 flex items-center gap-2">
-                <Shield size={14} /> EFETIVO
-              </h3>
-              
+              <h3 className="text-xs font-black text-slate-400 flex items-center gap-2"><Shield size={14} /> EFETIVO</h3>
               <div className="grid grid-cols-1 gap-6">
-                
-                {/* MOTORISTA */}
-                <div className="space-y-2 border-b pb-4 border-slate-50">
-                  <span className="text-[10px] font-bold text-slate-400 tracking-tighter">MOTORISTA</span>
-                  <input 
-                    placeholder="RE MOTORISTA" 
-                    className="vtr-input w-full" 
-                    onBlur={(e) => {
+                {["motorista", "comandante", "patrulheiro"].map((campo) => (
+                  <div key={campo} className="space-y-2 border-b pb-4 border-slate-50 last:border-0 last:pb-0">
+                    <span className="text-[10px] font-bold text-slate-400 uppercase tracking-tighter">{campo}</span>
+                    <input placeholder={`RE ${campo.toUpperCase()}`} className="vtr-input w-full" onBlur={(e) => {
                       const re = e.target.value;
-                      setFormData(p => ({ ...p, motorista_re: re }));
-                      buscarMilitarAction(re, "motorista");
-                    }}
-                  />
-                  {formData.motorista_externo && (
-                    <div className="grid grid-cols-2 gap-2 animate-in fade-in duration-300">
-                      <input placeholder="NOME" className="vtr-input w-full border-orange-300" value={formData.motorista_nome} onChange={(e) => setFormData(p => ({ ...p, motorista_nome: e.target.value.toUpperCase() }))} />
-                      <input placeholder="UNIDADE" className="vtr-input w-full border-orange-300" value={formData.motorista_unidade} onChange={(e) => setFormData(p => ({ ...p, motorista_unidade: e.target.value.toUpperCase() }))} />
-                    </div>
-                  )}
-                </div>
-
-                {/* COMANDANTE */}
-                <div className="space-y-2 border-b pb-4 border-slate-50">
-                  <span className="text-[10px] font-bold text-slate-400 tracking-tighter">COMANDANTE</span>
-                  <input 
-                    placeholder="RE COMANDANTE" 
-                    className="vtr-input w-full" 
-                    onBlur={(e) => {
-                      const re = e.target.value;
-                      setFormData(p => ({ ...p, comandante_re: re }));
-                      buscarMilitarAction(re, "comandante");
-                    }}
-                  />
-                  {formData.comandante_externo && (
-                    <div className="grid grid-cols-2 gap-2 animate-in fade-in duration-300">
-                      <input placeholder="NOME" className="vtr-input w-full border-orange-300" value={formData.comandante_nome} onChange={(e) => setFormData(p => ({ ...p, comandante_nome: e.target.value.toUpperCase() }))} />
-                      <input placeholder="UNIDADE" className="vtr-input w-full border-orange-300" value={formData.comandante_unidade} onChange={(e) => setFormData(p => ({ ...p, comandante_unidade: e.target.value.toUpperCase() }))} />
-                    </div>
-                  )}
-                </div>
-
-                {/* PATRULHEIRO */}
-                <div className="space-y-2">
-                  <span className="text-[10px] font-bold text-slate-400 tracking-tighter">PATRULHEIRO</span>
-                  <input 
-                    placeholder="RE PATRULHEIRO" 
-                    className="vtr-input w-full" 
-                    onBlur={(e) => {
-                      const re = e.target.value;
-                      setFormData(p => ({ ...p, patrulheiro_re: re }));
-                      buscarMilitarAction(re, "patrulheiro");
-                    }}
-                  />
-                  {formData.patrulheiro_externo && (
-                    <div className="grid grid-cols-2 gap-2 animate-in fade-in duration-300">
-                      <input placeholder="NOME" className="vtr-input w-full border-orange-300" value={formData.patrulheiro_nome} onChange={(e) => setFormData(p => ({ ...p, patrulheiro_nome: e.target.value.toUpperCase() }))} />
-                      <input placeholder="UNIDADE" className="vtr-input w-full border-orange-300" value={formData.patrulheiro_unidade} onChange={(e) => setFormData(p => ({ ...p, patrulheiro_unidade: e.target.value.toUpperCase() }))} />
-                    </div>
-                  )}
-                </div>
-
+                      setFormData(p => ({ ...p, [`${campo}_re`]: re }));
+                      buscarMilitarAction(re, campo);
+                    }} />
+                    {formData[`${campo}_externo`] && (
+                      <div className="grid grid-cols-2 gap-2 animate-in fade-in">
+                        <input placeholder="NOME" className="vtr-input w-full border-orange-300" value={formData[`${campo}_nome`]} onChange={(e) => setFormData(p => ({ ...p, [`${campo}_nome`]: e.target.value.toUpperCase() }))} />
+                        <input placeholder="UNIDADE" className="vtr-input w-full border-orange-300" value={formData[`${campo}_unidade`]} onChange={(e) => setFormData(p => ({ ...p, [`${campo}_unidade`]: e.target.value.toUpperCase() }))} />
+                      </div>
+                    )}
+                  </div>
+                ))}
               </div>
             </div>
 
-            <button 
-              onClick={() => setStep(2)} 
-              disabled={!tipoServico || !formData.prefixo_vtr}
-              className="btn-tatico w-full py-4 flex justify-center items-center gap-2 disabled:opacity-50"
-            >
+            <button onClick={() => setStep(2)} disabled={!tipoServico || !formData.prefixo_vtr} className="btn-tatico w-full py-4 flex justify-center items-center gap-2 disabled:opacity-50">
               PRÓXIMA ETAPA <ChevronRight size={18} />
             </button>
           </>
         )}
 
         {step === 2 && (
-          <div className="space-y-4 animate-in slide-in-from-right duration-300">
-             <div className="bg-amber-50 p-4 rounded-xl border border-amber-200 flex gap-3 items-start">
-                <AlertCircle className="text-amber-600 shrink-0" size={20} />
-                <p className="text-xs text-amber-900 leading-relaxed">
-                  Confirme os itens do checklist e anexe as fotos necessárias para finalizar a vistoria de {tipoVistoria}.
-                </p>
-             </div>
-             
-             <div className="p-4 bg-white rounded-xl border">
-               <label className="flex items-center gap-3 cursor-pointer">
-                 <input 
-                  type="checkbox" 
-                  className="w-5 h-5"
-                  checked={formData.termo_aceite}
-                  onChange={(e) => setFormData({...formData, termo_aceite: e.target.checked})}
-                 />
-                 <span className="text-[10px] font-bold text-slate-600 leading-tight">
-                   DECLARO QUE AS INFORMAÇÕES PRESTADAS SÃO VERDADEIRAS E A VIATURA ENCONTRA-SE NAS CONDIÇÕES ACIMA.
-                 </span>
-               </label>
-             </div>
+          <div className="space-y-4 animate-in slide-in-from-right">
+            <div className="bg-amber-50 p-4 rounded-xl border border-amber-200 flex gap-3 items-start">
+              <AlertCircle className="text-amber-600 shrink-0" size={20} />
+              <p className="text-xs text-amber-900 leading-relaxed">
+                Confirme os itens de {tipoVistoria} e anexe as fotos para finalizar.
+              </p>
+            </div>
 
-             <button onClick={handleFinalizar} className="btn-tatico w-full py-4 shadow-lg" disabled={loading}>
-              {loading ? (
-                <div className="flex items-center gap-2">
-                  <Loader2 className="animate-spin" /> {uploadStatus}
+            {gruposAtivos.map((grupo, idx) => (
+              <div key={idx} className="bg-white p-4 rounded-2xl shadow-sm border border-slate-100 space-y-3">
+                <h4 className="text-[10px] font-black text-slate-400 flex items-center gap-2 uppercase tracking-widest">
+                  {grupo.icon} {grupo.nome}
+                </h4>
+                <div className="grid grid-cols-1 gap-2">
+                  {grupo.itens.map(item => (
+                    <button key={item} onClick={() => toggleCheck(item)} className={`flex items-center justify-between p-3 rounded-xl border transition-all ${checklist[item] ? "bg-green-50 border-green-200 text-green-700" : "bg-slate-50 border-slate-100 text-slate-500"}`}>
+                      <span className="text-[11px] font-bold uppercase">{item}</span>
+                      {checklist[item] && <CheckCircle2 size={16} />}
+                    </button>
+                  ))}
                 </div>
-              ) : "FINALIZAR VISTORIA"}
+              </div>
+            ))}
+
+            <div className="p-4 bg-white rounded-xl border">
+              <label className="flex items-center gap-3 cursor-pointer">
+                <input type="checkbox" className="w-5 h-5" checked={formData.termo_aceite} onChange={(e) => setFormData({...formData, termo_aceite: e.target.checked})} />
+                <span className="text-[10px] font-bold text-slate-600 leading-tight uppercase">
+                  {tipoVistoria === "ENTRADA" 
+                    ? `EU, ${formData.motorista_nome || "MOTORISTA"}, ME RESPONSABILIZO PELA VTR ${formData.prefixo_vtr || "SELECIONADA"}, DECLARANDO QUE AS INFORMAÇÕES SÃO VERDADEIRAS.`
+                    : `EU, ${formData.motorista_nome || "MOTORISTA"}, FINALIZO O SERVIÇO NA VTR ${formData.prefixo_vtr || "SELECIONADA"} E ATÉSTO A CONDIÇÃO DE ENTREGA CONFORME DESCRITO.`
+                  }
+                </span>
+              </label>
+            </div>
+
+            <button onClick={handleFinalizar} className="btn-tatico w-full py-4 shadow-lg" disabled={loading}>
+              {loading ? <div className="flex items-center gap-2"><Loader2 className="animate-spin" /> {uploadStatus}</div> : "FINALIZAR VISTORIA"}
             </button>
             <button onClick={() => setStep(1)} className="w-full py-2 text-xs font-bold text-slate-400">VOLTAR</button>
           </div>
         )}
 
-        <ModalComunitaria isOpen={modalComunitaria} onClose={() => setModalComunitaria(false)} onSelect={(v) => setFormData(p => ({ ...p, modalidade: v }))} />
-        
-        <ModalTrocaOleo 
-          isOpen={modalOleo} 
-          onClose={() => setModalOleo(false)} 
-          kmAtual={formData.hodometro} 
-          onConfirm={(dados) => { setDadosOleo(dados); setModalOleo(false); }} 
-        />
+        <ModalComunitaria isOpen={modalComunitaria} onClose={() => setModalComunitaria(false)} onSelect={(v) => { setFormData(p => ({ ...p, modalidade: v })); setModalComunitaria(false); }} />
+        <ModalTrocaOleo isOpen={modalOleo} onClose={() => setModalOleo(false)} kmAtual={tipoVistoria === "ENTRADA" ? formData.hodometro_entrada : formData.hodometro_saida} onConfirm={(dados) => { setDadosOleo(dados); setModalOleo(false); }} />
       </main>
     </div>
   );
