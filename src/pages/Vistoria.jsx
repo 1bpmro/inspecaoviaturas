@@ -3,31 +3,24 @@ import { useAuth } from "../lib/AuthContext";
 import { gasApi } from "../api/gasClient";
 import imageCompression from "browser-image-compression";
 
-import { ArrowLeft, Loader2, X, Plus } from "lucide-react";
+import CardGuarnicao from "../components/vistoria/CardGuarnicao";
+import ChecklistGrupo from "../components/vistoria/ChecklistGrupo";
 
-const CLOUDINARY_URL = "https://api.cloudinary.com/v1_1/dy3kkwoli/image/upload";
-const CLOUDINARY_PRESET = "vistorias_preset";
+import { ArrowLeft, Loader2, X, Plus, ChevronRight, Car, Shield } from "lucide-react";
 
 const MAX_FOTOS = 6;
 
-const COMPRESSION_OPTIONS = {
-maxSizeMB:0.05,
-maxWidthOrHeight:900,
-useWebWorker:true,
-fileType:"image/jpeg",
-initialQuality:0.6
-};
+const CLOUDINARY_URL = "https://api.cloudinary.com/v1_1/dy3kkwoli/image/upload";
+const CLOUDINARY_PRESET = "vistorias_preset";
 
 const uploadParaCloudinary = async (base64,prefixo,tipo,km,index)=>{
 
 const hoje = new Date().toISOString().slice(0,10);
 
 const nome = `${prefixo}_${tipo}_KM${km}_${index+1}`;
-
 const pasta = `vistorias/1BPM/${prefixo}/${hoje}`;
 
 const fd = new FormData();
-
 fd.append("file",base64);
 fd.append("upload_preset",CLOUDINARY_PRESET);
 fd.append("folder",pasta);
@@ -43,197 +36,140 @@ const data = await res.json();
 if(!data.secure_url) throw new Error("Erro upload");
 
 return data.secure_url;
-
 };
 
-const Vistoria = ({ onBack, frotaInicial=[] })=>{
+/* ---------- CHECKLIST ---------- */
+
+const GRUPOS_ENTRADA = [
+  {
+    nome:"Documentação",
+    icon:<Shield size={16}/>,
+    itens:["Documento","Estepe","Triângulo","Extintor"]
+  },
+  {
+    nome:"Estado Geral",
+    icon:<Car size={16}/>,
+    itens:["Pneus","Capô","Vidros","Portas"]
+  }
+];
+
+/* ---------- COMPONENTE ---------- */
+
+const Vistoria = ({ onBack })=>{
 
 const { user } = useAuth();
 
+const [step,setStep] = useState(1);
 const [loading,setLoading] = useState(false);
 const [uploading,setUploading] = useState(false);
+
 const [uploadStatus,setUploadStatus] = useState("");
+const [modalComunitaria,setModalComunitaria] = useState(false);
 
 const [viaturas,setViaturas] = useState([]);
 const [tipoVistoria,setTipoVistoria] = useState("ENTRADA");
 
 const [fotos,setFotos] = useState([]);
-
+const [checklist,setChecklist] = useState({});
 const [kmReferencia,setKmReferencia] = useState(0);
 
 const [formData,setFormData] = useState({
 prefixo_vtr:"",
 placa_vtr:"",
 hodometro:"",
+motorista_re:"",
 motorista_nome:"",
+comandante_re:"",
 comandante_nome:"",
+patrulheiro_re:"",
+patrulheiro_nome:"",
 termo_aceite:false
 });
 
-const toStr = useCallback((v)=> v!==undefined && v!==null ? String(v) : "",[]);
+/* ---------- LOAD ---------- */
 
 useEffect(()=>{
-
-const carregar = async ()=>{
-
+(async()=>{
 try{
-
 const res = await gasApi.getViaturas();
-
-if(res?.status==="success"){
-
-setViaturas(res.data);
-
-}
-
-}catch(e){
-
-console.error(e);
-
-}
-
-};
-
-carregar();
-
+if(res?.status==="success") setViaturas(res.data);
+}catch(e){ console.error(e); }
+})();
 },[]);
 
-/* ---------- LISTA DE VIATURAS ROBUSTA (DO SEGUNDO CÓDIGO) ---------- */
+/* ---------- UTILS ---------- */
+
+const toStr = (v)=> v ? String(v) : "";
 
 const viaturasFiltradas = useMemo(()=>{
-
-return (viaturas || [])
-.filter(Boolean)
-.slice()
+return (viaturas||[])
 .sort((a,b)=>{
-
-const pa = String(a.PREFIXO || a.Prefixo || a.prefixo || "");
-const pb = String(b.PREFIXO || b.Prefixo || b.prefixo || "");
-
+const pa = toStr(a.PREFIXO||a.Prefixo);
+const pb = toStr(b.PREFIXO||b.Prefixo);
 return pa.localeCompare(pb);
-
 });
-
 },[viaturas]);
 
-/* ---------- PROCURAR VIATURA POR PREFIXO ---------- */
-
-const findVtrByPrefixo = useCallback((prefixo)=>{
-
-if(!prefixo) return undefined;
-
-return (viaturas || []).find(v=>{
-
-const p = toStr(v.PREFIXO || v.Prefixo || v.prefixo);
-
-return p === prefixo;
-
+const findVtr = (prefixo)=>{
+return viaturas.find(v=>{
+return toStr(v.PREFIXO||v.Prefixo)===prefixo;
 });
+};
 
-},[viaturas,toStr]);
-
-/* ---------- ALTERAÇÃO DE VIATURA ---------- */
+/* ---------- VTR ---------- */
 
 const handleVtrChange=(prefixo)=>{
 
-setFormData(p=>({...p,prefixo_vtr:prefixo}));
-
-const vtr = findVtrByPrefixo(prefixo);
+const vtr = findVtr(prefixo);
 
 if(!vtr){
-
-setFormData(p=>({...p,placa_vtr:"",hodometro:""}));
+setFormData(p=>({...p,prefixo_vtr:"",placa_vtr:""}));
 return;
-
 }
 
-const placa = toStr(vtr.PLACA || vtr.Placa || vtr.placa);
+const placa = toStr(vtr.PLACA||vtr.Placa);
+const km = vtr.ULTIMOKM||vtr.UltimoKM||0;
 
-const ultKM =
-vtr.ULTIMOKM ||
-vtr.UltimoKM ||
-vtr.ultimoKM ||
-vtr.ULTIMO_KM ||
-0;
-
-setKmReferencia(Number(ultKM));
+setKmReferencia(Number(km));
 
 setFormData(p=>({
-
 ...p,
-
 prefixo_vtr:prefixo,
 placa_vtr:placa,
-hodometro: tipoVistoria==="SAÍDA" ? ultKM : ""
-
+hodometro: tipoVistoria==="SAÍDA" ? km : ""
 }));
-
 };
 
-/* ---------- VALIDAÇÃO KM ---------- */
+/* ---------- KM ---------- */
 
 const kmInvalido = useMemo(()=>{
-
 const km = Number(formData.hodometro);
-const ref = Number(kmReferencia);
-
 if(!km) return false;
-
-if(km < ref) return true;
-
-if(tipoVistoria==="SAÍDA" && km<=ref) return true;
-
-if(km - ref > 2000) return true;
-
+if(km < kmReferencia) return true;
+if(tipoVistoria==="SAÍDA" && km<=kmReferencia) return true;
 return false;
-
 },[formData.hodometro,kmReferencia,tipoVistoria]);
 
 /* ---------- FOTO ---------- */
 
 const adicionarFoto = async(file)=>{
-
 setUploading(true);
-
 try{
-
-const compressed = await imageCompression(file,COMPRESSION_OPTIONS);
-
+const compressed = await imageCompression(file,{maxSizeMB:0.05});
 const reader = new FileReader();
-
+reader.onloadend=()=> setFotos(p=>[...p,reader.result]);
 reader.readAsDataURL(compressed);
-
-reader.onloadend = ()=>{
-
-setFotos(p=>[...p,reader.result]);
-
+}catch(e){console.error(e);}
 setUploading(false);
-
 };
 
-}catch(e){
+const removerFoto=(i)=> setFotos(p=>p.filter((_,x)=>x!==i));
 
-console.error(e);
-setUploading(false);
-
-}
-
-};
-
-const removerFoto=(index)=>{
-
-setFotos(p=>p.filter((_,i)=>i!==index));
-
-};
-
-/* ---------- FINALIZAR ---------- */
+/* ---------- FINAL ---------- */
 
 const handleFinalizar = async ()=>{
 
-if(loading) return;
-
 if(kmInvalido) return alert("KM inválido");
-
 if(!formData.termo_aceite) return alert("Aceite o termo");
 
 setLoading(true);
@@ -243,28 +179,26 @@ try{
 setUploadStatus("Salvando vistoria...");
 
 const payload = {
-
 ...formData,
-
 tipo_vistoria:tipoVistoria,
-
+checklist:JSON.stringify(checklist),
 militar_logado:`${user.patente} ${user.nome}`
-
 };
 
 const res = await gasApi.saveVistoria(payload);
 
-if(res.status!=="success") throw new Error("Erro salvar");
+if(res.status!=="success") throw new Error();
 
 const id = res.id;
 
+/* 🔥 UPLOAD DAS FOTOS */
 if(fotos.length){
 
 let links=[];
 
 for(let i=0;i<fotos.length;i++){
 
-setUploadStatus(`Upload foto ${i+1}/${fotos.length}`);
+setUploadStatus(`Upload ${i+1}/${fotos.length}`);
 
 const link = await uploadParaCloudinary(
 fotos[i],
@@ -275,7 +209,6 @@ i
 );
 
 links.push(link);
-
 }
 
 await gasApi.saveVistoria({
@@ -286,7 +219,6 @@ links_fotos:links
 }
 
 alert("Vistoria enviada!");
-
 onBack();
 
 }catch(e){
@@ -300,161 +232,146 @@ setLoading(false);
 setUploadStatus("");
 
 }
-
 };
+
+/* ---------- TERMO ---------- */
+
+const termo = tipoVistoria==="ENTRADA"
+? `EU, ${formData.motorista_nome||"MOTORISTA"}, DECLARO QUE RECEBI A VIATURA ${formData.prefixo_vtr} E ESTOU CIENTE DAS CONDIÇÕES.`
+: `EU, ${formData.motorista_nome||"MOTORISTA"}, DECLARO QUE DEVOLVO A VIATURA ${formData.prefixo_vtr} E INFORMEI TODAS AS ALTERAÇÕES.`;
 
 /* ---------- UI ---------- */
 
 return(
+<div className="min-h-screen bg-slate-50">
 
-<div className="min-h-screen bg-slate-50 pb-10">
-
-<header className="bg-slate-900 text-white p-5 flex justify-between">
-
-<button onClick={onBack}>
-<ArrowLeft/>
-</button>
-
-<div className="text-center">
-
-<h1 className="text-xs uppercase">Vistoria</h1>
-
-<p className="text-blue-400 text-[10px]">{tipoVistoria}</p>
-
+<header className="bg-slate-900 text-white p-4 flex justify-between">
+<button onClick={onBack}><ArrowLeft/></button>
+<div className="text-center text-xs">
+VISTORIA<br/>{tipoVistoria}
 </div>
-
 <div/>
-
 </header>
 
-<main className="max-w-xl mx-auto p-4 space-y-4">
+<main className="p-4 space-y-4">
 
-<select
-className="vtr-input w-full"
+{/* STEP 1 */}
+{step===1 &&(
+<>
+
+<CardGuarnicao formData={formData}/>
+
+<select className="vtr-input w-full"
 value={formData.prefixo_vtr}
-onChange={(e)=>handleVtrChange(e.target.value)}
->
-
+onChange={(e)=>handleVtrChange(e.target.value)}>
 <option value="">Selecione VTR</option>
-
 {viaturasFiltradas.map((v,i)=>{
-
-const pref = toStr(v.PREFIXO || v.Prefixo || v.prefixo);
-
-if(!pref) return null;
-
-return(
-
-<option key={pref+"-"+i} value={pref}>
-
-{pref}
-
-</option>
-
-);
-
+const p = toStr(v.PREFIXO||v.Prefixo);
+return <option key={i}>{p}</option>;
 })}
-
 </select>
 
-<input
-type="number"
-className={`vtr-input w-full ${kmInvalido ? "border-red-500":""}`}
-placeholder="KM"
+<input placeholder="KM" type="number"
+className="vtr-input w-full"
 value={formData.hodometro}
 onChange={(e)=>setFormData({...formData,hodometro:e.target.value})}
 />
 
-<div className="grid grid-cols-3 gap-2">
+<input placeholder="RE MOTORISTA"
+className="vtr-input w-full"
+onChange={(e)=>setFormData({...formData,motorista_re:e.target.value})}
+/>
 
-{fotos.map((f,i)=>(
+<input placeholder="RE COMANDANTE"
+className="vtr-input w-full"
+onChange={(e)=>setFormData({...formData,comandante_re:e.target.value})}
+/>
 
-<div key={i} className="relative aspect-square">
-
-<img src={f} className="object-cover w-full h-full"/>
+<input placeholder="RE PATRULHEIRO"
+className="vtr-input w-full"
+onChange={(e)=>setFormData({...formData,patrulheiro_re:e.target.value})}
+/>
 
 <button
-onClick={()=>removerFoto(i)}
-className="absolute top-1 right-1 bg-red-600 text-white rounded-full p-1"
+onClick={()=>setModalComunitaria(true)}
+className="btn-secundario w-full"
 >
-
-<X size={12}/>
-
+MODALIDADE COMUNITÁRIA
 </button>
 
-</div>
+<button onClick={()=>setStep(2)} className="btn-tatico w-full">
+CHECKLIST <ChevronRight/>
+</button>
 
-))}
-
-{fotos.length<MAX_FOTOS &&(
-
-<label className="border-2 border-dashed flex items-center justify-center">
-
-{uploading ? <Loader2 className="animate-spin"/> : <Plus/>}
-
-<input
-type="file"
-hidden
-accept="image/*"
-onChange={(e)=>{
-
-const file = e.target.files[0];
-
-if(file) adicionarFoto(file);
-
-}}
-/>
-
-</label>
-
+</>
 )}
 
+{/* STEP 2 */}
+{step===2 &&(
+<>
+
+<CardGuarnicao formData={formData} compacto/>
+
+<div className="grid grid-cols-3 gap-2">
+{fotos.map((f,i)=>(
+<div key={i} className="relative">
+<img src={f}/>
+<button onClick={()=>removerFoto(i)}><X/></button>
+</div>
+))}
+<label>
+<input type="file" hidden onChange={(e)=>adicionarFoto(e.target.files[0])}/>
+<Plus/>
+</label>
 </div>
 
-<div className="text-xs text-gray-500">
-
-{fotos.length}/{MAX_FOTOS} fotos
-
-</div>
-
-<label className="flex gap-2 text-[10px] font-bold uppercase">
-
-<input
-type="checkbox"
-checked={formData.termo_aceite}
-onChange={(e)=>setFormData({...formData,termo_aceite:e.target.checked})}
+{GRUPOS_ENTRADA.map(g=>(
+<ChecklistGrupo
+key={g.nome}
+titulo={g.nome}
+itens={g.itens}
+checklist={checklist}
+onToggle={(item)=>setChecklist(p=>({
+...p,
+[item]:p[item]==="FALHA"?"OK":"FALHA"
+}))}
 />
+))}
 
-<span>
-
-EU, {formData.motorista_nome || "MOTORISTA"}, DECLARO QUE REALIZEI A
-VISTORIA DA VIATURA {formData.prefixo_vtr}.
-
-</span>
-
+<label>
+<input type="checkbox"
+checked={formData.termo_aceite}
+onChange={(e)=>setFormData({...formData,termo_aceite:e.target.checked})}/>
+{termo}
 </label>
 
-<button
-onClick={handleFinalizar}
-disabled={loading}
-className="btn-tatico w-full"
->
-
-{loading
-? <>
+<button onClick={handleFinalizar} className="btn-tatico w-full">
+{loading ? (
+<>
 <Loader2 className="animate-spin mx-auto"/>
 <div className="text-[10px]">{uploadStatus}</div>
 </>
-: "FINALIZAR"}
-
+) : "FINALIZAR"}
 </button>
 
+<button onClick={()=>setStep(1)}>VOLTAR</button>
+
+</>
+
+  <ModalComunitaria
+isOpen={modalComunitaria}
+onClose={()=>setModalComunitaria(false)}
+onSelect={(valor)=>{
+setFormData(p=>({...p,modalidade:valor}));
+setModalComunitaria(false);
+}}
+/>
+  
+)}
+
 </main>
-
 </div>
-
 );
-
 };
 
 export default Vistoria;
