@@ -9,7 +9,7 @@ import CardGuarnicao from "../components/vistoria/CardGuarnicao";
 import ModalComunitaria from "../components/vistoria/ModalComunitaria";
 import ModalTrocaOleo from "../components/vistoria/ModalOleo";
 
-import { ArrowLeft, Loader2, ChevronRight, Car, Shield, AlertCircle, CheckCircle2 } from "lucide-react";
+import { ArrowLeft, Loader2, ChevronRight, Car, Shield, AlertCircle, CheckCircle2, Camera, X } from "lucide-react";
 
 // --- CONFIGURAÇÕES DE CHECKLIST ---
 const GRUPOS_ENTRADA = [
@@ -48,7 +48,6 @@ const uploadParaCloudinary = async (base64, prefixo, tipo, km, index) => {
   
   const res = await fetch(CLOUDINARY_URL, { method: "POST", body: fd });
   
-  // 5. CHECK DE ERRO HTTP NO CLOUDINARY
   if (!res.ok) throw new Error(`Falha no upload Cloudinary: ${res.status}`);
   
   const data = await res.json();
@@ -84,7 +83,7 @@ const Vistoria = ({ onBack }) => {
 
   const [tipoServico, setTipoServico] = useState("");
 
-  // 1. Carregamento com Cache e Tratamento de Erro de Timeout
+  // 1. Carregamento com Cache
   useEffect(() => {
     (async () => {
       try {
@@ -99,9 +98,6 @@ const Vistoria = ({ onBack }) => {
         }
       } catch (e) {
         console.error("Erro ao carregar viaturas:", e);
-        if (!localStorage.getItem("viaturas_cache")) {
-          alert("⚠️ Sem conexão com servidor e sem cache disponível.");
-        }
       } finally {
         setLoadingViaturas(false);
       }
@@ -112,13 +108,13 @@ const Vistoria = ({ onBack }) => {
   useEffect(() => {
     setAlertaOleoDisparado(false);
     setDadosOleo(null);
+    setFotos([]);
   }, [formData.prefixo_vtr]);
 
-  // 3. Monitoramento de Alerta de Óleo (Seguro contra KM vazio/string)
+  // 3. Monitoramento de Alerta de Óleo
   useEffect(() => {
     const kmDigitado = tipoVistoria === "ENTRADA" ? formData.hodometro_entrada : formData.hodometro_saida;
     const kmNum = Number(kmDigitado);
-
     if (!kmNum || kmReferencia <= 0 || dadosOleo || alertaOleoDisparado) return;
 
     const diff = kmNum - kmReferencia;
@@ -128,47 +124,39 @@ const Vistoria = ({ onBack }) => {
     }
   }, [formData.hodometro_entrada, formData.hodometro_saida, kmReferencia, tipoVistoria, dadosOleo, alertaOleoDisparado]);
 
+  const buscarMilitarAction = async (re, campo) => {
+    if (!re || re.length < 3) return;
+    setLoading(true);
+    try {
+      const reLimpo = re.trim().replace(/^1000/, "");
+      const reCom1000 = `1000${reLimpo}`;
 
-const buscarMilitarAction = async (re, campo) => {
-  if (!re || re.length < 3) return;
-  setLoading(true);
-  
-  try {
-    // 1. Criamos uma busca na coleção "usuarios" onde o campo "re" seja igual ao digitado
-    const usuariosRef = collection(db, "usuarios");
-    const q = query(usuariosRef, where("re", "==", re.trim()));
-    const querySnapshot = await getDocs(q);
+      const usuariosRef = collection(db, "usuarios");
+      const q = query(usuariosRef, where("re", "in", [reLimpo, reCom1000]));
+      const querySnapshot = await getDocs(q);
 
-    if (!querySnapshot.empty) {
-      // 2. Se achou, pega o primeiro documento (RE é único)
-      const dadosMilitar = querySnapshot.docs[0].data();
-      
-      setFormData(p => ({ 
-        ...p, 
-        [`${campo}_nome`]: `${dadosMilitar.patente} ${dadosMilitar.nome}`.toUpperCase(), 
-        [`${campo}_unidade`]: (dadosMilitar.unidade || "1º BPM").toUpperCase(), 
-        [`${campo}_externo`]: false 
-      }));
-    } else {
-      // 3. Se não achou no Firebase, abre para digitação manual (Militar de outra unidade)
-      setFormData(p => ({ 
-        ...p, 
-        [`${campo}_nome`]: "", 
-        [`${campo}_unidade`]: "", 
-        [`${campo}_externo`]: true 
-      }));
+      if (!querySnapshot.empty) {
+        const d = querySnapshot.docs[0].data();
+        const nomeMilitar = d.nome_guerra || d.nome || "MILITAR";
+        const patenteMilitar = d.patente || d.graduacao || "";
+
+        setFormData(p => ({ 
+          ...p, 
+          [`${campo}_nome`]: `${patenteMilitar} ${nomeMilitar}`.toUpperCase(), 
+          [`${campo}_unidade`]: (d.unidade || "1º BPM").toUpperCase(), 
+          [`${campo}_externo`]: false 
+        }));
+      } else {
+        setFormData(p => ({ ...p, [`${campo}_nome`]: "", [`${campo}_unidade`]: "", [`${campo}_externo`]: true }));
+      }
+    } catch (e) { 
+      console.error(e);
+      setFormData(p => ({ ...p, [`${campo}_externo`]: true }));
+    } finally {
+      setLoading(false);
     }
-  } catch (e) { 
-    console.error("Erro ao buscar no Firebase:", e);
-    // Em caso de erro, permite o preenchimento manual para não travar a escala
-    setFormData(p => ({ ...p, [`${campo}_externo`]: true }));
-  } finally {
-    setLoading(false);
-  }
-};
-  
-  
-  // 4. Lógica de Troca de Viatura (Corrigida para evitar Race Condition)
+  };
+
   const handleVtrChange = async (prefixo) => {
     const vtr = viaturas.find(v => String(v.PREFIXO ?? v.Prefixo ?? "") === prefixo);
     if (!vtr) {
@@ -231,17 +219,33 @@ const buscarMilitarAction = async (re, campo) => {
       return alert(`Erro: KM (${kmFinal}) menor que o registro anterior (${kmReferencia}).`);
     }
 
+    if (!formData.termo_aceite) {
+        return alert("Você precisa aceitar o termo de responsabilidade.");
+    }
+
     setLoading(true);
     try {
-      setUploadStatus("Salvando...");
+      let linksSubidos = [];
+
+      // 1. Upload das fotos ANTES de enviar para a planilha
+      if (fotos.length > 0) {
+        for (let i = 0; i < fotos.length; i++) {
+          setUploadStatus(`Enviando foto ${i + 1}/${fotos.length}...`);
+          const link = await uploadParaCloudinary(fotos[i], formData.prefixo_vtr, tipoVistoria, kmFinal, i);
+          linksSubidos.push(link);
+        }
+      }
+
+      setUploadStatus("Salvando dados...");
+      
       const payload = {
         ...formData,
         hodometro: kmFinal,
         tipo_vistoria: tipoVistoria,
         tipo_servico: tipoServico,
-        checklist: JSON.stringify(checklist),
-        // 3. SAFE USER CHECK
-        militar_logado: user ? `${user.patente} ${user.nome}` : "NÃO IDENTIFICADO"
+        checklist_resumo: JSON.stringify(checklist),
+        links_fotos: linksSubidos.join(" | "), 
+        militar_logado: user ? `${user.patente} ${user.nome_guerra || user.nome}` : "NÃO IDENTIFICADO"
       };
 
       if (dadosOleo?.foto) {
@@ -250,20 +254,20 @@ const buscarMilitarAction = async (re, campo) => {
       }
 
       const res = await gasApi.saveVistoria(payload);
+      
       if (res.status === "success") {
-        if (fotos.length) {
-          let links = [];
-          for (let i = 0; i < fotos.length; i++) {
-            setUploadStatus(`Fotos: ${i + 1}/${fotos.length}`);
-            const link = await uploadParaCloudinary(fotos[i], formData.prefixo_vtr, tipoVistoria, kmFinal, i);
-            links.push(link);
-          }
-          await gasApi.saveVistoria({ id_referencia: res.id, links_fotos: links });
-        }
         alert("Vistoria finalizada com sucesso!");
         onBack();
+      } else {
+        throw new Error(res.message);
       }
-    } catch (e) { alert("Erro ao salvar."); } finally { setLoading(false); }
+    } catch (e) { 
+      console.error(e);
+      alert("Erro ao salvar: " + e.message); 
+    } finally { 
+      setLoading(false); 
+      setUploadStatus("");
+    }
   };
 
   const gruposAtivos = tipoVistoria === "ENTRADA" ? GRUPOS_ENTRADA : GRUPOS_SAIDA;
@@ -278,51 +282,47 @@ const buscarMilitarAction = async (re, campo) => {
 
       <main className="max-w-xl mx-auto p-4 space-y-4 pb-20">
         {step === 1 && (
-  <>
-    {/* Seletor ENTRADA/SAÍDA */}
-    <div className="flex bg-slate-200 p-1 rounded-xl gap-1 mb-4">
-      <button onClick={() => { setTipoVistoria("ENTRADA"); setFormData(p => ({ ...p, prefixo_vtr: "" })); }} className={`flex-1 py-2 rounded-lg text-xs font-bold transition-all ${tipoVistoria === "ENTRADA" ? "bg-slate-900 text-white shadow" : "text-slate-600"}`}>ENTRADA</button>
-      <button onClick={() => { setTipoVistoria("SAÍDA"); setFormData(p => ({ ...p, prefixo_vtr: "" })); }} className={`flex-1 py-2 rounded-lg text-xs font-bold transition-all ${tipoVistoria === "SAÍDA" ? "bg-slate-900 text-white shadow" : "text-slate-600"}`}>SAÍDA</button>
-    </div>
-
-    {/* 1. Único Card de Resumo (Visual) */}
-    <CardGuarnicao formData={formData} compacto={true} />
-
-    {/* 2. Inputs de Digitação/Busca (Funcional) */}
-    <div className="space-y-3 bg-white p-4 rounded-2xl shadow-sm border border-slate-100 mb-4">
-      <h3 className="text-[10px] font-black text-slate-400 flex items-center gap-2 uppercase tracking-widest">
-        <Shield size={14} /> Digitar RE da Guarnição
-      </h3>
-      {["motorista", "comandante", "patrulheiro"].map((campo) => (
-        <div key={campo} className="space-y-2 border-b pb-3 last:border-0 last:pb-0 border-slate-50">
-          <input 
-            placeholder={`RE ${campo.toUpperCase()}`} 
-            className="vtr-input w-full" 
-            value={formData[`${campo}_re`] || ""} 
-            onChange={(e) => setFormData(p => ({ ...p, [`${campo}_re`]: e.target.value }))}
-            onBlur={(e) => buscarMilitarAction(e.target.value, campo)} 
-          />
-          
-          {/* Só mostra Nome/Unidade se for Militar Externo ou se a busca falhar */}
-          {formData[`${campo}_externo`] && (
-            <div className="grid grid-cols-2 gap-2 animate-in fade-in zoom-in-95">
-              <input 
-                placeholder="NOME" 
-                className="vtr-input w-full border-orange-200 bg-orange-50/50" 
-                value={formData[`${campo}_nome`] || ""} 
-                onChange={(e) => setFormData(p => ({ ...p, [`${campo}_nome`]: e.target.value.toUpperCase() }))} 
-              />
-              <input 
-                placeholder="UNIDADE" 
-                className="vtr-input w-full border-orange-200 bg-orange-50/50" 
-                value={formData[`${campo}_unidade`] || ""} 
-                onChange={(e) => setFormData(p => ({ ...p, [`${campo}_unidade`]: e.target.value.toUpperCase() }))} 
-              />
+          <>
+            <div className="flex bg-slate-200 p-1 rounded-xl gap-1 mb-4">
+              <button onClick={() => { setTipoVistoria("ENTRADA"); setFormData(p => ({ ...p, prefixo_vtr: "" })); }} className={`flex-1 py-2 rounded-lg text-xs font-bold transition-all ${tipoVistoria === "ENTRADA" ? "bg-slate-900 text-white shadow" : "text-slate-600"}`}>ENTRADA</button>
+              <button onClick={() => { setTipoVistoria("SAÍDA"); setFormData(p => ({ ...p, prefixo_vtr: "" })); }} className={`flex-1 py-2 rounded-lg text-xs font-bold transition-all ${tipoVistoria === "SAÍDA" ? "bg-slate-900 text-white shadow" : "text-slate-600"}`}>SAÍDA</button>
             </div>
-          )}
-        </div>
-      ))}
-    </div>
+
+            <CardGuarnicao formData={formData} compacto={true} />
+
+            <div className="space-y-3 bg-white p-4 rounded-2xl shadow-sm border border-slate-100 mb-4">
+              <h3 className="text-[10px] font-black text-slate-400 flex items-center gap-2 uppercase tracking-widest">
+                <Shield size={14} /> Digitar RE da Guarnição
+              </h3>
+              {["motorista", "comandante", "patrulheiro"].map((campo) => (
+                <div key={campo} className="space-y-2 border-b pb-3 last:border-0 last:pb-0 border-slate-50">
+                  <input 
+                    placeholder={`RE ${campo.toUpperCase()}`} 
+                    className="vtr-input w-full" 
+                    value={formData[`${campo}_re`] || ""} 
+                    onChange={(e) => setFormData(p => ({ ...p, [`${campo}_re`]: e.target.value }))}
+                    onBlur={(e) => buscarMilitarAction(e.target.value, campo)} 
+                  />
+                  
+                  {formData[`${campo}_externo`] && (
+                    <div className="grid grid-cols-2 gap-2 animate-in fade-in zoom-in-95">
+                      <input 
+                        placeholder="NOME" 
+                        className="vtr-input w-full border-orange-200 bg-orange-50/50" 
+                        value={formData[`${campo}_nome`] || ""} 
+                        onChange={(e) => setFormData(p => ({ ...p, [`${campo}_nome`]: e.target.value.toUpperCase() }))} 
+                      />
+                      <input 
+                        placeholder="UNIDADE" 
+                        className="vtr-input w-full border-orange-200 bg-orange-50/50" 
+                        value={formData[`${campo}_unidade`] || ""} 
+                        onChange={(e) => setFormData(p => ({ ...p, [`${campo}_unidade`]: e.target.value.toUpperCase() }))} 
+                      />
+                    </div>
+                  )}
+                </div>
+              ))}
+            </div>
 
             <div className="space-y-3 bg-white p-4 rounded-2xl shadow-sm border border-slate-100">
               <h3 className="text-xs font-black text-slate-400 flex items-center gap-2 uppercase"><Car size={14} /> Viatura</h3>
@@ -343,7 +343,6 @@ const buscarMilitarAction = async (re, campo) => {
                       return (Number(b.ULTIMOKM || 0) - refB) - (Number(a.ULTIMOKM || 0) - refA);
                     })
                     .map((v, i) => {
-                      // 4. PREFIXO CHECK
                       const pref = v.PREFIXO ?? v.Prefixo ?? "";
                       if (!pref) return null;
                       const ref = Number(v.KM_TROCA_OLEO ?? v.km_troca_oleo ?? v.KM_ULTIMATROCA ?? 0);
@@ -356,7 +355,10 @@ const buscarMilitarAction = async (re, campo) => {
                 </select>
               )}
 
-              <select className="vtr-input w-full" value={tipoServico} onChange={(e) => setTipoServico(e.target.value)}>
+              <select className="vtr-input w-full" value={tipoServico} onChange={(e) => {
+                  setTipoServico(e.target.value);
+                  if(e.target.value === "PATRULHA COMUNITÁRIA") setModalComunitaria(true);
+              }}>
                 <option value="">Tipo de Serviço</option>
                 <option value="RADIOPATRULHA">RADIOPATRULHA</option>
                 <option value="FORCA_TATICA">FORÇA TÁTICA</option>
@@ -392,16 +394,59 @@ const buscarMilitarAction = async (re, campo) => {
                 </div>
               </div>
             ))}
+
+            {/* SEÇÃO DE FOTOS DE VISTORIA */}
+            <div className="bg-white p-4 rounded-2xl shadow-sm border border-slate-100 space-y-3">
+              <h4 className="text-[10px] font-black text-slate-400 flex items-center gap-2 uppercase">
+                <Camera size={16} /> Fotos da Vistoria ({fotos.length}/4)
+              </h4>
+              <input 
+                type="file" 
+                accept="image/*" 
+                multiple 
+                onChange={(e) => {
+                  const files = Array.from(e.target.files || []);
+                  if (fotos.length + files.length > 4) return alert("Máximo de 4 fotos.");
+                  files.forEach(file => {
+                    const reader = new FileReader();
+                    reader.onloadend = () => setFotos(prev => [...prev, reader.result]);
+                    reader.readAsDataURL(file);
+                  });
+                }}
+                className="hidden" 
+                id="foto-input"
+              />
+              <label htmlFor="foto-input" className="flex flex-col items-center justify-center p-6 border-2 border-dashed border-slate-200 rounded-xl text-slate-400 hover:bg-slate-50 cursor-pointer">
+                <Camera size={24} className="mb-2" />
+                <span className="text-[10px] font-bold uppercase">Anexar fotos de vistoria</span>
+              </label>
+              
+              {fotos.length > 0 && (
+                <div className="grid grid-cols-4 gap-2">
+                  {fotos.map((f, i) => (
+                    <div key={i} className="relative h-16 w-16 bg-slate-100 rounded-lg overflow-hidden border">
+                      <img src={f} className="h-full w-full object-cover" alt="vistoria" />
+                      <button onClick={() => setFotos(p => p.filter((_, idx) => idx !== i))} className="absolute top-0 right-0 bg-red-500 text-white rounded-bl-lg p-0.5">
+                        <X size={12} />
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+
             <div className="p-4 bg-white rounded-xl border">
               <label className="flex items-center gap-3 cursor-pointer">
                 <input type="checkbox" className="w-5 h-5" checked={formData.termo_aceite} onChange={(e) => setFormData({...formData, termo_aceite: e.target.checked})} />
-                <span className="text-[10px] font-bold text-slate-600 leading-tight uppercase">ACEITO O TERMO DE RESPONSABILIDADE.</span>
+                <span className="text-[10px] font-bold text-slate-600 leading-tight uppercase">ACEITO O TERMO DE RESPONSABILIDADE SOBRE O ESTADO DA VTR.</span>
               </label>
             </div>
-            <button onClick={handleFinalizar} className="btn-tatico w-full py-4 shadow-lg" disabled={loading}>
-              {loading ? <div className="flex items-center gap-2"><Loader2 className="animate-spin" /> {uploadStatus}</div> : "FINALIZAR VISTORIA"}
+
+            <button onClick={handleFinalizar} className="btn-tatico w-full py-4 shadow-lg flex justify-center items-center gap-2" disabled={loading}>
+              {loading ? <><Loader2 className="animate-spin" /> {uploadStatus || "PROCESSANDO..."}</> : "FINALIZAR VISTORIA"}
             </button>
-            <button onClick={() => { setStep(1); setChecklist({}); }} className="w-full py-2 text-xs font-bold text-slate-400">VOLTAR E LIMPAR CHECKLIST</button>
+            
+            <button onClick={() => { setStep(1); setChecklist({}); setFotos([]); }} className="w-full py-2 text-xs font-bold text-slate-400 uppercase">Voltar e Limpar</button>
           </div>
         )}
 
