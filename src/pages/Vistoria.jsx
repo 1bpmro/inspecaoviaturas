@@ -192,58 +192,98 @@ const Vistoria = ({ onBack }) => {
     }
   };
 
-  const handleVtrChange = async (prefixo) => {
+ const handleVtrChange = async (prefixo) => {
+    // 1. Localiza a viatura no cache/lista carregada
     const vtr = viaturas.find(v => String(v.PREFIXO ?? v.Prefixo ?? "") === prefixo);
+    
     if (!vtr) {
-      setFormData(p => ({ ...p, prefixo_vtr: "", placa_vtr: "", hodometro_entrada: "", hodometro_saida: "" }));
+      setFormData(p => ({ 
+        ...p, 
+        prefixo_vtr: "", 
+        placa_vtr: "", 
+        hodometro_entrada: "", 
+        hodometro_saida: "" 
+      }));
       setKmReferencia(0);
       return;
     }
 
+    // 2. Cálculos de Quilometragem e Bloqueio de Óleo
     const kmAtualDaVtr = Number(vtr.ULTIMOKM || vtr.UltimoKM || 0);
     const kmReferenciaOleo = Number(vtr.KM_TROCA_OLEO ?? vtr.km_troca_oleo ?? vtr.KM_ULTIMATROCA ?? 0);
     const diff = kmAtualDaVtr - kmReferenciaOleo;
 
+    // Bloqueio de Segurança para Saída (Regra dos 12.000km)
     if (tipoVistoria === "SAÍDA" && diff >= 12000) {
-      alert(`🚨 VIATURA BLOQUEADA\n\nPrefixo ${prefixo} rodou ${diff}km sem troca de óleo.`);
+      alert(`🚨 VIATURA BLOQUEADA\n\nO prefixo ${prefixo} rodou ${diff}km desde a última troca.\nProcure a Logística/P4.`);
       setUploadStatus("🚨 Viatura bloqueada para saída");
+      setFormData(p => ({ ...p, prefixo_vtr: "" })); // Reseta a seleção
       return; 
     }
 
+    // Dados básicos que sempre serão preenchidos
     const baseData = {
       prefixo_vtr: prefixo,
       placa_vtr: String(vtr.PLACA ?? vtr.Placa ?? ""),
-      [tipoVistoria === "ENTRADA" ? "hodometro_entrada" : "hodometro_saida"]: tipoVistoria === "SAÍDA" ? kmAtualDaVtr : ""
+      [tipoVistoria === "ENTRADA" ? "hodometro_entrada" : "hodometro_saida"]: kmAtualDaVtr
     };
 
     setKmReferencia(kmReferenciaOleo);
     setUploadStatus("");
 
+    // 3. Lógica Específica para SAÍDA (Recuperar Guarnição da Última Entrada)
     if (tipoVistoria === "SAÍDA") {
       try {
         setLoading(true);
         const res = await gasApi.getUltimaVistoria(prefixo);
+        
         if (res?.status === "success" && res.data) {
           const d = res.data;
+
+          // Atualiza o Select de Tipo de Serviço (Estado independente)
           setTipoServico(d.tipo_servico || "");
+
           setFormData(prev => ({
             ...prev,
             ...baseData,
-            motorista_re: d.motorista_re || "", motorista_nome: d.motorista_nome || "", motorista_unidade: d.motorista_unidade || "",
-            comandante_re: d.comandante_re || "", comandante_nome: d.comandante_nome || "", comandante_unidade: d.comandante_unidade || "",
-            patrulheiro_re: d.patrulheiro_re || "", patrulheiro_nome: d.patrulheiro_nome || "", patrulheiro_unidade: d.patrulheiro_unidade || "",
-            hodometro_saida: d.hodometro || kmAtualDaVtr,
-            operacao_nome: d.operacao_nome || "", modalidade: d.modalidade || ""
+            // Mapeamento Matricula (Planilha) -> RE (React)
+            motorista_re: d.motorista_matricula || d.motorista_re || "", 
+            motorista_nome: d.motorista_nome || "", 
+            motorista_unidade: d.motorista_unidade || "1º BPM",
+            motorista_externo: false,
+
+            comandante_re: d.comandante_matricula || d.comandante_re || "", 
+            comandante_nome: d.comandante_nome || "", 
+            comandante_unidade: d.comandante_unidade || "1º BPM",
+            comandante_externo: false,
+
+            patrulheiro_re: d.patrulheiro_matricula || d.patrulheiro_re || "", 
+            patrulheiro_nome: d.patrulheiro_nome || "", 
+            patrulheiro_unidade: d.patrulheiro_unidade || "1º BPM",
+            patrulheiro_externo: false,
+
+            // Mantém o hodômetro que estava na entrada como base
+            hodometro_saida: kmAtualDaVtr,
+            operacao_nome: d.operacao_nome || "", 
+            modalidade: d.modalidade || ""
           }));
         } else {
+          // Se não achar vistoria anterior, limpa apenas os campos de guarnição
           setFormData(prev => ({ ...prev, ...baseData }));
         }
       } catch (e) { 
-        console.error(e);
+        console.error("Erro ao buscar última vistoria:", e);
         setFormData(prev => ({ ...prev, ...baseData }));
-      } finally { setLoading(false); }
+      } finally { 
+        setLoading(false); 
+      }
     } else {
-      setFormData(prev => ({ ...prev, ...baseData }));
+      // Para ENTRADA, apenas seta os dados básicos da VTR
+      setFormData(prev => ({ 
+        ...prev, 
+        ...baseData,
+        hodometro_entrada: "" // Na entrada o motorista deve digitar
+      }));
     }
   };
 
@@ -484,18 +524,56 @@ const Vistoria = ({ onBack }) => {
               )}
             </div>
 
-            <div className="p-4 bg-white rounded-xl border">
-              <label className="flex items-center gap-3 cursor-pointer">
-                <input type="checkbox" className="w-5 h-5" checked={formData.termo_aceite} onChange={(e) => setFormData({...formData, termo_aceite: e.target.checked})} />
-                <span className="text-[10px] font-bold text-slate-600 leading-tight uppercase">ACEITO O TERMO DE RESPONSABILIDADE SOBRE O ESTADO DA VTR.</span>
-              </label>
-            </div>
+            {/* TERMO DE RESPONSABILIDADE PERSONALIZADO */}
+<div className={`p-4 rounded-2xl border-2 transition-all ${formData.termo_aceite ? 'bg-slate-900 border-slate-900' : 'bg-white border-slate-200'}`}>
+  <label className="flex items-start gap-4 cursor-pointer">
+    <div className="relative flex items-center mt-1">
+      <input 
+        type="checkbox" 
+        className="w-6 h-6 rounded border-slate-300 text-slate-900 focus:ring-slate-500 cursor-pointer" 
+        checked={formData.termo_aceite} 
+        onChange={(e) => setFormData({...formData, termo_aceite: e.target.checked})} 
+      />
+    </div>
+    <div className="flex-1">
+      <p className={`text-[11px] font-bold leading-relaxed uppercase ${formData.termo_aceite ? 'text-slate-100' : 'text-slate-500'}`}>
+        Eu, <span className={formData.termo_aceite ? 'text-yellow-400' : 'text-slate-800'}>
+          {formData.motorista_nome || "O MOTORISTA"}
+        </span>, de posse da VTR <span className={formData.termo_aceite ? 'text-yellow-400' : 'text-slate-800'}>
+          {formData.prefixo_vtr || "---"}
+        </span>, informo ter realizado a correta inspeção dos itens, me responsabilizando por qualquer divergência encontrada entre o que aqui se afirma e o estado real da viatura.
+      </p>
+    </div>
+  </label>
+</div>
 
-            <button onClick={handleFinalizar} className="btn-tatico w-full py-4 shadow-lg flex justify-center items-center gap-2" disabled={loading}>
-              {loading ? <><Loader2 className="animate-spin" /> {uploadStatus || "PROCESSANDO..."}</> : "FINALIZAR VISTORIA"}
-            </button>
-            
-            <button onClick={() => { setStep(1); setChecklist({}); setFotos([]); }} className="w-full py-2 text-xs font-bold text-slate-400 uppercase">Voltar e Limpar</button>
+{/* BOTÃO DE FINALIZAÇÃO */}
+<button 
+  onClick={handleFinalizar} 
+  className={`w-full py-4 rounded-2xl shadow-lg flex justify-center items-center gap-2 font-black transition-all ${
+    !formData.termo_aceite || loading 
+    ? "bg-slate-200 text-slate-400 cursor-not-allowed" 
+    : "bg-green-600 text-white hover:bg-green-700 active:scale-95"
+  }`} 
+  disabled={!formData.termo_aceite || loading}
+>
+  {loading ? (
+    <><Loader2 className="animate-spin" /> {uploadStatus || "PROCESSANDO..."}</>
+  ) : (
+    <>
+      <CheckCircle2 size={20} />
+      FINALIZAR VISTORIA DE {tipoVistoria}
+    </>
+  )}
+</button>
+
+{/* BOTÃO VOLTAR */}
+<button 
+  onClick={() => { setStep(1); setChecklist({}); setFotos([]); }} 
+  className="w-full py-3 text-[10px] font-black text-slate-400 uppercase tracking-widest hover:text-slate-600 transition-colors"
+>
+  ← Voltar e Corrigir Dados
+</button>
           </div>
         )}
 
