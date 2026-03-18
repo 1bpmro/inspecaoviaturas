@@ -55,6 +55,41 @@ const uploadParaCloudinary = async (base64, prefixo, tipo, km, index) => {
   return data.secure_url;
 };
 
+// Função auxiliar para evitar estouro de memória no celular
+const comprimirImagem = (base64) => {
+  return new Promise((resolve) => {
+    const img = new Image();
+    img.src = base64;
+    img.onload = () => {
+      const canvas = document.createElement("canvas");
+      let width = img.width;
+      let height = img.height;
+
+      const MAX_WIDTH = 1280; // Redimensiona para HD
+      const MAX_HEIGHT = 1280;
+
+      if (width > height) {
+        if (width > MAX_WIDTH) {
+          height *= MAX_WIDTH / width;
+          width = MAX_WIDTH;
+        }
+      } else {
+        if (height > MAX_HEIGHT) {
+          width *= MAX_HEIGHT / height;
+          height = MAX_HEIGHT;
+        }
+      }
+
+      canvas.width = width;
+      canvas.height = height;
+      const ctx = canvas.getContext("2d");
+      ctx.drawImage(img, 0, 0, width, height);
+      // Converte para JPEG 70% (fica leve e mantém a nitidez para vistorias)
+      resolve(canvas.toDataURL("image/jpeg", 0.7));
+    };
+  });
+};
+
 const Vistoria = ({ onBack }) => {
   const { user } = useAuth();
   const [step, setStep] = useState(1);
@@ -401,21 +436,35 @@ const Vistoria = ({ onBack }) => {
                 <Camera size={16} /> Fotos da Vistoria ({fotos.length}/4)
               </h4>
               <input 
-                type="file" 
-                accept="image/*" 
-                multiple 
-                onChange={(e) => {
-                  const files = Array.from(e.target.files || []);
-                  if (fotos.length + files.length > 4) return alert("Máximo de 4 fotos.");
-                  files.forEach(file => {
-                    const reader = new FileReader();
-                    reader.onloadend = () => setFotos(prev => [...prev, reader.result]);
-                    reader.readAsDataURL(file);
-                  });
-                }}
-                className="hidden" 
-                id="foto-input"
-              />
+  type="file" 
+  accept="image/*" 
+  multiple 
+  onChange={async (e) => {
+    const files = Array.from(e.target.files || []);
+    if (fotos.length + files.length > 4) return alert("Máximo de 4 fotos.");
+    
+    setUploadStatus("Processando imagens..."); // Feedback visual para o usuário
+    
+    for (const file of files) {
+      const reader = new FileReader();
+      
+      // Lê o arquivo
+      const result = await new Promise((resolve) => {
+        reader.onloadend = () => resolve(reader.result);
+        reader.readAsDataURL(file);
+      });
+      
+      // Comprime antes de colocar no Estado (evita crash de RAM)
+      const fotoComprimida = await comprimirImagem(result);
+      setFotos(prev => [...prev, fotoComprimida]);
+    }
+    
+    setUploadStatus(""); // Limpa o status
+  }}
+  className="hidden" 
+  id="foto-input"
+/>
+              
               <label htmlFor="foto-input" className="flex flex-col items-center justify-center p-6 border-2 border-dashed border-slate-200 rounded-xl text-slate-400 hover:bg-slate-50 cursor-pointer">
                 <Camera size={24} className="mb-2" />
                 <span className="text-[10px] font-bold uppercase">Anexar fotos de vistoria</span>
