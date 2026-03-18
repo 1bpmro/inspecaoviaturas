@@ -6,7 +6,7 @@ import {
   Car, CheckCircle2, AlertTriangle, Clock, RefreshCw,
   Search, ShieldCheck, Lock, Unlock, Camera, User, X, 
   Inbox, Volume2, VolumeX, Wrench, ChevronRight, Droplets,
-  Settings, tool
+  Settings
 } from 'lucide-react';
 
 const GarageiroDashboard = ({ onBack }) => {
@@ -45,11 +45,14 @@ const GarageiroDashboard = ({ onBack }) => {
       ]);
 
       if (resVistorias?.data) {
-        const novosIds = resVistorias.data.map(v => v.id);
+        // FILTRO: Apenas viaturas com status "AGUARDANDO" aparecem nos cards
+        const vistoriasAguardando = resVistorias.data.filter(v => v.status_vtr === "AGUARDANDO" || v.status === "AGUARDANDO");
+        
+        const novosIds = vistoriasAguardando.map(v => v.id);
         const temNovo = novosIds.some(id => !previousIds.current.includes(id));
         if (soundEnabled && temNovo) audioRef.current.play().catch(() => {});
         previousIds.current = novosIds;
-        setVistorias(resVistorias.data);
+        setVistorias(vistoriasAguardando);
       }
       if (resViaturas?.data) setViaturas(resViaturas.data);
     } catch (e) {
@@ -89,7 +92,6 @@ const GarageiroDashboard = ({ onBack }) => {
         }
       };
 
-      // RESET DE ÓLEO: Se confirmado, envia o KM atual para atualizar a planilha
       if (conf.confirmarTrocaOleo) {
         payload.atualizar_km_oleo = true;
         payload.novo_km_oleo = selectedVtr.hodometro;
@@ -148,7 +150,12 @@ const GarageiroDashboard = ({ onBack }) => {
       <main className="p-4 flex-1 overflow-y-auto">
         {tab === 'pendentes' ? (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-            {vistorias.map(v => {
+            {vistorias.length === 0 ? (
+              <div className="col-span-full flex flex-col items-center justify-center p-12 text-slate-400">
+                <Inbox size={48} className="mb-4 opacity-20" />
+                <p className="font-black uppercase text-xs tracking-widest">Nenhuma viatura aguardando</p>
+              </div>
+            ) : vistorias.map(v => {
               const espera = calcularEspera(v.data_hora);
               const critico = espera > 20;
               return (
@@ -223,7 +230,6 @@ const GarageiroDashboard = ({ onBack }) => {
                 <CheckItem label="Sem Pertences" active={conf.semPertences} onClick={() => setConf({...conf, semPertences: !conf.semPertences})} />
                 <CheckItem label="Sem Avarias" active={!conf.avariaDetectada} onClick={() => setConf({...conf, avariaDetectada: !conf.avariaDetectada})} danger icon={<AlertTriangle size={14}/>} />
                 
-                {/* BOTÃO DE CONFIRMAÇÃO DE ÓLEO */}
                 <button onClick={() => setConf({...conf, confirmarTrocaOleo: !conf.confirmarTrocaOleo})} className={`col-span-2 p-4 rounded-2xl border-2 font-black text-[10px] uppercase transition-all flex items-center justify-center gap-3 ${conf.confirmarTrocaOleo ? 'bg-blue-600 border-blue-700 text-white shadow-lg' : 'bg-blue-50 border-blue-200 text-blue-400'}`}>
                   <Droplets size={18} className={conf.confirmarTrocaOleo ? "animate-bounce" : ""} />
                   CONFIRMAR TROCA DE ÓLEO (RESETAR KM)
