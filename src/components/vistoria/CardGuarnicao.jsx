@@ -5,7 +5,7 @@ const CardGuarnicao = ({ formData, compacto=false }) => {
   const militares = [
     { l: "MOT", c: "motorista" },
     { l: "CMD", c: "comandante" },
-    { l: "PTR", c: "patrulheiro" }
+    { l: "PTR", c: "patrulheiro" } 
   ];
  
   return (
