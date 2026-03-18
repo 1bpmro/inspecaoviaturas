@@ -202,7 +202,7 @@ const GarageiroDashboard = ({ onBack }) => {
         )}
       </main>
 
-      {showModal && selectedVtr && (
+{showModal && selectedVtr && (
         <div className="fixed inset-0 bg-slate-900/90 backdrop-blur-md z-50 flex items-center justify-center p-4">
           <div className="bg-white w-full max-w-lg rounded-[3rem] shadow-2xl overflow-hidden flex flex-col max-h-[95vh]">
             <div className="bg-slate-900 p-6 text-white flex justify-between items-center">
@@ -214,14 +214,32 @@ const GarageiroDashboard = ({ onBack }) => {
             </div>
 
             <div className="p-6 space-y-4 overflow-y-auto">
-              <div className="bg-slate-50 p-4 rounded-3xl border-2 border-slate-100 flex items-center justify-between">
-                <div>
-                  <p className="text-[10px] font-black text-slate-400 uppercase">Motorista na Entrega</p>
-                  <p className="text-sm font-bold text-slate-800 uppercase underline decoration-amber-500">{selectedVtr.motorista_nome}</p>
+              {/* Seção do Motorista + Visualização da Prova/Foto */}
+              <div className="bg-slate-50 p-4 rounded-3xl border-2 border-slate-100 space-y-3">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <p className="text-[10px] font-black text-slate-400 uppercase">Motorista na Entrega</p>
+                    <p className="text-sm font-bold text-slate-800 uppercase underline decoration-amber-500">{selectedVtr.motorista_nome}</p>
+                  </div>
+                  <button onClick={() => setConf({...conf, motoristaCorreto: !conf.motoristaCorreto})} className={`p-3 rounded-2xl transition-all ${conf.motoristaCorreto ? 'text-emerald-500' : 'text-red-500'}`}>
+                    {conf.motoristaCorreto ? <CheckCircle2 size={32} /> : <AlertTriangle size={32} />}
+                  </button>
                 </div>
-                <button onClick={() => setConf({...conf, motoristaCorreto: !conf.motoristaCorreto})} className={`p-3 rounded-2xl transition-all ${conf.motoristaCorreto ? 'text-emerald-500' : 'text-red-500'}`}>
-                  {conf.motoristaCorreto ? <CheckCircle2 size={32} /> : <AlertTriangle size={32} />}
-                </button>
+
+                {/* BOTÃO PARA VER A FOTO (Vem da coluna FOTO da guia Historico_Manutencao) */}
+                {selectedVtr.foto ? (
+                  <button 
+                    onClick={() => window.open(selectedVtr.foto, '_blank')}
+                    className="w-full py-3 bg-white border border-slate-200 rounded-2xl flex items-center justify-center gap-2 text-[10px] font-black text-slate-600 hover:bg-slate-100 transition-all shadow-sm"
+                  >
+                    <Camera size={16} className="text-amber-500" />
+                    CONFERIR COMPROVANTE / FOTO
+                  </button>
+                ) : (
+                  <div className="text-[9px] text-center text-slate-400 font-bold uppercase py-2 border border-dashed border-slate-200 rounded-xl">
+                    Nenhuma foto anexada no histórico
+                  </div>
+                )}
               </div>
 
               <div className="grid grid-cols-2 gap-2">
@@ -230,6 +248,7 @@ const GarageiroDashboard = ({ onBack }) => {
                 <CheckItem label="Sem Pertences" active={conf.semPertences} onClick={() => setConf({...conf, semPertences: !conf.semPertences})} />
                 <CheckItem label="Sem Avarias" active={!conf.avariaDetectada} onClick={() => setConf({...conf, avariaDetectada: !conf.avariaDetectada})} danger icon={<AlertTriangle size={14}/>} />
                 
+                {/* BOTÃO DE CONFIRMAÇÃO DE ÓLEO */}
                 <button onClick={() => setConf({...conf, confirmarTrocaOleo: !conf.confirmarTrocaOleo})} className={`col-span-2 p-4 rounded-2xl border-2 font-black text-[10px] uppercase transition-all flex items-center justify-center gap-3 ${conf.confirmarTrocaOleo ? 'bg-blue-600 border-blue-700 text-white shadow-lg' : 'bg-blue-50 border-blue-200 text-blue-400'}`}>
                   <Droplets size={18} className={conf.confirmarTrocaOleo ? "animate-bounce" : ""} />
                   CONFIRMAR TROCA DE ÓLEO (RESETAR KM)
@@ -264,9 +283,6 @@ const GarageiroDashboard = ({ onBack }) => {
           </div>
         </div>
       )}
-    </div>
-  );
-};
 
 const CheckItem = ({ label, active, onClick, danger = false, icon }) => (
   <button onClick={onClick} className={`p-4 rounded-2xl border-2 font-black text-[9px] uppercase transition-all flex flex-col items-center gap-2 ${active ? 'bg-emerald-50 border-emerald-500 text-emerald-700' : danger ? 'bg-red-600 border-red-700 text-white animate-pulse shadow-lg' : 'bg-slate-50 border-slate-200 text-slate-400'}`}>
