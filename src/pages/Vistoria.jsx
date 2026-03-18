@@ -2,6 +2,9 @@ import React, { useState, useEffect } from "react";
 import { useAuth } from "../lib/AuthContext";
 import { gasApi } from "../api/gasClient";
 
+import { db } from "../lib/firebase";
+import { doc, getDoc, collection, query, where, getDocs } from "firebase/firestore";
+
 import CardGuarnicao from "../components/vistoria/CardGuarnicao";
 import ModalComunitaria from "../components/vistoria/ModalComunitaria";
 import ModalTrocaOleo from "../components/vistoria/ModalOleo";
@@ -127,26 +130,43 @@ const Vistoria = ({ onBack }) => {
 
 
 const buscarMilitarAction = async (re, campo) => {
-    if (!re || re.length < 3) return;
-    setLoading(true); // <--- Adicione isso aqui
-    try {
-      const res = await gasApi.buscarMilitar(re);
-      if (res?.status === "success" && res?.found) {
-        setFormData(p => ({ 
-          ...p, 
-          [`${campo}_nome`]: res.nome, 
-          [`${campo}_unidade`]: res.unidade, 
-          [`${campo}_externo`]: false 
-        }));
-      } else {
-        setFormData(p => ({ ...p, [`${campo}_nome`]: "", [`${campo}_unidade`]: "", [`${campo}_externo`]: true }));
-      }
-    } catch (e) { 
-        console.error(e); 
-    } finally {
-        setLoading(false); // <--- E isso aqui
+  if (!re || re.length < 3) return;
+  setLoading(true);
+  
+  try {
+    // 1. Criamos uma busca na coleção "usuarios" onde o campo "re" seja igual ao digitado
+    const usuariosRef = collection(db, "usuarios");
+    const q = query(usuariosRef, where("re", "==", re.trim()));
+    const querySnapshot = await getDocs(q);
+
+    if (!querySnapshot.empty) {
+      // 2. Se achou, pega o primeiro documento (RE é único)
+      const dadosMilitar = querySnapshot.docs[0].data();
+      
+      setFormData(p => ({ 
+        ...p, 
+        [`${campo}_nome`]: `${dadosMilitar.patente} ${dadosMilitar.nome}`.toUpperCase(), 
+        [`${campo}_unidade`]: (dadosMilitar.unidade || "1º BPM").toUpperCase(), 
+        [`${campo}_externo`]: false 
+      }));
+    } else {
+      // 3. Se não achou no Firebase, abre para digitação manual (Militar de outra unidade)
+      setFormData(p => ({ 
+        ...p, 
+        [`${campo}_nome`]: "", 
+        [`${campo}_unidade`]: "", 
+        [`${campo}_externo`]: true 
+      }));
     }
+  } catch (e) { 
+    console.error("Erro ao buscar no Firebase:", e);
+    // Em caso de erro, permite o preenchimento manual para não travar a escala
+    setFormData(p => ({ ...p, [`${campo}_externo`]: true }));
+  } finally {
+    setLoading(false);
+  }
 };
+  
   
   // 4. Lógica de Troca de Viatura (Corrigida para evitar Race Condition)
   const handleVtrChange = async (prefixo) => {
