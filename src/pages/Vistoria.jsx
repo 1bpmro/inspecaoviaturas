@@ -125,6 +125,29 @@ const Vistoria = ({ onBack }) => {
     }
   }, [formData.hodometro_entrada, formData.hodometro_saida, kmReferencia, tipoVistoria, dadosOleo, alertaOleoDisparado]);
 
+
+const buscarMilitarAction = async (re, campo) => {
+    if (!re || re.length < 3) return;
+    setLoading(true); // <--- Adicione isso aqui
+    try {
+      const res = await gasApi.buscarMilitar(re);
+      if (res?.status === "success" && res?.found) {
+        setFormData(p => ({ 
+          ...p, 
+          [`${campo}_nome`]: res.nome, 
+          [`${campo}_unidade`]: res.unidade, 
+          [`${campo}_externo`]: false 
+        }));
+      } else {
+        setFormData(p => ({ ...p, [`${campo}_nome`]: "", [`${campo}_unidade`]: "", [`${campo}_externo`]: true }));
+      }
+    } catch (e) { 
+        console.error(e); 
+    } finally {
+        setLoading(false); // <--- E isso aqui
+    }
+};
+  
   // 4. Lógica de Troca de Viatura (Corrigida para evitar Race Condition)
   const handleVtrChange = async (prefixo) => {
     const vtr = viaturas.find(v => String(v.PREFIXO ?? v.Prefixo ?? "") === prefixo);
@@ -235,60 +258,51 @@ const Vistoria = ({ onBack }) => {
 
       <main className="max-w-xl mx-auto p-4 space-y-4 pb-20">
         {step === 1 && (
-          <>
-            <div className="flex bg-slate-200 p-1 rounded-xl gap-1">
-              <button onClick={() => { setTipoVistoria("ENTRADA"); setFormData(p => ({ ...p, prefixo_vtr: "" })); }} className={`flex-1 py-2 rounded-lg text-xs font-bold transition-all ${tipoVistoria === "ENTRADA" ? "bg-slate-900 text-white shadow" : "text-slate-600"}`}>ENTRADA</button>
-              <button onClick={() => { setTipoVistoria("SAÍDA"); setFormData(p => ({ ...p, prefixo_vtr: "" })); }} className={`flex-1 py-2 rounded-lg text-xs font-bold transition-all ${tipoVistoria === "SAÍDA" ? "bg-slate-900 text-white shadow" : "text-slate-600"}`}>SAÍDA</button>
-            </div>
-
-            <CardGuarnicao formData={formData} />
-
-            <CardGuarnicao formData={formData} />
-
-{/* --- REINSERIR ESTE BLOCO AQUI --- */}
-<div className="space-y-3 bg-white p-4 rounded-2xl shadow-sm border border-slate-100">
-  <h3 className="text-xs font-black text-slate-400 flex items-center gap-2 uppercase">
-    <Shield size={14} /> Efetivo (RE e Busca)
-  </h3>
-  {["motorista", "comandante", "patrulheiro"].map((campo) => (
-    <div key={campo} className="space-y-2 border-b pb-4 last:border-0 last:pb-0 border-slate-50">
-      <div className="flex gap-2">
-        <input 
-          placeholder={`RE ${campo.toUpperCase()}`} 
-          className="vtr-input flex-1" 
-          value={formData[`${campo}_re`] || ""} 
-          onChange={(e) => setFormData(p => ({ ...p, [`${campo}_re`]: e.target.value }))}
-          onBlur={(e) => buscarMilitarAction(e.target.value, campo)} 
-        />
-        <button 
-          type="button"
-          onClick={() => buscarMilitarAction(formData[`${campo}_re`], campo)}
-          className="bg-slate-100 px-3 rounded-xl text-slate-400 hover:bg-slate-200"
-        >
-          <Loader2 size={16} className={loading ? "animate-spin" : ""} />
-        </button>
-      </div>
-
-      {(formData[`${campo}_externo`] || formData[`${campo}_nome`]) && (
-        <div className="grid grid-cols-2 gap-2 animate-in fade-in zoom-in-95">
-          <input 
-            placeholder="NOME" 
-            className="vtr-input w-full border-orange-200 bg-orange-50/30" 
-            value={formData[`${campo}_nome`] || ""} 
-            onChange={(e) => setFormData(p => ({ ...p, [`${campo}_nome`]: e.target.value.toUpperCase() }))} 
-          />
-          <input 
-            placeholder="UNIDADE" 
-            className="vtr-input w-full border-orange-200 bg-orange-50/30" 
-            value={formData[`${campo}_unidade`] || ""} 
-            onChange={(e) => setFormData(p => ({ ...p, [`${campo}_unidade`]: e.target.value.toUpperCase() }))} 
-          />
-        </div>
-      )}
+  <>
+    {/* Seletor ENTRADA/SAÍDA */}
+    <div className="flex bg-slate-200 p-1 rounded-xl gap-1 mb-4">
+      <button onClick={() => { setTipoVistoria("ENTRADA"); setFormData(p => ({ ...p, prefixo_vtr: "" })); }} className={`flex-1 py-2 rounded-lg text-xs font-bold transition-all ${tipoVistoria === "ENTRADA" ? "bg-slate-900 text-white shadow" : "text-slate-600"}`}>ENTRADA</button>
+      <button onClick={() => { setTipoVistoria("SAÍDA"); setFormData(p => ({ ...p, prefixo_vtr: "" })); }} className={`flex-1 py-2 rounded-lg text-xs font-bold transition-all ${tipoVistoria === "SAÍDA" ? "bg-slate-900 text-white shadow" : "text-slate-600"}`}>SAÍDA</button>
     </div>
-  ))}
-</div>
-{/* ---------------------------------- */}
+
+    {/* 1. Único Card de Resumo (Visual) */}
+    <CardGuarnicao formData={formData} compacto={true} />
+
+    {/* 2. Inputs de Digitação/Busca (Funcional) */}
+    <div className="space-y-3 bg-white p-4 rounded-2xl shadow-sm border border-slate-100 mb-4">
+      <h3 className="text-[10px] font-black text-slate-400 flex items-center gap-2 uppercase tracking-widest">
+        <Shield size={14} /> Digitar RE da Guarnição
+      </h3>
+      {["motorista", "comandante", "patrulheiro"].map((campo) => (
+        <div key={campo} className="space-y-2 border-b pb-3 last:border-0 last:pb-0 border-slate-50">
+          <input 
+            placeholder={`RE ${campo.toUpperCase()}`} 
+            className="vtr-input w-full" 
+            value={formData[`${campo}_re`] || ""} 
+            onChange={(e) => setFormData(p => ({ ...p, [`${campo}_re`]: e.target.value }))}
+            onBlur={(e) => buscarMilitarAction(e.target.value, campo)} 
+          />
+          
+          {/* Só mostra Nome/Unidade se for Militar Externo ou se a busca falhar */}
+          {formData[`${campo}_externo`] && (
+            <div className="grid grid-cols-2 gap-2 animate-in fade-in zoom-in-95">
+              <input 
+                placeholder="NOME" 
+                className="vtr-input w-full border-orange-200 bg-orange-50/50" 
+                value={formData[`${campo}_nome`] || ""} 
+                onChange={(e) => setFormData(p => ({ ...p, [`${campo}_nome`]: e.target.value.toUpperCase() }))} 
+              />
+              <input 
+                placeholder="UNIDADE" 
+                className="vtr-input w-full border-orange-200 bg-orange-50/50" 
+                value={formData[`${campo}_unidade`] || ""} 
+                onChange={(e) => setFormData(p => ({ ...p, [`${campo}_unidade`]: e.target.value.toUpperCase() }))} 
+              />
+            </div>
+          )}
+        </div>
+      ))}
+    </div>
 
             <div className="space-y-3 bg-white p-4 rounded-2xl shadow-sm border border-slate-100">
               <h3 className="text-xs font-black text-slate-400 flex items-center gap-2 uppercase"><Car size={14} /> Viatura</h3>
