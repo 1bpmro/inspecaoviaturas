@@ -243,6 +243,53 @@ const Vistoria = ({ onBack }) => {
 
             <CardGuarnicao formData={formData} />
 
+            <CardGuarnicao formData={formData} />
+
+{/* --- REINSERIR ESTE BLOCO AQUI --- */}
+<div className="space-y-3 bg-white p-4 rounded-2xl shadow-sm border border-slate-100">
+  <h3 className="text-xs font-black text-slate-400 flex items-center gap-2 uppercase">
+    <Shield size={14} /> Efetivo (RE e Busca)
+  </h3>
+  {["motorista", "comandante", "patrulheiro"].map((campo) => (
+    <div key={campo} className="space-y-2 border-b pb-4 last:border-0 last:pb-0 border-slate-50">
+      <div className="flex gap-2">
+        <input 
+          placeholder={`RE ${campo.toUpperCase()}`} 
+          className="vtr-input flex-1" 
+          value={formData[`${campo}_re`] || ""} 
+          onChange={(e) => setFormData(p => ({ ...p, [`${campo}_re`]: e.target.value }))}
+          onBlur={(e) => buscarMilitarAction(e.target.value, campo)} 
+        />
+        <button 
+          type="button"
+          onClick={() => buscarMilitarAction(formData[`${campo}_re`], campo)}
+          className="bg-slate-100 px-3 rounded-xl text-slate-400 hover:bg-slate-200"
+        >
+          <Loader2 size={16} className={loading ? "animate-spin" : ""} />
+        </button>
+      </div>
+
+      {(formData[`${campo}_externo`] || formData[`${campo}_nome`]) && (
+        <div className="grid grid-cols-2 gap-2 animate-in fade-in zoom-in-95">
+          <input 
+            placeholder="NOME" 
+            className="vtr-input w-full border-orange-200 bg-orange-50/30" 
+            value={formData[`${campo}_nome`] || ""} 
+            onChange={(e) => setFormData(p => ({ ...p, [`${campo}_nome`]: e.target.value.toUpperCase() }))} 
+          />
+          <input 
+            placeholder="UNIDADE" 
+            className="vtr-input w-full border-orange-200 bg-orange-50/30" 
+            value={formData[`${campo}_unidade`] || ""} 
+            onChange={(e) => setFormData(p => ({ ...p, [`${campo}_unidade`]: e.target.value.toUpperCase() }))} 
+          />
+        </div>
+      )}
+    </div>
+  ))}
+</div>
+{/* ---------------------------------- */}
+
             <div className="space-y-3 bg-white p-4 rounded-2xl shadow-sm border border-slate-100">
               <h3 className="text-xs font-black text-slate-400 flex items-center gap-2 uppercase"><Car size={14} /> Viatura</h3>
               
