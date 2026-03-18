@@ -151,6 +151,7 @@ const Vistoria = ({ onBack }) => {
 const carregarDadosUltimaVistoria = async (prefixo) => {
   try {
     const res = await gasApi.getUltimaVistoria(prefixo);
+console.log("ULTIMA VISTORIA:", res);
     if (res?.status === "success" && res.data) {
       const v = res.data;
       
