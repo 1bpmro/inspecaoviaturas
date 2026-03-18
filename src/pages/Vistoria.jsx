@@ -87,8 +87,12 @@ const Vistoria = ({ onBack }) => {
     (async () => {
       try {
         const res = await gasApi.getViaturas();
+        console.log("VIATURAS API:", res);
         if (res?.status === "success") setViaturas(res.data);
-      } catch (e) { console.error(e); }
+      } catch (e) { 
+  console.error("Erro ao carregar viaturas:", e);
+  setViaturas([]); 
+}
     })();
   }, []);
 
@@ -252,12 +256,27 @@ const Vistoria = ({ onBack }) => {
 
             <div className="space-y-3 bg-white p-4 rounded-2xl shadow-sm border border-slate-100">
               <h3 className="text-xs font-black text-slate-400 flex items-center gap-2"><Car size={14} /> DADOS DA VIATURA</h3>
-              <select className="vtr-input w-full" value={formData.prefixo_vtr} onChange={(e) => handleVtrChange(e.target.value)}>
-                <option value="">Selecione VTR</option>
-                {viaturas.filter(v => (tipoVistoria === "SAÍDA" ? (v.STATUS || v.Status) === "EM SERVICO" : (v.STATUS || v.Status) === "DISPONIVEL")).map((v, i) => (
-                  <option key={i} value={v.PREFIXO || v.Prefixo}>{v.PREFIXO || v.Prefixo}</option>
-                ))}
-              </select>
+             <select
+  className="vtr-input w-full"
+  value={formData.prefixo_vtr}
+  onChange={(e) => handleVtrChange(e.target.value)}
+>
+  <option value="">Selecione VTR</option>
+
+  {viaturas
+    .filter(v => {
+      const status = String(v.STATUS || v.Status || "").toUpperCase();
+
+      return tipoVistoria === "SAÍDA"
+        ? status.includes("SERV")
+        : status.includes("DISP");
+    })
+    .map((v, i) => (
+      <option key={i} value={v.PREFIXO || v.Prefixo}>
+        {v.PREFIXO || v.Prefixo}
+      </option>
+    ))}
+</select>
 
               <select className="vtr-input w-full" value={tipoServico} onChange={(e) => setTipoServico(e.target.value)}>
                 <option value="">Tipo de Serviço</option>
