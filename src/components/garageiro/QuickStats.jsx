@@ -1,37 +1,75 @@
 // QuickStats.jsx
-export const QuickStats = ({ vistorias }) => {
-  const stats = React.useMemo(() => {
+import React, { useMemo } from 'react';
+import { Timer, AlertCircle, Inbox } from 'lucide-react';
+
+const QuickStats = ({ vistorias = [] }) => {
+  // Memoizamos os cálculos para não reprocessar a cada renderização irrelevante
+  const stats = useMemo(() => {
     const total = vistorias.length;
     const agora = new Date();
-    const tempos = vistorias.map(v => Math.floor((agora - new Date(v.data_hora)) / 60000));
-    const media = total === 0 ? 0 : Math.floor(tempos.reduce((a, b) => a + b, 0) / total);
+    
+    // Calcula a diferença em minutos para cada vistoria na fila
+    const tempos = vistorias.map(v => {
+      const dataVistoria = new Date(v.data_hora);
+      return Math.max(0, Math.floor((agora - dataVistoria) / 60000));
+    });
+
+    const media = total === 0 
+      ? 0 
+      : Math.floor(tempos.reduce((a, b) => a + b, 0) / total);
+    
+    // Define como "crítico" qualquer espera acima de 20 minutos
     const criticos = tempos.filter(t => t > 20).length;
+
     return { total, media, criticos };
   }, [vistorias]);
 
   return (
     <div className="grid grid-cols-3 gap-3 mb-6">
-      <div className="bg-slate-800 p-3 rounded-2xl shadow-sm border-b-4 border-black/20 text-white">
-        <p className="text-[8px] font-black uppercase opacity-60">Fila</p>
-        <p className="text-xl font-black leading-none mt-1">{stats.total}</p>
-      </div>
-      <div className="bg-amber-500 p-3 rounded-2xl shadow-sm border-b-4 border-black/20 text-white">
-        <p className="text-[8px] font-black uppercase opacity-60">T. Médio</p>
-        <p className="text-xl font-black leading-none mt-1">{stats.media}m</p>
-      </div>
-      <div className={`p-3 rounded-2xl shadow-sm border-b-4 border-black/20 text-white transition-colors ${stats.criticos > 0 ? 'bg-red-600 animate-pulse' : 'bg-slate-400'}`}>
-        <p className="text-[8px] font-black uppercase opacity-60">Críticos</p>
-        <p className="text-xl font-black leading-none mt-1">{stats.criticos}</p>
-      </div>
+      {/* Card: Total na Fila */}
+      <StatCard 
+        label="Fila Atual" 
+        value={stats.total} 
+        icon={<Inbox size={14} />}
+        color="bg-slate-800"
+      />
+
+      {/* Card: Tempo Médio de Espera */}
+      <StatCard 
+        label="Espera Média" 
+        value={`${stats.media}m`} 
+        icon={<Timer size={14} />}
+        color="bg-amber-500"
+      />
+
+      {/* Card: Casos Críticos (Acima de 20 min) */}
+      <StatCard 
+        label="Críticos" 
+        value={stats.criticos} 
+        icon={<AlertCircle size={14} />}
+        color={stats.criticos > 0 ? "bg-red-600 animate-pulse" : "bg-slate-400"}
+        danger={stats.criticos > 0}
+      />
     </div>
   );
 };
 
-// CheckItem.jsx
-export const CheckItem = ({ label, active, onClick, danger = false, icon }) => (
-  <button onClick={onClick} className={`p-4 rounded-2xl border-2 font-black text-[8px] uppercase transition-all flex flex-col items-center gap-2 ${active ? 'bg-emerald-50 border-emerald-500 text-emerald-700' : danger ? 'bg-red-600 border-red-700 text-white shadow-lg' : 'bg-slate-50 border-slate-200 text-slate-400'}`}>
-    {icon}
-    {label}
-    <span className="text-[10px] font-bold">{active ? 'OK' : danger ? 'ALERTA' : 'PENDENTE'}</span>
-  </button>
+// Sub-componente interno para manter o código DRY (Don't Repeat Yourself)
+const StatCard = ({ label, value, icon, color, danger }) => (
+  <div className={`${color} p-3 rounded-2xl shadow-md border-b-4 border-black/20 text-white transition-all`}>
+    <div className="flex items-center gap-1 opacity-70 mb-1">
+      {icon}
+      <p className="text-[8px] font-black uppercase tracking-widest leading-none">
+        {label}
+      </p>
+    </div>
+    <p className="text-xl font-black leading-none tracking-tighter">
+      {value}
+    </p>
+    {danger && (
+      <p className="text-[7px] font-bold uppercase mt-1 opacity-90">Atenção!</p>
+    )}
+  </div>
 );
+
+export default QuickStats;
