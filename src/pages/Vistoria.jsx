@@ -68,6 +68,7 @@ const Vistoria = ({ onBack }) => {
   const [fotos, setFotos] = useState([]);
   const [checklist, setChecklist] = useState({});
   const [kmReferencia, setKmReferencia] = useState(0);
+  const [alertaOleoDisparado, setAlertaOleoDisparado] = useState(false);
 
   const [formData, setFormData] = useState({
     prefixo_vtr: "", 
@@ -110,13 +111,31 @@ const Vistoria = ({ onBack }) => {
   }, [tipoVistoria, formData.prefixo_vtr, viaturas]); // Dependência corrigida (removido [] extra)
 
   // Monitorar KM para Troca de Óleo
-  useEffect(() => {
-    const kmAtual = tipoVistoria === "ENTRADA" ? formData.hodometro_entrada : formData.hodometro_saida;
-    if (kmAtual && !dadosOleo) {
-      const kmDiff = Number(kmAtual) - Number(kmReferencia || 0);
-      if (kmDiff >= 9800) setModalOleo(true);
+ useEffect(() => {
+  const kmDigitado = tipoVistoria === "ENTRADA" 
+    ? formData.hodometro_entrada 
+    : formData.hodometro_saida;
+
+  // Só prossegue se tiver KM, referência, não tiver dados salvos e o alerta ainda não disparou
+  if (kmDigitado && kmReferencia > 0 && !dadosOleo && !alertaOleoDisparado) {
+    const kmRodadosDesdeATroca = Number(kmDigitado) - Number(kmReferencia);
+
+    // Segurança extra: evita processar se o KM digitado for menor que a última troca (erro de digitação)
+    if (kmRodadosDesdeATroca < 0) return;
+
+    if (kmRodadosDesdeATroca >= 10000) {
+      setModalOleo(true);
+      setAlertaOleoDisparado(true); // Trava o gatilho para não repetir
     }
-  }, [formData.hodometro_entrada, formData.hodometro_saida, kmReferencia, dadosOleo, tipoVistoria]);
+  }
+}, [
+  formData.hodometro_entrada, 
+  formData.hodometro_saida, 
+  kmReferencia, 
+  tipoVistoria, 
+  dadosOleo,
+  alertaOleoDisparado // Dependência importante
+]);
 
   useEffect(() => {
     if (tipoServico === "PATRULHA COMUNITÁRIA") {
@@ -129,21 +148,37 @@ const Vistoria = ({ onBack }) => {
     }
   }, [tipoServico]);
 
-  const carregarDadosUltimaVistoria = async (prefixo) => {
-    try {
-      const res = await gasApi.getUltimaVistoria(prefixo);
-      if (res?.status === "success" && res.data) {
-        const v = res.data;
-        setFormData(p => ({
-          ...p,
-          motorista_nome: v.motorista_nome,
-          comandante_nome: v.comandante_nome,
-          patrulheiro_nome: v.patrulheiro_nome,
-          hodometro_saida: v.hodometro // Preenche o KM de saída com o que foi gravado na última
-        }));
-      }
-    } catch (e) { console.error(e); }
-  };
+const carregarDadosUltimaVistoria = async (prefixo) => {
+  try {
+    const res = await gasApi.getUltimaVistoria(prefixo);
+    if (res?.status === "success" && res.data) {
+      const v = res.data;
+      
+      // Atualiza o tipo de serviço se ele vier no banco
+      if (v.tipo_servico) setTipoServico(v.tipo_servico);
+
+      setFormData(p => ({
+        ...p,
+        // Trazendo os Nomes
+        motorista_nome: v.motorista_nome,
+        comandante_nome: v.comandante_nome,
+        patrulheiro_nome: v.patrulheiro_nome,
+        
+        // Trazendo as Matrículas (RE)
+        motorista_re: v.motorista_re,
+        comandante_re: v.comandante_re,
+        patrulheiro_re: v.patrulheiro_re,
+
+        // Trazendo Unidades (opcional, mas ajuda a guarnição)
+        motorista_unidade: v.motorista_unidade,
+        comandante_unidade: v.comandante_unidade,
+        patrulheiro_unidade: v.patrulheiro_unidade,
+
+        hodometro_saida: v.hodometro // KM de entrada da última vira o inicial da saída
+      }));
+    }
+  } catch (e) { console.error("Erro ao carregar dados da última vistoria:", e); }
+};
 
   const buscarMilitarAction = async (re, campo) => {
     if (!re) return;
@@ -167,23 +202,79 @@ const Vistoria = ({ onBack }) => {
     } catch (e) { console.error(e); }
   };
 
-  const handleVtrChange = (prefixo) => {
-    const vtr = viaturas.find(v => String(v.PREFIXO || v.Prefixo) === prefixo);
-    if (!vtr) {
-      setFormData(p => ({ ...p, prefixo_vtr: "", placa_vtr: "" }));
-      return;
+const handleVtrChange = async (prefixo) => {
+  // 1. Resets de segurança para nova VTR (evita que dados da VTR anterior interfiram)
+  setAlertaOleoDisparado(false);
+  setDadosOleo(null);
+
+  // 2. Localiza a viatura no estado local
+  const vtr = viaturas.find(v => String(v.PREFIXO || v.Prefixo) === prefixo);
+
+  if (!vtr) {
+    setFormData(p => ({ ...p, prefixo_vtr: "", placa_vtr: "" }));
+    setKmReferencia(0);
+    return;
+  }
+
+  // 3. Extrai dados básicos da viatura
+  const kmAtualDaVtr = Number(vtr.ULTIMOKM || vtr.UltimoKM || 0);
+  const placa = String(vtr.PLACA || vtr.Placa || "");
+  const kmReferenciaOleo = Number(vtr.KM_TROCA_OLEO || vtr.km_troca_oleo || 0);
+
+  // 4. Define a referência para o cálculo do alerta de óleo
+  setKmReferencia(kmReferenciaOleo);
+
+  // 5. Atualiza o estado básico imediatamente
+  setFormData(prev => ({
+    ...prev,
+    prefixo_vtr: prefixo,
+    placa_vtr: placa,
+    // Se for SAÍDA, já sugere o último KM registrado no banco como KM inicial da saída
+    [tipoVistoria === "ENTRADA" ? "hodometro_entrada" : "hodometro_saida"]: 
+      tipoVistoria === "SAÍDA" ? kmAtualDaVtr : ""
+  }));
+
+  // 6. Fluxo de SAÍDA: Busca os dados da guarnição que entrou
+  if (tipoVistoria === "SAÍDA") {
+    try {
+      setLoading(true);
+      const res = await gasApi.getUltimaVistoria(prefixo);
+
+      if (res?.status === "success" && res.data) {
+        const d = res.data;
+        
+        // Sincroniza o tipo de serviço no select principal
+        if (d.tipo_servico) setTipoServico(d.tipo_servico);
+
+        // Preenche automaticamente R.E, Nomes e Unidades
+        setFormData(prev => ({
+          ...prev,
+          // Motorista
+          motorista_re: d.motorista_re || "",
+          motorista_nome: d.motorista_nome || "",
+          motorista_unidade: d.motorista_unidade || "",
+          // Comandante
+          comandante_re: d.comandante_re || "",
+          comandante_nome: d.comandante_nome || "",
+          comandante_unidade: d.comandante_unidade || "",
+          // Patrulheiro
+          patrulheiro_re: d.patrulheiro_re || "",
+          patrulheiro_nome: d.patrulheiro_nome || "",
+          patrulheiro_unidade: d.patrulheiro_unidade || "",
+          // Usa o hodômetro da última vistoria como base, fallback para o atual da VTR
+          hodometro_saida: d.hodometro || kmAtualDaVtr,
+          // Recupera operação e modalidade
+          operacao_nome: d.operacao_nome || "",
+          modalidade: d.modalidade || ""
+        }));
+      }
+    } catch (error) {
+      console.error("Erro ao recuperar dados de entrada:", error);
+    } finally {
+      setLoading(false);
     }
-    if (tipoVistoria === "SAÍDA") carregarDadosUltimaVistoria(prefixo);
-    const km = vtr.ULTIMOKM || vtr.UltimoKM || 0;
-    setKmReferencia(Number(km));
-    setFormData(p => ({
-      ...p,
-      prefixo_vtr: prefixo,
-      placa_vtr: String(vtr.PLACA || vtr.Placa),
-      // Atribui ao campo correto baseado no fluxo
-      [tipoVistoria === "ENTRADA" ? "hodometro_entrada" : "hodometro_saida"]: tipoVistoria === "SAÍDA" ? km : ""
-    }));
-  };
+  }
+};
 
   const toggleCheck = (item) => {
     setChecklist(prev => ({ ...prev, [item]: !prev[item] }));
@@ -325,21 +416,37 @@ const Vistoria = ({ onBack }) => {
               <h3 className="text-xs font-black text-slate-400 flex items-center gap-2"><Shield size={14} /> EFETIVO</h3>
               <div className="grid grid-cols-1 gap-6">
                 {["motorista", "comandante", "patrulheiro"].map((campo) => (
-                  <div key={campo} className="space-y-2 border-b pb-4 border-slate-50 last:border-0 last:pb-0">
-                    <span className="text-[10px] font-bold text-slate-400 uppercase tracking-tighter">{campo}</span>
-                    <input placeholder={`RE ${campo.toUpperCase()}`} className="vtr-input w-full" onBlur={(e) => {
-                      const re = e.target.value;
-                      setFormData(p => ({ ...p, [`${campo}_re`]: re }));
-                      buscarMilitarAction(re, campo);
-                    }} />
-                    {formData[`${campo}_externo`] && (
-                      <div className="grid grid-cols-2 gap-2 animate-in fade-in">
-                        <input placeholder="NOME" className="vtr-input w-full border-orange-300" value={formData[`${campo}_nome`]} onChange={(e) => setFormData(p => ({ ...p, [`${campo}_nome`]: e.target.value.toUpperCase() }))} />
-                        <input placeholder="UNIDADE" className="vtr-input w-full border-orange-300" value={formData[`${campo}_unidade`]} onChange={(e) => setFormData(p => ({ ...p, [`${campo}_unidade`]: e.target.value.toUpperCase() }))} />
-                      </div>
-                    )}
-                  </div>
-                ))}
+  <div key={campo} className="space-y-2 border-b pb-4 border-slate-50 last:border-0 last:pb-0">
+    <span className="text-[10px] font-bold text-slate-400 uppercase tracking-tighter">{campo}</span>
+    <input 
+      placeholder={`RE ${campo.toUpperCase()}`} 
+      className="vtr-input w-full"
+      value={formData[`${campo}_re`] || ""} // ADICIONADO: para mostrar o RE carregado
+      onChange={(e) => setFormData(p => ({ ...p, [`${campo}_re`]: e.target.value }))} // ADICIONADO
+      onBlur={(e) => {
+        const re = e.target.value;
+        buscarMilitarAction(re, campo);
+      }} 
+    />
+    {/* Se o militar for externo ou se o nome foi carregado, exibe os campos de nome/unidade */}
+    {(formData[`${campo}_externo`] || formData[`${campo}_nome`]) && (
+      <div className="grid grid-cols-2 gap-2 animate-in fade-in">
+        <input 
+          placeholder="NOME" 
+          className="vtr-input w-full border-orange-300" 
+          value={formData[`${campo}_nome`] || ""} 
+          onChange={(e) => setFormData(p => ({ ...p, [`${campo}_nome`]: e.target.value.toUpperCase() }))} 
+        />
+        <input 
+          placeholder="UNIDADE" 
+          className="vtr-input w-full border-orange-300" 
+          value={formData[`${campo}_unidade`] || ""} 
+          onChange={(e) => setFormData(p => ({ ...p, [`${campo}_unidade`]: e.target.value.toUpperCase() }))} 
+        />
+      </div>
+    )}
+  </div>
+))}
               </div>
             </div>
 
