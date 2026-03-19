@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react'
 import { useAuth } from '../lib/AuthContext';
 import { gasApi } from '../api/gasClient';
 import { 
-  X, Search, ShieldCheck, Volume2, VolumeX, RefreshCw 
+  X, Search, ShieldCheck, Volume2, VolumeX, RefreshCw  
 } from 'lucide-react';
 
 // Importação dos componentes modulares
