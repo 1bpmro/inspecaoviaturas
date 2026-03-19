@@ -40,40 +40,51 @@ const GarageiroDashboard = ({ onBack }) => {
     audioRef.current = new Audio('https://assets.mixkit.co/active_storage/sfx/2869/2869-preview.mp3');
   }, []);
 
-  const carregarDados = useCallback(async () => {
-    if (!gasApi.getVistoriasPendentes || !gasApi.getViaturas) {
-      console.error("API do GAS não carregada.");
-      return;
+ const carregarDados = useCallback(async () => {
+    // BLINDAGEM: Verifica se as funções existem no objeto gasApi antes de chamar.
+    // Removemos o console.error daqui para evitar alertas falsos no carregamento inicial do Vite.
+    if (!gasApi?.getVistoriasPendentes || !gasApi?.getViaturas) {
+      return; 
     }
 
     try {
+      // Executa as chamadas em paralelo para performance
       const [resVistorias, resViaturas] = await Promise.all([
         gasApi.getVistoriasPendentes(),
         gasApi.getViaturas()
       ]);
 
+      // Processamento de Vistorias Pendentes
       if (resVistorias?.data) {
         const vistoriasAguardando = resVistorias.data.filter(v => 
           ["AGUARDANDO", "PÁTIO", "PENDENTE"].includes((v.status_vtr || v.status || "").toUpperCase())
         );
         
+        // Lógica de Alerta Sonoro para novas vistorias
         const novosIds = vistoriasAguardando.map(v => v.id);
         const temNovo = novosIds.some(id => !previousIds.current.includes(id));
         
         if (soundEnabled && temNovo && audioRef.current) {
           audioRef.current.play().catch(() => {});
         }
+        
         previousIds.current = novosIds;
         setVistorias(vistoriasAguardando);
       }
-      if (resViaturas?.data) setViaturas(resViaturas.data);
+
+      // Processamento da Frota Total
+      if (resViaturas?.data) {
+        setViaturas(resViaturas.data);
+      }
+
     } catch (e) {
-      console.error("Erro na sincronização:", e);
+      console.error("Erro na sincronização do Pátio:", e);
     } finally {
+      // Desativa o spinner de loading apenas após a primeira tentativa real (sucesso ou erro)
       setLoading(false);
     }
   }, [soundEnabled]);
-
+  
   useEffect(() => {
     carregarDados();
     const interval = setInterval(carregarDados, 15000);
