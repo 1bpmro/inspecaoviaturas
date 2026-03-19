@@ -13,19 +13,19 @@ import VistoriaModal from '../components/garageiro/VistoriaModal';
 
 /**
  * UTILS: Normalização Profissional
- * Remove acentos (PÁTIO -> PATIO), espaços extras e padroniza para UPPERCASE.
+ * Remove acentos, espaços extras e padroniza para UPPERCASE.
  */
 const normalizar = (s) => 
   (s || "")
     .toString()
     .normalize("NFD")
     .replace(/[\u0300-\u036f]/g, "")
-    .replace(/\s+/g, "") // Blindagem extra: remove espaços internos
+    .replace(/\s+/g, "") // Blindagem extra: remove todos os espaços internos/externos
     .trim()
     .toUpperCase();
 
-// Alteração 1: Pendentes agora filtram estritamente por AGUARDANDO
-const STATUS_PENDENTE_ESTRITO = "AGUARDANDO";
+// FILTRO ESTRITO: Apenas o que está aguardando ação do pátio
+const STATUS_PERMITIDO = "AGUARDANDO";
 
 const GarageiroDashboard = ({ onBack }) => {
   const { user } = useAuth();
@@ -41,6 +41,9 @@ const GarageiroDashboard = ({ onBack }) => {
   const [selectedVtr, setSelectedVtr] = useState(null);
   const [showBaixaOptions, setShowBaixaOptions] = useState(false);
   
+  // Estado para correção manual do motorista (Bug: Responsável não informado)
+  const [motoristaManual, setMotoristaManual] = useState("");
+
   const submittingRef = useRef(false);
   const previousIds = useRef([]);
   const audioRef = useRef(null);
@@ -70,10 +73,10 @@ const GarageiroDashboard = ({ onBack }) => {
       ]);
 
       if (resVistorias?.data) {
+        // FILTRO ESTRITO: Só entra o que for exatamente AGUARDANDO (independente da aba de origem)
         const vistoriasFiltradas = resVistorias.data.filter(v => {
-          // Alteração 1: Filtro estrito para AGUARDANDO (independente da coluna)
           const statusGeral = normalizar(v.status_vtr || v.status);
-          return statusGeral === STATUS_PENDENTE_ESTRITO;
+          return statusGeral === STATUS_PERMITIDO;
         });
         
         const novosIds = vistoriasFiltradas.map(v => v.id);
@@ -127,6 +130,13 @@ const GarageiroDashboard = ({ onBack }) => {
 
   const processarVistoria = async (statusFinal, motivoOpcional = '') => {
     if (submittingRef.current || !selectedVtr) return;
+    
+    // Validação de motorista manual
+    if (!conf.motoristaCorreto && !motoristaManual.trim()) {
+      alert("Por favor, informe o nome do motorista real.");
+      return;
+    }
+
     submittingRef.current = true;
     setIsSubmitting(true);
 
@@ -136,6 +146,8 @@ const GarageiroDashboard = ({ onBack }) => {
         prefixo: selectedVtr.prefixo_vtr,
         status_vtr: statusFinal,
         garageiro_re: `${user?.re || '000'} - ${user?.nome || 'SISTEMA'}`,
+        // Se o motorista não for o do sistema, envia o nome manual corrigido
+        motorista_real: conf.motoristaCorreto ? (selectedVtr.motorista_nome || "NÃO INFORMADO") : motoristaManual.toUpperCase(),
         status_fisico: conf.avariaDetectada ? 'AVARIADA' : 'OK',
         limpeza: (!conf.limpezaInterna || !conf.limpezaExterna) ? 'CRÍTICA' : 'OK',
         obs_garageiro: (motivoOpcional || conf.obs).toUpperCase(),
@@ -152,6 +164,7 @@ const GarageiroDashboard = ({ onBack }) => {
       setShowModal(false);
       setShowBaixaOptions(false);
       setSelectedVtr(null);
+      setMotoristaManual("");
       setConf({ 
         limpezaInterna: true, limpezaExterna: true, semPertences: true,
         motoristaCorreto: true, avariaDetectada: false, confirmarTrocaOleo: false,
@@ -184,6 +197,7 @@ const GarageiroDashboard = ({ onBack }) => {
 
   return (
     <div className="min-h-screen bg-slate-100 flex flex-col font-sans select-none">
+      
       <header className="bg-slate-900 text-white p-4 shadow-lg border-b-4 border-amber-500 flex justify-between items-center sticky top-0 z-30">
         <div className="flex items-center gap-3">
           <div className="bg-amber-500 p-2 rounded-xl text-slate-900"><ShieldCheck size={24} /></div>
@@ -261,9 +275,22 @@ const GarageiroDashboard = ({ onBack }) => {
           isSubmitting={isSubmitting}
           showBaixa={showBaixaOptions}
           setShowBaixa={setShowBaixaOptions}
-          onClose={() => { setShowModal(false); setShowBaixaOptions(false); setSelectedVtr(null); }}
+          onClose={() => { setShowModal(false); setShowBaixaOptions(false); setSelectedVtr(null); setMotoristaManual(""); }}
           onConfirm={processarVistoria}
-        />
+        >
+          {/* O Modal injeta este input caso o motorista esteja incorreto */}
+          {!conf.motoristaCorreto && (
+            <div className="mt-4 animate-in fade-in slide-in-from-top-2">
+               <label className="text-[10px] font-black text-amber-600 ml-2 uppercase">Identificação do Motorista Real</label>
+               <input
+                 placeholder="NOME DE GUERRA"
+                 className="w-full p-4 mt-1 bg-amber-50 border-2 border-amber-200 rounded-2xl font-bold text-sm outline-none focus:border-amber-500 uppercase"
+                 value={motoristaManual}
+                 onChange={(e) => setMotoristaManual(e.target.value)}
+               />
+            </div>
+          )}
+        </VistoriaModal>
       )}
     </div>
   );
