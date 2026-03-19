@@ -7,19 +7,15 @@ const GAS_URL = 'https://script.google.com/macros/s/AKfycbwFMqbY2FiDJfZcBxRWvgkq
 /**
  * Prepara o payload para o Google Sheets:
  * 1. Limpa Base64 (se houver)
- * 2. Converte Arrays de URLs (Cloudinary) em Strings separadas por " | "
+ * 2. Converte Arrays de URLs em Strings separadas por " | "
  */
 const preparePayload = (item) => {
-  // Se for uma string Base64, limpa os metadados
   if (typeof item === 'string' && item.includes('base64,')) {
     return item.split('base64,')[1];
   }
   
-  // Se for um Array (Ex: lista de links do Cloudinary), junta com pipe
   if (Array.isArray(item)) {
-    // Se o array contiver strings (URLs), vira "url1 | url2"
     if (typeof item[0] === 'string') return item.join(' | ');
-    // Se for array de objetos, processa cada um
     return item.map(preparePayload);
   }
   
@@ -57,9 +53,16 @@ export const gasApi = {
     }
   },
 
-  // --- MÉTODOS DE VISTORIA ---
+  // --- MÉTODOS DO GARAGEIRO (ADICIONADOS) ---
+  
+  /** Busca vistorias que estão com status AGUARDANDO/PÁTIO */
+  getVistoriasPendentes: () => gasApi.post('getVistoriasPendentes'),
+
+  /** Finaliza a análise do garageiro e libera ou baixa a VTR */
+  confirmarVistoriaGarageiro: (dados) => gasApi.post('confirmarVistoriaGarageiro', dados),
+
+  // --- MÉTODOS DE VISTORIA (ENTREGA) ---
   saveVistoria: async (dados) => {
-    // Aqui garantimos que se 'fotos' for um array, vire uma string separada por pipe
     return await gasApi.post('saveVistoria', dados);
   },
 
@@ -82,7 +85,6 @@ export const gasApi = {
 
   // --- SEGURANÇA E USUÁRIO ---
   changePassword: async (re, senhaAtual, novaSenha) => {
-    // Atualiza na Planilha (para o P4 ter o registro)
     return await gasApi.post('changePassword', { re, senhaAtual, novaSenha });
   },
 
@@ -92,5 +94,5 @@ export const gasApi = {
   registrarManutencao: (dados) => gasApi.post('registrarManutencao', dados),
 };
 
-
+// Disponibiliza no window para debug se necessário
 window.gasApi = gasApi;
