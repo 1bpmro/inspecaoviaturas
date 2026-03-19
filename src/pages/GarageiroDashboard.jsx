@@ -20,10 +20,12 @@ const normalizar = (s) =>
     .toString()
     .normalize("NFD")
     .replace(/[\u0300-\u036f]/g, "")
+    .replace(/\s+/g, "") // Blindagem extra: remove espaços internos
     .trim()
     .toUpperCase();
 
-const STATUS_PERMITIDOS = ["AGUARDANDO", "PATIO", "PENDENTE"];
+// Alteração 1: Pendentes agora filtram estritamente por AGUARDANDO
+const STATUS_PENDENTE_ESTRITO = "AGUARDANDO";
 
 const GarageiroDashboard = ({ onBack }) => {
   const { user } = useAuth();
@@ -42,7 +44,7 @@ const GarageiroDashboard = ({ onBack }) => {
   const submittingRef = useRef(false);
   const previousIds = useRef([]);
   const audioRef = useRef(null);
-  const soundRef = useRef(false); // Mantém o estado do som para o polling estável
+  const soundRef = useRef(false);
 
   const [conf, setConf] = useState({ 
     limpezaInterna: true, limpezaExterna: true, semPertences: true,
@@ -50,21 +52,15 @@ const GarageiroDashboard = ({ onBack }) => {
     obs: '' 
   });
 
-  // Sincroniza ref do som para evitar recriação do polling por dependência
   useEffect(() => {
     soundRef.current = soundEnabled;
   }, [soundEnabled]);
 
-  // Inicialização do Áudio
   useEffect(() => {
     audioRef.current = new Audio('https://assets.mixkit.co/active_storage/sfx/2869/2869-preview.mp3');
   }, []);
 
-  /**
-   * CARREGAMENTO DE DADOS (SYNC)
-   */
   const carregarDados = useCallback(async () => {
-    // Blindagem silenciosa contra carregamento lento da API
     if (!gasApi?.getVistoriasPendentes || !gasApi?.getViaturas) return;
 
     try {
@@ -73,15 +69,13 @@ const GarageiroDashboard = ({ onBack }) => {
         gasApi.getViaturas()
       ]);
 
-      // Processamento Robusto de Vistorias (Independente de Painel ou Patrimônio)
       if (resVistorias?.data) {
         const vistoriasFiltradas = resVistorias.data.filter(v => {
-          // Checa o status em ambas as colunas possíveis após normalizar
+          // Alteração 1: Filtro estrito para AGUARDANDO (independente da coluna)
           const statusGeral = normalizar(v.status_vtr || v.status);
-          return STATUS_PERMITIDOS.includes(statusGeral);
+          return statusGeral === STATUS_PENDENTE_ESTRITO;
         });
         
-        // Lógica de Alerta Sonoro
         const novosIds = vistoriasFiltradas.map(v => v.id);
         const temNovo = novosIds.some(id => !previousIds.current.includes(id));
         
@@ -104,7 +98,6 @@ const GarageiroDashboard = ({ onBack }) => {
     }
   }, []);
 
-  // Polling Estável (Roda a cada 15s)
   useEffect(() => {
     carregarDados();
     const interval = setInterval(carregarDados, 15000);
@@ -132,9 +125,6 @@ const GarageiroDashboard = ({ onBack }) => {
     return "OK";
   };
 
-  /**
-   * PROCESSAMENTO DA VISTORIA PELO GARAGEIRO
-   */
   const processarVistoria = async (statusFinal, motivoOpcional = '') => {
     if (submittingRef.current || !selectedVtr) return;
     submittingRef.current = true;
@@ -154,7 +144,6 @@ const GarageiroDashboard = ({ onBack }) => {
         data_vistoria: selectedVtr?.data_hora
       };
 
-      // Update Otimista (Remove da lista visual na hora)
       const idRemover = selectedVtr.id;
       setVistorias(prev => prev.filter(v => v.id !== idRemover));
       
@@ -184,7 +173,6 @@ const GarageiroDashboard = ({ onBack }) => {
     return viaturas.filter(v => (v?.PREFIXO || "").toString().includes(term));
   }, [viaturas, searchTerm]);
 
-  // Tela de Loading Inicial
   if (loading && vistorias.length === 0) {
     return (
       <div className="min-h-screen bg-slate-900 flex flex-col items-center justify-center text-white p-6 text-center">
@@ -196,7 +184,6 @@ const GarageiroDashboard = ({ onBack }) => {
 
   return (
     <div className="min-h-screen bg-slate-100 flex flex-col font-sans select-none">
-      
       <header className="bg-slate-900 text-white p-4 shadow-lg border-b-4 border-amber-500 flex justify-between items-center sticky top-0 z-30">
         <div className="flex items-center gap-3">
           <div className="bg-amber-500 p-2 rounded-xl text-slate-900"><ShieldCheck size={24} /></div>
