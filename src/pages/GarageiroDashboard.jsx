@@ -283,7 +283,7 @@ const GarageiroDashboard = ({ onBack }) => {
             <div className="mt-4 animate-in fade-in slide-in-from-top-2">
                <label className="text-[10px] font-black text-amber-600 ml-2 uppercase">Identificação do Motorista Real</label>
                <input
-                 placeholder="NOME DE GUERRA"
+                 placeholder="NOME COMPLETO OU RE"
                  className="w-full p-4 mt-1 bg-amber-50 border-2 border-amber-200 rounded-2xl font-bold text-sm outline-none focus:border-amber-500 uppercase"
                  value={motoristaManual}
                  onChange={(e) => setMotoristaManual(e.target.value)}
