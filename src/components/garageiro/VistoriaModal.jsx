@@ -14,6 +14,8 @@ const VistoriaModal = ({
   setShowBaixa, 
   onClose, 
   onConfirm,
+  motoristaManual,        // ✅ ADD
+  setMotoristaManual,     // ✅ ADD
   children // ✅ AGORA SUPORTA INJEÇÃO EXTERNA
 }) => {
   if (!v) return null;
@@ -86,11 +88,8 @@ const VistoriaModal = ({
               <input
                 placeholder="DIGITAR MOTORISTA REAL"
                 className="w-full p-3 bg-white border-2 border-red-200 rounded-xl font-bold text-xs uppercase outline-none focus:border-red-500"
-                value={conf.motoristaManual || ""}
-                onChange={(e) => setConf({
-                  ...conf,
-                  motoristaManual: e.target.value
-                })}
+                value={motoristaManual}
+                onChange={(e) => setMotoristaManual(e.target.value)}
               />
             )}
 
@@ -109,7 +108,7 @@ const VistoriaModal = ({
           <div className="bg-white border rounded-2xl p-3 text-center shadow-sm">
             <p className="text-[9px] font-black text-slate-400 uppercase">Hodômetro</p>
             <p className="text-lg font-black text-slate-800">
-              {v.hodometro || 0} km
+              {Number(v.hodometro || 0).toLocaleString()} km
             </p>
           </div>
 
@@ -166,7 +165,10 @@ const VistoriaModal = ({
           {!showBaixa ? (
             <div className="grid grid-cols-2 gap-3">
               <button 
-                disabled={isSubmitting}
+                disabled={
+                  isSubmitting || 
+                  (!conf.motoristaCorreto && !motoristaManual?.trim())
+  }
                 onClick={() => onConfirm("LIBERADA")} 
                 className="bg-emerald-600 text-white py-5 rounded-3xl font-black text-[10px]"
               >
@@ -183,7 +185,7 @@ const VistoriaModal = ({
             </div>
           ) : (
             <div className="space-y-2">
-              {['MECANICA','ELETRICA','PNEU','FUNILARIA'].map(m => (
+              {['MECÂNICA','ELÉTRICA','PNEU','FUNILARIA'].map(m => (
                 <button 
                   key={m}
                   onClick={() => onConfirm("MANUTENCAO", m)}
