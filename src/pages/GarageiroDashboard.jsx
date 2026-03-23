@@ -10,6 +10,7 @@ import QuickStats from '../components/garageiro/QuickStats';
 import ViaturaRow from '../components/garageiro/ViaturaRow';
 import VistoriaCard from '../components/garageiro/VistoriaCard';
 import VistoriaModal from '../components/garageiro/VistoriaModal';
+import GarageiroPowerModal from '../components/garageiro/GarageiroPowerModal';
 
 /**
  * UTILS: Normalização Profissional
@@ -40,6 +41,9 @@ const GarageiroDashboard = ({ onBack }) => {
   const [showModal, setShowModal] = useState(false);
   const [selectedVtr, setSelectedVtr] = useState(null);
   const [showBaixaOptions, setShowBaixaOptions] = useState(false);
+
+  const [showPowerModal, setShowPowerModal] = useState(false);
+  const [vtrPower, setVtrPower] = useState(null);
   
   // Estado para correção manual do motorista (Bug: Responsável não informado)
   const [motoristaManual, setMotoristaManual] = useState("");
@@ -257,7 +261,18 @@ const GarageiroDashboard = ({ onBack }) => {
             <div className="bg-white rounded-[2.5rem] border border-slate-200 overflow-hidden shadow-sm">
               {viaturasFiltradas.length > 0 ? (
                 viaturasFiltradas.map(vtr => (
-                  <ViaturaRow key={vtr.PREFIXO} v={vtr} getStatus={getStatusViatura} />
+                  <div key={vtr.PREFIXO} className="relative group">
+                    <ViaturaRow v={vtr} getStatus={getStatusViatura} />
+                    {/* BOTÃO POWER (só aparece na aba FROTA) */}
+                    <button
+                      onClick={() => {
+                        setVtrPower(vtr);
+                        setShowPowerModal(true);    }}
+                      className="absolute right-3 top-3 text-[10px] font-black bg-red-600 text-white px-2 py-1 rounded-lg opacity-0 group-hover:opacity-100 transition"
+                      >
+                      ⚡
+                    </button>
+                  </div>
                 ))
               ) : (
                 <p className="p-10 text-center text-[10px] font-black text-slate-400 uppercase tracking-widest">Nenhuma viatura encontrada</p>
@@ -287,6 +302,19 @@ const GarageiroDashboard = ({ onBack }) => {
                  className="w-full p-4 mt-1 bg-amber-50 border-2 border-amber-200 rounded-2xl font-bold text-sm outline-none focus:border-amber-500 uppercase"
                  value={motoristaManual}
                  onChange={(e) => setMotoristaManual(e.target.value)}
+
+                 {showPowerModal && vtrPower && (
+  <GarageiroPowerModal
+    viatura={vtrPower}
+    user={user}
+    onClose={() => {
+      setShowPowerModal(false);
+      setVtrPower(null);
+    }}
+    onSuccess={carregarDados}
+  />
+)}
+                 
                />
             </div>
           )}
