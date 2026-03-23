@@ -12,7 +12,7 @@ export default function ChartsSection({ viaturas, vistorias }) {
   const statusData = [
     { name: "Disponível", value: viaturas.filter(v => v.status === "DISPONÍVEL").length },
     { name: "Manutenção", value: viaturas.filter(v => v.status === "MANUTENCAO").length },
-    { name: "Outros", value: viaturas.filter(v => v.status !== "DISPONÍVEL" && v.status !== "MANUTENCAO").length },
+    { name: "Outros", value: viaturas.filter(v => v.status !== "DISPONÍVEL" && v.status !== "MANUTENCAO").length }, 
   ];
 
   // 📈 VISTORIAS POR DIA
