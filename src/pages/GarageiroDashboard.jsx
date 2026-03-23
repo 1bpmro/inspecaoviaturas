@@ -12,20 +12,15 @@ import VistoriaCard from '../components/garageiro/VistoriaCard';
 import VistoriaModal from '../components/garageiro/VistoriaModal';
 import GarageiroPowerModal from '../components/garageiro/GarageiroPowerModal';
 
-/**
- * UTILS: Normalização Profissional
- * Remove acentos, espaços extras e padroniza para UPPERCASE.
- */
 const normalizar = (s) => 
   (s || "")
     .toString()
     .normalize("NFD")
     .replace(/[\u0300-\u036f]/g, "")
-    .replace(/\s+/g, "") // Blindagem extra: remove todos os espaços internos/externos
+    .replace(/\s+/g, "") 
     .trim()
     .toUpperCase();
 
-// FILTRO ESTRITO: Apenas o que está aguardando ação do pátio
 const STATUS_PERMITIDO = "AGUARDANDO";
 
 const GarageiroDashboard = ({ onBack }) => {
@@ -45,7 +40,6 @@ const GarageiroDashboard = ({ onBack }) => {
   const [showPowerModal, setShowPowerModal] = useState(false);
   const [vtrPower, setVtrPower] = useState(null);
   
-  // Estado para correção manual do motorista (Bug: Responsável não informado)
   const [motoristaManual, setMotoristaManual] = useState("");
 
   const submittingRef = useRef(false);
@@ -77,7 +71,6 @@ const GarageiroDashboard = ({ onBack }) => {
       ]);
 
       if (resVistorias?.data) {
-        // FILTRO ESTRITO: Só entra o que for exatamente AGUARDANDO (independente da aba de origem)
         const vistoriasFiltradas = resVistorias.data.filter(v => {
           const statusGeral = normalizar(v.status_vtr || v.status);
           return statusGeral === STATUS_PERMITIDO;
@@ -135,7 +128,6 @@ const GarageiroDashboard = ({ onBack }) => {
   const processarVistoria = async (statusFinal, motivoOpcional = '') => {
     if (submittingRef.current || !selectedVtr) return;
     
-    // Validação de motorista manual
     if (!conf.motoristaCorreto && !motoristaManual.trim()) {
       alert("Por favor, informe o nome do motorista real.");
       return;
@@ -150,7 +142,6 @@ const GarageiroDashboard = ({ onBack }) => {
         prefixo: selectedVtr.prefixo_vtr,
         status_vtr: statusFinal,
         garageiro_re: `${user?.re || '000'} - ${user?.nome || 'SISTEMA'}`,
-        // Se o motorista não for o do sistema, envia o nome manual corrigido
         motorista_real: conf.motoristaCorreto ? (selectedVtr.motorista_nome || "NÃO INFORMADO") : motoristaManual.toUpperCase(),
         status_fisico: conf.avariaDetectada ? 'AVARIADA' : 'OK',
         limpeza: (!conf.limpezaInterna || !conf.limpezaExterna) ? 'CRÍTICA' : 'OK',
@@ -263,11 +254,11 @@ const GarageiroDashboard = ({ onBack }) => {
                 viaturasFiltradas.map(vtr => (
                   <div key={vtr.PREFIXO} className="relative group">
                     <ViaturaRow v={vtr} getStatus={getStatusViatura} />
-                    {/* BOTÃO POWER (só aparece na aba FROTA) */}
                     <button
                       onClick={() => {
                         setVtrPower(vtr);
-                        setShowPowerModal(true);    }}
+                        setShowPowerModal(true);
+                      }}
                       className="absolute right-3 top-3 text-[10px] font-black bg-red-600 text-white px-2 py-1 rounded-lg opacity-0 group-hover:opacity-100 transition"
                       >
                       ⚡
@@ -282,6 +273,7 @@ const GarageiroDashboard = ({ onBack }) => {
         )}
       </main>
 
+      {/* MODAL DE VISTORIA */}
       {showModal && selectedVtr && (
         <VistoriaModal 
           v={selectedVtr}
@@ -293,32 +285,31 @@ const GarageiroDashboard = ({ onBack }) => {
           onClose={() => { setShowModal(false); setShowBaixaOptions(false); setSelectedVtr(null); setMotoristaManual(""); }}
           onConfirm={processarVistoria}
         >
-          {/* O Modal injeta este input caso o motorista esteja incorreto */}
           {!conf.motoristaCorreto && (
             <div className="mt-4 animate-in fade-in slide-in-from-top-2">
-               <label className="text-[10px] font-black text-amber-600 ml-2 uppercase">Identificação do Motorista Real</label>
-               <input
-                 placeholder="NOME COMPLETO OU RE"
-                 className="w-full p-4 mt-1 bg-amber-50 border-2 border-amber-200 rounded-2xl font-bold text-sm outline-none focus:border-amber-500 uppercase"
-                 value={motoristaManual}
-                 onChange={(e) => setMotoristaManual(e.target.value)}
-
-                 {showPowerModal && vtrPower && (
-  <GarageiroPowerModal
-    viatura={vtrPower}
-    user={user}
-    onClose={() => {
-      setShowPowerModal(false);
-      setVtrPower(null);
-    }}
-    onSuccess={carregarDados}
-  />
-)}
-                 
-               />
+              <label className="text-[10px] font-black text-amber-600 ml-2 uppercase">Identificação do Motorista Real</label>
+              <input
+                placeholder="NOME COMPLETO OU RE"
+                className="w-full p-4 mt-1 bg-amber-50 border-2 border-amber-200 rounded-2xl font-bold text-sm outline-none focus:border-amber-500 uppercase"
+                value={motoristaManual}
+                onChange={(e) => setMotoristaManual(e.target.value)}
+              />
             </div>
           )}
         </VistoriaModal>
+      )}
+
+      {/* MODAL DE PODER (FORA DO VISTORIA MODAL PARA NÃO QUEBRAR O LAYOUT) */}
+      {showPowerModal && vtrPower && (
+        <GarageiroPowerModal
+          viatura={vtrPower}
+          user={user}
+          onClose={() => {
+            setShowPowerModal(false);
+            setVtrPower(null);
+          }}
+          onSuccess={carregarDados}
+        />
       )}
     </div>
   );
