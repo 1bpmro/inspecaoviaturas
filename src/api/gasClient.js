@@ -59,8 +59,26 @@ export const gasApi = {
   getVistoriasPendentes: () => gasApi.post('getVistoriasPendentes'),
 
   // --- PODER DO GARAGEIRO ---
-forcarAcaoViatura: (dados) => 
-  gasApi.post('forcarAcaoViatura', dados),
+forcarAcaoViatura: async (dados) => {
+  const res = await gasApi.post('forcarAcaoViatura', dados);
+
+  if (!res || res.status !== "success") {
+    throw new Error(res?.message || "Erro ao executar ação na viatura");
+  }
+
+  // Sync Firebase (opcional mas recomendado)
+  try {
+    const vtrRef = doc(db, "viaturas", dados.prefixo);
+    await updateDoc(vtrRef, {
+      status: dados.acao === "LIBERAR" ? "DISPONIVEL" : "MANUTENCAO",
+      atualizadoEm: new Date().toISOString()
+    });
+  } catch (e) {
+    console.warn("Firebase Sync (garageiro) falhou");
+  }
+
+  return res;
+},
 
   /** Finaliza a análise do garageiro e libera ou baixa a VTR */
   confirmarVistoriaGarageiro: (dados) => gasApi.post('confirmarVistoriaGarageiro', dados),
