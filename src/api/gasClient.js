@@ -58,6 +58,10 @@ export const gasApi = {
   /** Busca vistorias que estão com status AGUARDANDO/PÁTIO */
   getVistoriasPendentes: () => gasApi.post('getVistoriasPendentes'),
 
+  // --- PODER DO GARAGEIRO ---
+forcarAcaoViatura: (dados) => 
+  gasApi.post('forcarAcaoViatura', dados),
+
   /** Finaliza a análise do garageiro e libera ou baixa a VTR */
   confirmarVistoriaGarageiro: (dados) => gasApi.post('confirmarVistoriaGarageiro', dados),
 
