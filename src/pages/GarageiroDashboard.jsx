@@ -28,6 +28,7 @@ const GarageiroDashboard = ({ onBack }) => {
   const [tab, setTab] = useState('pendentes'); 
   const [vistorias, setVistorias] = useState([]);
   const [viaturas, setViaturas] = useState([]);
+  const [efetivo, setEfetivo] = useState([]); // NOVO: Estado para o efetivo
   const [loading, setLoading] = useState(true);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
@@ -61,13 +62,26 @@ const GarageiroDashboard = ({ onBack }) => {
     audioRef.current = new Audio('https://assets.mixkit.co/active_storage/sfx/2869/2869-preview.mp3');
   }, []);
 
+  // Filtro do Efetivo: Exclui Oficiais e ordena alfabeticamente
+  const efetivoFiltrado = useMemo(() => {
+    const patentesExcluidas = ['MAJ', 'CEL', 'TEN', 'CAP'];
+    return efetivo
+      .filter(p => {
+        const nomeUpper = (p.nome || "").toUpperCase();
+        return !patentesExcluidas.some(pat => nomeUpper.startsWith(pat));
+      })
+      .sort((a, b) => (a.nome > b.nome ? 1 : -1));
+  }, [efetivo]);
+
   const carregarDados = useCallback(async () => {
     if (!gasApi?.getVistoriasPendentes || !gasApi?.getViaturas) return;
 
     try {
-      const [resVistorias, resViaturas] = await Promise.all([
+      // Adicionado busca de efetivo no Promise.all
+      const [resVistorias, resViaturas, resEfetivo] = await Promise.all([
         gasApi.getVistoriasPendentes(),
-        gasApi.getViaturas()
+        gasApi.getViaturas(),
+        gasApi.getEfetivo ? gasApi.getEfetivo() : { data: [] }
       ]);
 
       if (resVistorias?.data) {
@@ -89,6 +103,10 @@ const GarageiroDashboard = ({ onBack }) => {
 
       if (resViaturas?.data) {
         setViaturas(resViaturas.data);
+      }
+
+      if (resEfetivo?.data) {
+        setEfetivo(resEfetivo.data);
       }
 
     } catch (e) {
@@ -129,7 +147,7 @@ const GarageiroDashboard = ({ onBack }) => {
     if (submittingRef.current || !selectedVtr) return;
     
     if (!conf.motoristaCorreto && !motoristaManual.trim()) {
-      alert("Por favor, informe o nome do motorista real.");
+      alert("Por favor, selecione o motorista real.");
       return;
     }
 
@@ -287,19 +305,26 @@ const GarageiroDashboard = ({ onBack }) => {
         >
           {!conf.motoristaCorreto && (
             <div className="mt-4 animate-in fade-in slide-in-from-top-2">
-              <label className="text-[10px] font-black text-amber-600 ml-2 uppercase">Identificação do Motorista Real</label>
-              <input
-                placeholder="NOME COMPLETO OU RE"
-                className="w-full p-4 mt-1 bg-amber-50 border-2 border-amber-200 rounded-2xl font-bold text-sm outline-none focus:border-amber-500 uppercase"
+              <label className="text-[10px] font-black text-amber-600 ml-2 uppercase">Selecionar Motorista Real</label>
+              <select
+                className="w-full p-4 mt-1 bg-amber-50 border-2 border-amber-200 rounded-2xl font-bold text-sm outline-none focus:border-amber-500 uppercase cursor-pointer appearance-none"
                 value={motoristaManual}
                 onChange={(e) => setMotoristaManual(e.target.value)}
-              />
+              >
+                <option value="">-- SELECIONE O MILITAR --</option>
+                {efetivoFiltrado.map((m, idx) => (
+                  <option key={idx} value={m.nome}>
+                    {m.nome}
+                  </option>
+                ))}
+              </select>
+              <p className="text-[9px] text-slate-400 mt-2 ml-2 font-bold uppercase">* Lista filtrada (Praças e Oficiais Subalternos)</p>
             </div>
           )}
         </VistoriaModal>
       )}
 
-      {/* MODAL DE PODER (FORA DO VISTORIA MODAL PARA NÃO QUEBRAR O LAYOUT) */}
+      {/* MODAL DE PODER */}
       {showPowerModal && vtrPower && (
         <GarageiroPowerModal
           viatura={vtrPower}
