@@ -73,3 +73,6 @@ const FichaViaturaModal = ({ vtr, onClose }) => {
     </div>
   );
 };
+
+
+export default FichaViaturaModal;
