@@ -1,7 +1,21 @@
 import React, { useState } from 'react';
 import { useAuth } from '../lib/AuthContext';
 import { Loader2, ShieldCheck, Lock, User, X } from 'lucide-react';
-import { db, collection, query, where, getDocs, updateDoc, doc } from '../lib/firebase';
+import { db, collection, query, where, getDocs, updateDoc, doc, addDoc } from '../lib/firebase';
+
+// 🔧 NORMALIZAÇÕES
+const normalizarNome = (nome) => {
+  return nome
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toUpperCase()
+    .trim();
+};
+
+const normalizarRE = (re) => {
+  const limpo = re.replace(/\D/g, '');
+  return limpo.startsWith("10000") ? limpo.slice(5) : limpo;
+};
 
 const Login = () => {
   const { login } = useAuth();
@@ -16,6 +30,10 @@ const Login = () => {
   const [resetLoading, setResetLoading] = useState(false);
   const [userDocId, setUserDocId] = useState(null);
 
+  const [resetError, setResetError] = useState('');
+  const [tentativas, setTentativas] = useState(0);
+  const [bloqueadoAte, setBloqueadoAte] = useState(null);
+
   const [resetData, setResetData] = useState({
     matricula: '',
     nome_guerra: '',
@@ -28,7 +46,7 @@ const Login = () => {
     e.preventDefault();
     setError('');
 
-    const reLimpo = credentials.matricula.replace(/\D/g, '').trim();
+    const reLimpo = normalizarRE(credentials.matricula);
 
     if (!reLimpo || !credentials.password) {
       return setError('Preencha matrícula e senha.');
@@ -47,58 +65,92 @@ const Login = () => {
     }
   };
 
-  // ETAPA 1: VALIDAR USUÁRIO NO FIREBASE
+  // 🔍 VALIDAR USUÁRIO
   const validarUsuario = async () => {
-    const reLimpo = resetData.matricula.replace(/\D/g, '').trim();
-    const nomeLimpo = resetData.nome_guerra.toUpperCase().trim();
+    setResetError('');
+
+    if (bloqueadoAte && new Date() < bloqueadoAte) {
+      return setResetError("Muitas tentativas. Aguarde 5 minutos.");
+    }
+
+    const reLimpo = normalizarRE(resetData.matricula);
+    const nomeLimpo = normalizarNome(resetData.nome_guerra);
 
     if (!reLimpo || !nomeLimpo) {
-      return alert("Preencha matrícula e nome de guerra.");
+      return setResetError("Preencha matrícula e nome de guerra.");
+    }
+
+    if (tentativas >= 5) {
+      setBloqueadoAte(new Date(Date.now() + 5 * 60000));
+      return setResetError("Limite atingido. Tente novamente em 5 minutos.");
     }
 
     setResetLoading(true);
+
     try {
       const q = query(
         collection(db, "usuarios"),
-        where("re", "==", reLimpo),
-        where("nome_guerra", "==", nomeLimpo)
+        where("re", "==", reLimpo)
       );
 
       const snap = await getDocs(q);
 
-      if (snap.empty) {
-        alert("Dados não conferem com nossos registros.");
-      } else {
-        setUserDocId(snap.docs[0].id);
-        setResetStep(2);
+      const usuario = snap.docs.find(doc => {
+        const data = doc.data();
+        return normalizarNome(data.nome_guerra) === nomeLimpo;
+      });
+
+      if (!usuario) {
+        setTentativas(t => t + 1);
+        return setResetError("Dados não conferem com nossos registros.");
       }
+
+      setUserDocId(usuario.id);
+      setResetStep(2);
+
     } catch (err) {
-      alert("Erro ao validar dados. Tente novamente.");
+      setResetError("Erro ao validar dados.");
     } finally {
       setResetLoading(false);
     }
   };
 
-  // ETAPA 2: ALTERAR SENHA
+  // 🔑 ALTERAR SENHA
   const alterarSenha = async () => {
-    if (!resetData.novaSenha || resetData.novaSenha.length < 4) {
-      return alert("A senha deve ter pelo menos 4 caracteres.");
+    setResetError('');
+
+    if (!resetData.novaSenha) {
+      return setResetError("Digite uma nova senha.");
     }
 
     if (resetData.novaSenha !== resetData.confirmarSenha) {
-      return alert("As senhas não coincidem.");
+      return setResetError("As senhas não coincidem.");
     }
 
     setResetLoading(true);
+
     try {
+      const reLimpo = normalizarRE(resetData.matricula);
+
       await updateDoc(doc(db, "usuarios", userDocId), {
-        senha: resetData.novaSenha
+        senha: resetData.novaSenha,
+        forcarLogout: true,
+        atualizadoEm: new Date().toISOString()
       });
 
-      alert("Senha alterada com sucesso! Faça login agora.");
+      // 🔐 LOG
+      await addDoc(collection(db, "logs"), {
+        tipo: "RESET_SENHA",
+        re: reLimpo,
+        data: new Date().toISOString(),
+        origem: "LOGIN_SCREEN"
+      });
+
+      alert("Senha alterada com sucesso!");
       fecharModalReset();
+
     } catch (err) {
-      alert("Erro ao atualizar senha.");
+      setResetError("Erro ao atualizar senha.");
     } finally {
       setResetLoading(false);
     }
@@ -107,6 +159,9 @@ const Login = () => {
   const fecharModalReset = () => {
     setShowReset(false);
     setResetStep(1);
+    setTentativas(0);
+    setBloqueadoAte(null);
+    setResetError('');
     setResetData({ matricula: '', nome_guerra: '', novaSenha: '', confirmarSenha: '' });
     setUserDocId(null);
   };
@@ -114,21 +169,19 @@ const Login = () => {
   return (
     <div className="min-h-screen bg-slate-900 flex flex-col items-center justify-center p-6 font-sans">
       
-      {/* HEADER */}
-      <div className="mb-10 text-center animate-in fade-in zoom-in duration-500">
-        <div className="bg-blue-600 w-20 h-20 rounded-3xl flex items-center justify-center mx-auto mb-4 shadow-xl shadow-blue-500/20">
+      <div className="mb-10 text-center">
+        <div className="bg-blue-600 w-20 h-20 rounded-3xl flex items-center justify-center mx-auto mb-4">
           <ShieldCheck size={40} className="text-white" />
         </div>
-        <h1 className="text-white font-black text-2xl uppercase tracking-tighter">
+        <h1 className="text-white font-black text-2xl uppercase">
           Garagem <span className="text-blue-500">1º BPM</span>
         </h1>
       </div>
 
-      {/* CARD LOGIN */}
       <div className="bg-white w-full max-w-sm rounded-[2.5rem] p-8 shadow-2xl">
         <form onSubmit={handleLogin} className="space-y-4">
           {error && (
-            <div className="bg-red-50 text-red-600 p-3 rounded-xl text-xs font-bold text-center border border-red-100">
+            <div className="bg-red-50 text-red-600 p-3 rounded-xl text-xs font-bold text-center">
               {error}
             </div>
           )}
@@ -137,7 +190,7 @@ const Login = () => {
             <User className="absolute left-4 top-4 text-slate-400" size={20} />
             <input
               placeholder="Matrícula (RE)"
-              className="w-full p-4 pl-12 rounded-2xl bg-slate-100 border-none focus:ring-2 focus:ring-blue-500 outline-none transition-all"
+              className="w-full p-4 pl-12 rounded-2xl bg-slate-100"
               value={credentials.matricula}
               onChange={(e) => setCredentials({...credentials, matricula: e.target.value})}
             />
@@ -148,94 +201,69 @@ const Login = () => {
             <input
               type="password"
               placeholder="Senha"
-              className="w-full p-4 pl-12 rounded-2xl bg-slate-100 border-none focus:ring-2 focus:ring-blue-500 outline-none transition-all"
+              className="w-full p-4 pl-12 rounded-2xl bg-slate-100"
               value={credentials.password}
               onChange={(e) => setCredentials({...credentials, password: e.target.value})}
             />
           </div>
 
-          <button 
-            disabled={loading}
-            className="w-full bg-slate-900 hover:bg-slate-800 text-white py-4 rounded-2xl font-bold shadow-lg shadow-slate-900/20 transition-all flex items-center justify-center gap-2"
-          >
-            {loading ? <Loader2 className="animate-spin" size={20} /> : "ENTRAR NO SISTEMA"}
+          <button className="w-full bg-slate-900 text-white py-4 rounded-2xl font-bold">
+            {loading ? <Loader2 className="animate-spin" /> : "ENTRAR"}
           </button>
         </form>
 
         <button
           onClick={() => setShowReset(true)}
-          className="mt-6 w-full text-center text-xs text-blue-600 font-black uppercase tracking-widest hover:text-blue-700 transition-colors"
+          className="mt-6 w-full text-xs text-blue-600 font-black uppercase"
         >
           Esqueci minha senha
         </button>
       </div>
 
-      {/* 🔐 MODAL RESET */}
       {showReset && (
-        <div className="fixed inset-0 bg-slate-900/95 backdrop-blur-sm flex items-center justify-center p-6 z-50 animate-in fade-in duration-300">
-          <div className="bg-white p-8 rounded-[2.5rem] w-full max-w-sm space-y-6 shadow-2xl relative">
-            
-            <button 
-              onClick={fecharModalReset}
-              className="absolute right-6 top-6 text-slate-400 hover:text-slate-600"
-            >
-              <X size={24} />
+        <div className="fixed inset-0 bg-slate-900/95 flex items-center justify-center p-6">
+          <div className="bg-white p-8 rounded-[2.5rem] w-full max-w-sm space-y-6 relative">
+
+            <button onClick={fecharModalReset} className="absolute right-6 top-6">
+              <X />
             </button>
 
-            <div className="text-center">
-              <h2 className="text-xl font-black text-slate-900 uppercase">
-                {resetStep === 1 ? "Validar Identidade" : "Nova Senha"}
-              </h2>
-              <p className="text-xs text-slate-500 mt-1">
-                {resetStep === 1 ? "Informe seus dados de registro." : "Crie uma senha de acesso rápido."}
-              </p>
-            </div>
+            <h2 className="text-xl font-black text-center">
+              🔐 Recuperação de Acesso
+            </h2>
 
-            {resetStep === 1 ? (
-              <div className="space-y-3">
-                <input
-                  placeholder="Matrícula"
-                  className="w-full p-4 bg-slate-100 rounded-2xl outline-none focus:ring-2 focus:ring-blue-500"
-                  value={resetData.matricula}
-                  onChange={(e) => setResetData({...resetData, matricula: e.target.value})}
-                />
-                <input
-                  placeholder="Nome de Guerra"
-                  className="w-full p-4 bg-slate-100 rounded-2xl outline-none focus:ring-2 focus:ring-blue-500"
-                  value={resetData.nome_guerra}
-                  onChange={(e) => setResetData({...resetData, nome_guerra: e.target.value})}
-                />
-                <button 
-                  onClick={validarUsuario} 
-                  disabled={resetLoading}
-                  className="w-full bg-blue-600 text-white p-4 rounded-2xl font-bold shadow-lg shadow-blue-600/20 flex items-center justify-center"
-                >
-                  {resetLoading ? <Loader2 className="animate-spin" /> : "VALIDAR DADOS"}
-                </button>
-              </div>
-            ) : (
-              <div className="space-y-3">
-                <input
-                  type="password"
-                  placeholder="Nova senha"
-                  className="w-full p-4 bg-slate-100 rounded-2xl outline-none focus:ring-2 focus:ring-green-500"
-                  onChange={(e) => setResetData({...resetData, novaSenha: e.target.value})}
-                />
-                <input
-                  type="password"
-                  placeholder="Confirmar senha"
-                  className="w-full p-4 bg-slate-100 rounded-2xl outline-none focus:ring-2 focus:ring-green-500"
-                  onChange={(e) => setResetData({...resetData, confirmarSenha: e.target.value})}
-                />
-                <button 
-                  onClick={alterarSenha} 
-                  disabled={resetLoading}
-                  className="w-full bg-green-600 text-white p-4 rounded-2xl font-bold shadow-lg shadow-green-600/20 flex items-center justify-center"
-                >
-                  {resetLoading ? <Loader2 className="animate-spin" /> : "CONFIRMAR ALTERAÇÃO"}
-                </button>
+            {resetError && (
+              <div className="bg-red-50 text-red-600 p-3 rounded-xl text-xs font-bold text-center">
+                {resetError}
               </div>
             )}
+
+            {resetStep === 1 ? (
+              <>
+                <input placeholder="Matrícula" className="w-full p-4 bg-slate-100 rounded-2xl"
+                  onChange={(e) => setResetData({...resetData, matricula: e.target.value})}
+                />
+                <input placeholder="Nome de Guerra" className="w-full p-4 bg-slate-100 rounded-2xl"
+                  onChange={(e) => setResetData({...resetData, nome_guerra: e.target.value})}
+                />
+                <button onClick={validarUsuario} className="w-full bg-blue-600 text-white p-4 rounded-2xl">
+                  {resetLoading ? "..." : "VALIDAR"}
+                </button>
+              </>
+            ) : (
+              <>
+                <input type="password" placeholder="Nova senha" className="w-full p-4 bg-slate-100 rounded-2xl"
+                  onChange={(e) => setResetData({...resetData, novaSenha: e.target.value})}
+                />
+                <input type="password" placeholder="Confirmar senha" className="w-full p-4 bg-slate-100 rounded-2xl"
+                  onChange={(e) => setResetData({...resetData, confirmarSenha: e.target.value})}
+                />
+                <button onClick={alterarSenha} className="w-full bg-green-600 text-white p-4 rounded-2xl">
+                  {resetLoading ? "..." : "CONFIRMAR"}
+                </button>
+              </>
+            )}
+
           </div>
         </div>
       )}
