@@ -5,7 +5,7 @@ import { gasApi } from "../api/gasClient";
 import { db } from "../lib/firebase";
 import { doc, getDoc, collection, query, where, getDocs } from "firebase/firestore";
 
-import CardGuarnicao from "../components/vistoria/CardGuarnicao";
+import CardGuarnicao from "../components/vistoria/CardGuarnicao"; 
 import ModalComunitaria from "../components/vistoria/ModalComunitaria";
 import ModalTrocaOleo from "../components/vistoria/ModalOleo";
 
