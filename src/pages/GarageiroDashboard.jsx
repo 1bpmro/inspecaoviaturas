@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react'
 import { useAuth } from '../lib/AuthContext';
 import { gasApi } from '../api/gasClient';
 import { 
-  X, Search, ShieldCheck, Volume2, VolumeX, RefreshCw  
+  X, Search, ShieldCheck, Volume2, VolumeX, RefreshCw, UserCheck
 } from 'lucide-react';
 
 // Componentes Modulares
@@ -28,10 +28,11 @@ const GarageiroDashboard = ({ onBack }) => {
   const [tab, setTab] = useState('pendentes'); 
   const [vistorias, setVistorias] = useState([]);
   const [viaturas, setViaturas] = useState([]);
-  const [efetivo, setEfetivo] = useState([]); // NOVO: Estado para o efetivo
+  const [efetivo, setEfetivo] = useState([]); 
   const [loading, setLoading] = useState(true);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
+  const [searchMilitar, setSearchMilitar] = useState(''); // NOVO: Busca interna do dropdown
   const [soundEnabled, setSoundEnabled] = useState(false);
   
   const [showModal, setShowModal] = useState(false);
@@ -62,22 +63,28 @@ const GarageiroDashboard = ({ onBack }) => {
     audioRef.current = new Audio('https://assets.mixkit.co/active_storage/sfx/2869/2869-preview.mp3');
   }, []);
 
-  // Filtro do Efetivo: Exclui Oficiais e ordena alfabeticamente
+  // Filtro do Efetivo: Exclui Oficiais + Filtro de Busca por texto
   const efetivoFiltrado = useMemo(() => {
     const patentesExcluidas = ['MAJ', 'CEL', 'TEN', 'CAP'];
+    const termo = searchMilitar.toUpperCase();
+
     return efetivo
       .filter(p => {
         const nomeUpper = (p.nome || "").toUpperCase();
-        return !patentesExcluidas.some(pat => nomeUpper.startsWith(pat));
+        // 1. Filtra Patentes
+        const ehOficial = patentesExcluidas.some(pat => nomeUpper.startsWith(pat));
+        // 2. Filtra por termo de busca (Nome ou RE se houver no objeto)
+        const bateBusca = nomeUpper.includes(termo);
+        
+        return !ehOficial && bateBusca;
       })
       .sort((a, b) => (a.nome > b.nome ? 1 : -1));
-  }, [efetivo]);
+  }, [efetivo, searchMilitar]);
 
   const carregarDados = useCallback(async () => {
     if (!gasApi?.getVistoriasPendentes || !gasApi?.getViaturas) return;
 
     try {
-      // Adicionado busca de efetivo no Promise.all
       const [resVistorias, resViaturas, resEfetivo] = await Promise.all([
         gasApi.getVistoriasPendentes(),
         gasApi.getViaturas(),
@@ -147,7 +154,7 @@ const GarageiroDashboard = ({ onBack }) => {
     if (submittingRef.current || !selectedVtr) return;
     
     if (!conf.motoristaCorreto && !motoristaManual.trim()) {
-      alert("Por favor, selecione o motorista real.");
+      alert("Por favor, selecione o militar na lista.");
       return;
     }
 
@@ -178,6 +185,7 @@ const GarageiroDashboard = ({ onBack }) => {
       setShowBaixaOptions(false);
       setSelectedVtr(null);
       setMotoristaManual("");
+      setSearchMilitar("");
       setConf({ 
         limpezaInterna: true, limpezaExterna: true, semPertences: true,
         motoristaCorreto: true, avariaDetectada: false, confirmarTrocaOleo: false,
@@ -300,25 +308,60 @@ const GarageiroDashboard = ({ onBack }) => {
           isSubmitting={isSubmitting}
           showBaixa={showBaixaOptions}
           setShowBaixa={setShowBaixaOptions}
-          onClose={() => { setShowModal(false); setShowBaixaOptions(false); setSelectedVtr(null); setMotoristaManual(""); }}
+          onClose={() => { 
+            setShowModal(false); 
+            setShowBaixaOptions(false); 
+            setSelectedVtr(null); 
+            setMotoristaManual(""); 
+            setSearchMilitar(""); 
+          }}
           onConfirm={processarVistoria}
         >
           {!conf.motoristaCorreto && (
-            <div className="mt-4 animate-in fade-in slide-in-from-top-2">
-              <label className="text-[10px] font-black text-amber-600 ml-2 uppercase">Selecionar Motorista Real</label>
+            <div className="mt-4 p-4 bg-amber-50 border-2 border-amber-200 rounded-[2rem] animate-in slide-in-from-top-4 duration-300">
+              <div className="flex items-center gap-2 mb-3">
+                <UserCheck size={18} className="text-amber-600" />
+                <label className="text-[10px] font-black text-amber-600 uppercase tracking-widest">Identificar Militar Real</label>
+              </div>
+              
+              {/* CAMPO DE BUSCA INTERNO */}
+              <div className="relative mb-3">
+                <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-amber-400" />
+                <input 
+                  autoFocus
+                  type="text"
+                  placeholder="DIGITE NOME OU RE..."
+                  className="w-full pl-9 p-3 bg-white border border-amber-200 rounded-xl text-[11px] font-bold outline-none focus:border-amber-500 placeholder:text-amber-200 uppercase"
+                  value={searchMilitar}
+                  onChange={(e) => setSearchMilitar(e.target.value)}
+                />
+              </div>
+
+              {/* DROPDOWN FILTRADO */}
               <select
-                className="w-full p-4 mt-1 bg-amber-50 border-2 border-amber-200 rounded-2xl font-bold text-sm outline-none focus:border-amber-500 uppercase cursor-pointer appearance-none"
+                className="w-full p-4 bg-white border-2 border-amber-300 rounded-xl font-black text-xs outline-none focus:ring-2 focus:ring-amber-500/20 uppercase cursor-pointer"
                 value={motoristaManual}
                 onChange={(e) => setMotoristaManual(e.target.value)}
               >
-                <option value="">-- SELECIONE O MILITAR --</option>
+                <option value="">{efetivoFiltrado.length > 0 ? `-- SELECIONE (${efetivoFiltrado.length}) --` : 'NENHUM RESULTADO'}</option>
                 {efetivoFiltrado.map((m, idx) => (
                   <option key={idx} value={m.nome}>
                     {m.nome}
                   </option>
                 ))}
               </select>
-              <p className="text-[9px] text-slate-400 mt-2 ml-2 font-bold uppercase">* Lista filtrada (Praças e Oficiais Subalternos)</p>
+              
+              <div className="mt-2 flex justify-between items-center px-1">
+                <span className="text-[8px] text-amber-400 font-black uppercase italic">Sincronizado com RH</span>
+                {searchMilitar && (
+                  <button 
+                    onClick={() => setSearchMilitar("")}
+                    className="text-[8px] font-black text-red-500 uppercase underline"
+                  >
+                    Limpar Busca
+                  </button>
+                )}
+              </div>
             </div>
           )}
         </VistoriaModal>
