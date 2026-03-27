@@ -67,19 +67,32 @@ const GarageiroDashboard = ({ onBack }) => {
     audioRef.current = new Audio('https://assets.mixkit.co/active_storage/sfx/2869/2869-preview.mp3');
   }, []);
 
-  const efetivoFiltrado = useMemo(() => {
-    const patentesExcluidas = ['MAJ', 'CEL', 'TEN', 'CAP'];
-    const termo = searchMilitar.toUpperCase();
+const efetivoFiltrado = useMemo(() => {
+  const patentesExcluidas = ['MAJ', 'CEL', 'TEN', 'CAP'];
+  // Remove espaços e deixa tudo em caixa alta para a busca
+  const termo = searchMilitar.trim().toUpperCase();
+  // Se for busca por número, limpa o "1000" do termo de busca também
+  const termoNumerico = termo.replace(/\D/g, '').replace(/^1000/, '');
 
-    return efetivo
-      .filter(p => {
-        const nomeUpper = (p.nome || "").toUpperCase();
-        const ehOficial = patentesExcluidas.some(pat => nomeUpper.startsWith(pat));
-        const bateBusca = nomeUpper.includes(termo);
-        return !ehOficial && bateBusca;
-      })
-      .sort((a, b) => (a.nome > b.nome ? 1 : -1));
-  }, [efetivo, searchMilitar]);
+  if (!termo) return []; // Opcional: retorna vazio se não digitou nada
+
+  return efetivo
+    .filter(p => {
+      const nomeMilitar = (p.nome || "").toUpperCase();
+      // Converte o RE da planilha para string e limpa o "1000" para comparar
+      const reMilitar = (p.matricula || p.re || "").toString().replace(/\D/g, '').replace(/^1000/, '');
+      
+      const ehOficial = patentesExcluidas.some(pat => nomeMilitar.startsWith(pat));
+      
+      // Busca por Nome OU por RE (limpo)
+      const bateNome = nomeMilitar.includes(termo);
+      const bateRE = termoNumerico && reMilitar.includes(termoNumerico);
+
+      return !ehOficial && (bateNome || bateRE);
+    })
+    .sort((a, b) => (a.nome > b.nome ? 1 : -1))
+    .slice(0, 50); // Limita a 50 resultados para não travar o celular
+}, [efetivo, searchMilitar]);
 
   const carregarDados = useCallback(async () => {
     if (!gasApi?.getVistoriasPendentes || !gasApi?.getViaturas) return;
