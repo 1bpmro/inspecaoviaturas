@@ -11,6 +11,7 @@ import ViaturaRow from '../components/garageiro/ViaturaRow';
 import VistoriaCard from '../components/garageiro/VistoriaCard';
 import VistoriaModal from '../components/garageiro/VistoriaModal';
 import GarageiroPowerModal from '../components/garageiro/GarageiroPowerModal';
+import FichaViaturaModal from '../components/garageiro/FichaViaturaModal';
 
 const normalizar = (s) => 
   (s || "")
@@ -32,7 +33,7 @@ const GarageiroDashboard = ({ onBack }) => {
   const [loading, setLoading] = useState(true);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
-  const [searchMilitar, setSearchMilitar] = useState(''); // NOVO: Busca interna do dropdown
+  const [searchMilitar, setSearchMilitar] = useState(''); 
   const [soundEnabled, setSoundEnabled] = useState(false);
   
   const [showModal, setShowModal] = useState(false);
@@ -41,6 +42,9 @@ const GarageiroDashboard = ({ onBack }) => {
 
   const [showPowerModal, setShowPowerModal] = useState(false);
   const [vtrPower, setVtrPower] = useState(null);
+
+  const [showFicha, setShowFicha] = useState(false);
+  const [vtrFicha, setVtrFicha] = useState(null);
   
   const [motoristaManual, setMotoristaManual] = useState("");
 
@@ -63,7 +67,6 @@ const GarageiroDashboard = ({ onBack }) => {
     audioRef.current = new Audio('https://assets.mixkit.co/active_storage/sfx/2869/2869-preview.mp3');
   }, []);
 
-  // Filtro do Efetivo: Exclui Oficiais + Filtro de Busca por texto
   const efetivoFiltrado = useMemo(() => {
     const patentesExcluidas = ['MAJ', 'CEL', 'TEN', 'CAP'];
     const termo = searchMilitar.toUpperCase();
@@ -71,11 +74,8 @@ const GarageiroDashboard = ({ onBack }) => {
     return efetivo
       .filter(p => {
         const nomeUpper = (p.nome || "").toUpperCase();
-        // 1. Filtra Patentes
         const ehOficial = patentesExcluidas.some(pat => nomeUpper.startsWith(pat));
-        // 2. Filtra por termo de busca (Nome ou RE se houver no objeto)
         const bateBusca = nomeUpper.includes(termo);
-        
         return !ehOficial && bateBusca;
       })
       .sort((a, b) => (a.nome > b.nome ? 1 : -1));
@@ -141,10 +141,8 @@ const GarageiroDashboard = ({ onBack }) => {
     const kmAtual = Number(v?.ULTIMOKM || 0);
     const kmTroca = Number(v?.KM_TROCA_OLEO ?? v?.KM_ULTIMATROCA ?? 0);
     const diff = Math.max(0, kmAtual - kmTroca);
-    
     if (diff >= 12000) return "BLOQUEADA";
     if (diff >= 9000) return "ATENÇÃO ÓLEO";
-
     const statusBase = normalizar(v?.STATUS || "OK");
     if (["MANUTENCAO", "OFICINA"].includes(statusBase)) return "MANUTENÇÃO";
     return "OK";
@@ -278,15 +276,24 @@ const GarageiroDashboard = ({ onBack }) => {
             <div className="bg-white rounded-[2.5rem] border border-slate-200 overflow-hidden shadow-sm">
               {viaturasFiltradas.length > 0 ? (
                 viaturasFiltradas.map(vtr => (
-                  <div key={vtr.PREFIXO} className="relative group">
-                    <ViaturaRow v={vtr} getStatus={getStatusViatura} />
-                    <button
+                  <div key={vtr.PREFIXO} className="relative group border-b last:border-0 border-slate-100">
+                    <div 
+                      className="cursor-pointer active:bg-slate-50 transition-all"
                       onClick={() => {
+                        setVtrFicha(vtr);
+                        setShowFicha(true);
+                      }}
+                    >
+                      <ViaturaRow v={vtr} getStatus={getStatusViatura} />
+                    </div>
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation(); // ✅ Evita abrir a ficha ao clicar no poder
                         setVtrPower(vtr);
                         setShowPowerModal(true);
                       }}
-                      className="absolute right-3 top-3 text-[10px] font-black bg-red-600 text-white px-2 py-1 rounded-lg opacity-0 group-hover:opacity-100 transition"
-                      >
+                      className="absolute right-4 top-1/2 -translate-y-1/2 w-10 h-10 flex items-center justify-center text-lg font-black bg-red-600 text-white rounded-2xl opacity-0 group-hover:opacity-100 transition shadow-lg shadow-red-600/30"
+                    >
                       ⚡
                     </button>
                   </div>
@@ -299,6 +306,14 @@ const GarageiroDashboard = ({ onBack }) => {
         )}
       </main>
 
+      {/* MODAL FICHA (DETALHES DA VTR) */}
+      {showFicha && vtrFicha && (
+        <FichaViaturaModal 
+          vtr={vtrFicha} 
+          onClose={() => { setShowFicha(false); setVtrFicha(null); }} 
+        />
+      )}
+
       {/* MODAL DE VISTORIA */}
       {showModal && selectedVtr && (
         <VistoriaModal 
@@ -308,6 +323,8 @@ const GarageiroDashboard = ({ onBack }) => {
           isSubmitting={isSubmitting}
           showBaixa={showBaixaOptions}
           setShowBaixa={setShowBaixaOptions}
+          motoristaManual={motoristaManual}
+          setMotoristaManual={setMotoristaManual}
           onClose={() => { 
             setShowModal(false); 
             setShowBaixaOptions(false); 
@@ -324,7 +341,6 @@ const GarageiroDashboard = ({ onBack }) => {
                 <label className="text-[10px] font-black text-amber-600 uppercase tracking-widest">Identificar Militar Real</label>
               </div>
               
-              {/* CAMPO DE BUSCA INTERNO */}
               <div className="relative mb-3">
                 <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-amber-400" />
                 <input 
@@ -337,7 +353,6 @@ const GarageiroDashboard = ({ onBack }) => {
                 />
               </div>
 
-              {/* DROPDOWN FILTRADO */}
               <select
                 className="w-full p-4 bg-white border-2 border-amber-300 rounded-xl font-black text-xs outline-none focus:ring-2 focus:ring-amber-500/20 uppercase cursor-pointer"
                 value={motoristaManual}
