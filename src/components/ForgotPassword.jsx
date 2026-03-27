@@ -3,7 +3,7 @@ import { gasApi } from "../api/gasClient";
 
 const ForgotPassword = ({ onBack }) => {
   const [step, setStep] = useState(1);
-  const [loading, setLoading] = useState(false); // <--- AÇÃO DE SEGURANÇA 1
+  const [loading, setLoading] = useState(false);
 
   const [re, setRe] = useState("");
   const [nome, setNome] = useState("");
@@ -18,13 +18,13 @@ const ForgotPassword = ({ onBack }) => {
       return;
     }
 
-    setLoading(true); // <--- AÇÃO DE SEGURANÇA 2 (Trava)
+    setLoading(true);
     try {
-      // Ajustado para o padrão gasApi.acao
-      const res = await gasApi.validarUsuarioReset({
-        re,
-        nome_guerra: nome.toUpperCase().trim()
-      });
+      // CORREÇÃO: Enviando parâmetros separados (re, nome_guerra)
+      const res = await gasApi.validarUsuarioReset(
+        re.trim(),
+        nome.toUpperCase().trim()
+      );
 
       if (res?.status === "ok") {
         setStep(2);
@@ -32,9 +32,10 @@ const ForgotPassword = ({ onBack }) => {
         alert(res?.message || "Dados não conferem com o registro do Batalhão.");
       }
     } catch (error) {
+      console.error("Erro na validação:", error);
       alert("Falha de conexão com o servidor.");
     } finally {
-      setLoading(false); // <--- AÇÃO DE SEGURANÇA 3 (Libera)
+      setLoading(false);
     }
   };
 
@@ -45,6 +46,11 @@ const ForgotPassword = ({ onBack }) => {
       return;
     }
 
+    if (novaSenha.length < 6) {
+      alert("A senha deve ter no mínimo 6 caracteres.");
+      return;
+    }
+
     if (novaSenha !== confirmar) {
       alert("As senhas digitadas não são iguais.");
       return;
@@ -52,18 +58,17 @@ const ForgotPassword = ({ onBack }) => {
 
     setLoading(true);
     try {
-      const res = await gasApi.resetPassword({
-        re,
-        novaSenha
-      });
+      // CORREÇÃO: Enviando parâmetros separados (re, novaSenha)
+      const res = await gasApi.resetPassword(re.trim(), novaSenha);
 
       if (res?.status === "ok") {
         alert("Senha alterada com sucesso! Use a nova senha para entrar.");
         onBack();
       } else {
-        alert("Erro ao atualizar senha no banco de dados.");
+        alert(res?.message || "Erro ao atualizar senha no banco de dados.");
       }
     } catch (error) {
+      console.error("Erro no reset:", error);
       alert("Erro crítico ao processar o reset.");
     } finally {
       setLoading(false);
@@ -75,8 +80,10 @@ const ForgotPassword = ({ onBack }) => {
       
       {step === 1 && (
         <div className="w-full max-w-md space-y-4">
-          <h2 className="text-xl font-black text-center text-amber-500 uppercase tracking-wider">Recuperar Senha</h2>
-          <p className="text-xs text-center text-slate-400">Valide seus dados para criar uma nova senha.</p>
+          <div className="text-center space-y-2">
+            <h2 className="text-xl font-black text-amber-500 uppercase tracking-wider">Recuperar Senha</h2>
+            <p className="text-xs text-slate-400">Valide seus dados para criar uma nova senha.</p>
+          </div>
 
           <input
             placeholder="MATRÍCULA (RE)"
@@ -102,7 +109,7 @@ const ForgotPassword = ({ onBack }) => {
             {loading ? "VALIDANDO..." : "VALIDAR"}
           </button>
 
-          <button onClick={onBack} disabled={loading} className="w-full text-sm text-slate-400 hover:text-white">
+          <button onClick={onBack} disabled={loading} className="w-full text-sm text-slate-400 hover:text-white transition-colors">
             Voltar ao Login
           </button>
         </div>
@@ -110,8 +117,10 @@ const ForgotPassword = ({ onBack }) => {
 
       {step === 2 && (
         <div className="w-full max-w-md space-y-4">
-          <h2 className="text-xl font-black text-center text-emerald-500 uppercase tracking-wider">Nova Senha</h2>
-          <p className="text-xs text-center text-slate-400">Defina uma senha forte que você não esqueça.</p>
+          <div className="text-center space-y-2">
+            <h2 className="text-xl font-black text-emerald-500 uppercase tracking-wider">Nova Senha</h2>
+            <p className="text-xs text-slate-400">Defina uma senha de pelo menos 6 caracteres.</p>
+          </div>
 
           <input
             type="password"
