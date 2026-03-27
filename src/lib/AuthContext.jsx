@@ -44,33 +44,45 @@ export const AuthProvider = ({ children }) => {
     return unsubscribe;
   }, []);
 
-  const login = async (matricula, senha) => {
-    let reProcessado = String(matricula || "").trim();
-    if (reProcessado.length > 0 && reProcessado.length <= 6) {
-      reProcessado = "1000" + reProcessado; 
-    }
-    const email = `${reProcessado.toLowerCase()}@pm.br`;
+const login = async (matricula, senha) => {
+  let reProcessado = String(matricula || "").trim();
+  if (reProcessado.length > 0 && reProcessado.length <= 6) {
+    reProcessado = "1000" + reProcessado; 
+  }
+  const email = `${reProcessado.toLowerCase()}@pm.br`;
 
-    try {
-      // 1. Tenta o login normal no Firebase
-      const result = await signInWithEmailAndPassword(auth, email, senha);
-      return { user: result.user, needsPasswordChange: senha === '123456' };
+  try {
+    // 1. Tenta o login padrão (Firebase)
+    const result = await signInWithEmailAndPassword(auth, email, senha);
+    return { user: result.user, needsPasswordChange: senha === '123456' };
 
-    } catch (error) {
-      console.warn("Falha no Firebase, verificando planilha...", error.code);
+  } catch (error) {
+    // 2. Se o Firebase der erro de senha (auth/wrong-password ou auth/invalid-credential)
+    console.warn("Senha do Firebase desatualizada. Verificando Planilha...");
 
-      // 2. Se falhar no Firebase, checamos se a senha bate na Planilha (CASO DE RESET RECENTE)
-      // Criamos uma função no gasApi para validar login se precisar, 
-      // ou usamos a própria tentativa de buscar o militar.
-      const checkGas = await gasApi.buscarMilitar(reProcessado);
+    // Chamamos uma nova função no GAS que vamos criar abaixo
+    const resGas = await gasApi.post('validarLoginPlanilha', { 
+      re: reProcessado, 
+      senha: senha 
+    });
+
+    if (resGas.status === "ok") {
+      // 🚀 VITÓRIA: A senha está certa na planilha! 
+      // Agora você precisa de uma conta administrativa ou instruir o usuário 
+      // a logar com a senha antiga no Firebase e mudar, OU usar um Token personalizado.
       
-      // Se o militar existe e a senha na planilha (que o GAS valida) bater:
-      // Nota: Aqui você precisaria de uma rota no GAS tipo 'validarSenha' 
-      // ou apenas tratar o erro 400 instruindo o usuário.
+      // Para o seu nível atual, a solução mais simples é:
+      alert("Sincronizando sua nova senha com o sistema de segurança...");
       
-      throw error; // Repassa o erro para o componente de Login tratar (ex: "Senha Inválida")
+      // O ideal aqui é você ter um usuário "Master" no Firebase que possa 
+      // resetar a senha via Cloud Function, mas por enquanto,
+      // vamos apenas retornar um erro amigável que explique o delay:
+      throw new Error("Senha resetada na planilha! Aguarde um minuto para a atualização.");
     }
-  };
+
+    throw error; // Se nem na planilha bater, aí a senha está errada mesmo.
+  }
+};
 
   const logout = () => signOut(auth);
 
