@@ -29,6 +29,7 @@ const preparePayload = (item) => {
 };
 
 export const gasApi = {
+  /** Método Base para chamadas POST */
   post: async (action, payload = {}) => {
     const optimizedPayload = preparePayload(payload);
 
@@ -53,46 +54,55 @@ export const gasApi = {
     }
   },
 
-  // --- MÉTODOS DO GARAGEIRO (ADICIONADOS) ---
-  
-  /** Busca vistorias que estão com status AGUARDANDO/PÁTIO */
+  // --- MÉTODOS DO GARAGEIRO ---
   getVistoriasPendentes: () => gasApi.post('getVistoriasPendentes'),
 
-  // --- PODER DO GARAGEIRO ---
-forcarAcaoViatura: async (dados) => {
-  const res = await gasApi.post('forcarAcaoViatura', dados);
-
-  if (!res || res.status !== "success") {
-    throw new Error(res?.message || "Erro ao executar ação na viatura");
-  }
-
-  // Sync Firebase (opcional mas recomendado)
-  try {
-    const vtrRef = doc(db, "viaturas", dados.prefixo);
-    await updateDoc(vtrRef, {
-      status: dados.acao === "LIBERAR" ? "DISPONIVEL" : "MANUTENCAO",
-      atualizadoEm: new Date().toISOString()
-    });
-  } catch (e) {
-    console.warn("Firebase Sync (garageiro) falhou");
-  }
-
-  return res;
-},
+  /** SOLUÇÃO DO ERRO: Busca a última vistoria de uma VTR específica */
+  getUltimaVistoria: (prefixo) => gasApi.post('getUltimaVistoria', { prefixo }),
 
   /** Finaliza a análise do garageiro e libera ou baixa a VTR */
   confirmarVistoriaGarageiro: (dados) => gasApi.post('confirmarVistoriaGarageiro', dados),
 
-  // --- MÉTODOS DE VISTORIA (ENTREGA) ---
-  saveVistoria: async (dados) => {
-    return await gasApi.post('saveVistoria', dados);
+  /** Força uma ação administrativa na viatura */
+  forcarAcaoViatura: async (dados) => {
+    const res = await gasApi.post('forcarAcaoViatura', dados);
+    if (res?.status === "success" || res?.status === "ok") {
+      try {
+        const vtrRef = doc(db, "viaturas", dados.prefixo);
+        await updateDoc(vtrRef, {
+          status: dados.acao === "LIBERAR" ? "DISPONIVEL" : "MANUTENCAO",
+          atualizadoEm: new Date().toISOString()
+        });
+      } catch (e) { console.warn("Firebase Sync (garageiro) falhou"); }
+    }
+    return res;
   },
 
-  // --- GESTÃO DE FROTA E STATUS ---
+  // --- VISTORIAS E MANUTENÇÃO ---
+  saveVistoria: (dados) => gasApi.post('saveVistoria', dados),
+  registrarManutencao: (dados) => gasApi.post('registrarManutencao', dados),
+  getViaturas: () => gasApi.post('getViaturas'),
+
+  // --- EFETIVO E SEGURANÇA ---
+  getEfetivo: () => gasApi.post('getEfetivoCompleto'), // Apelido para facilitar
+  getEfetivoCompleto: () => gasApi.post('getEfetivoCompleto'),
+  buscarMilitar: (re) => gasApi.post('buscarMilitar', { re }),
+
+  /** Validação de RE + Nome de Guerra para Reset */
+  validarUsuarioReset: (re, nome_guerra) => 
+    gasApi.post('validarUsuarioReset', { re, nome_guerra }),
+
+  /** Reset final de senha na planilha */
+  resetPassword: (re, novaSenha) => 
+    gasApi.post('resetPassword', { re, novaSenha }),
+
+  /** Troca de senha logado */
+  changePassword: (re, senhaAtual, novaSenha) => 
+    gasApi.post('changePassword', { re, senhaAtual, novaSenha }),
+
+  // --- GESTÃO DE FROTA ---
   alterarStatusViatura: async (prefixo, novoStatus, info = {}) => {
     const res = await gasApi.post('alterarStatusViatura', { prefixo, novoStatus, ...info });
-    
-    // Sincronia Firebase: Mantém o Dashboard Admin atualizado sem delay
     try {
       const vtrRef = doc(db, "viaturas", prefixo);
       await updateDoc(vtrRef, {
@@ -101,20 +111,9 @@ forcarAcaoViatura: async (dados) => {
         atualizadoEm: new Date().toISOString()
       });
     } catch (e) { console.warn("Firebase Sync Offline"); }
-    
     return res;
   },
-
-  // --- SEGURANÇA E USUÁRIO ---
-  changePassword: async (re, senhaAtual, novaSenha) => {
-    return await gasApi.post('changePassword', { re, senhaAtual, novaSenha });
-  },
-
-  buscarMilitar: (re) => gasApi.post('buscarMilitar', { re }),
-  getViaturas: () => gasApi.post('getViaturas'),
-  getEfetivoCompleto: () => gasApi.post('getEfetivoCompleto'),
-  registrarManutencao: (dados) => gasApi.post('registrarManutencao', dados),
 };
 
-// Disponibiliza no window para debug se necessário
+// Debug no console do navegador
 window.gasApi = gasApi;
