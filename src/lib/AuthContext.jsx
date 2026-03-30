@@ -1,8 +1,17 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
 import { signInWithEmailAndPassword, onAuthStateChanged, signOut, updatePassword } from 'firebase/auth';
 import { auth, db } from './firebase';
-import { doc, getDoc, setDoc, serverTimestamp } from 'firebase/firestore';
-import { gasApi } from '../api/gasClient'; // Importe sua API do GAS
+import { 
+  doc, 
+  getDoc, 
+  setDoc, 
+  serverTimestamp, 
+  collection, 
+  query, 
+  where, 
+  getDocs 
+} from 'firebase/firestore';
+import { gasApi } from '../api/gasClient';
 
 const AuthContext = createContext({});
 
@@ -17,10 +26,10 @@ export const AuthProvider = ({ children }) => {
     const unsubscribe = onAuthStateChanged(auth, async (firebaseUser) => {
       if (firebaseUser) {
         try {
-          // 1. Extrai o RE do e-mail do usuário logado
+          // 1. Extrai o RE do e-mail do usuário logado (ex: 100012345@pm.br)
           const reUsuario = firebaseUser.email?.split('@')[0];
 
-          // 2. EM VEZ DE getDoc, fazemos uma QUERY pelo campo "re"
+          // 2. Busca no Firestore pelo campo "re" em vez do UID
           const q = query(
             collection(db, "usuarios"),
             where("re", "==", reUsuario)
@@ -29,18 +38,18 @@ export const AuthProvider = ({ children }) => {
           const querySnapshot = await getDocs(q);
 
           if (!querySnapshot.empty) {
-            // Achou o militar pelo RE!
+            // Encontrou o documento criado pelo Google Sheets (ID numérico)
             const userDoc = querySnapshot.docs[0];
             const dados = userDoc.data();
             
             setUser({ 
               uid: firebaseUser.uid, 
-              docId: userDoc.id, // Guarda o ID do doc se precisar atualizar depois
+              docId: userDoc.id, // Este será o RE
               ...dados,
               nome: dados.nome_guerra || "Militar" 
             });
           } else {
-            // Se não achar no banco, mantém o padrão
+            // Caso o militar esteja no Auth mas não tenha sido sincronizado no Firestore
             setUser({ 
               uid: firebaseUser.uid, 
               re: reUsuario || "---",
@@ -59,62 +68,55 @@ export const AuthProvider = ({ children }) => {
     return unsubscribe;
   }, []);
 
-const login = async (matricula, senha) => {
-  let reProcessado = String(matricula || "").trim();
-  if (reProcessado.length > 0 && reProcessado.length <= 6) {
-    reProcessado = "1000" + reProcessado; 
-  }
-  const email = `${reProcessado.toLowerCase()}@pm.br`;
-
-  try {
-    // 1. Tenta o login padrão (Firebase)
-    const result = await signInWithEmailAndPassword(auth, email, senha);
-    return { user: result.user, needsPasswordChange: senha === '123456' };
-
-  } catch (error) {
-    // 2. Se o Firebase der erro de senha (auth/wrong-password ou auth/invalid-credential)
-    console.warn("Senha do Firebase desatualizada. Verificando Planilha...");
-
-    // Chamamos uma nova função no GAS que vamos criar abaixo
-    const resGas = await gasApi.post('validarLoginPlanilha', { 
-      re: reProcessado, 
-      senha: senha 
-    });
-
-    if (resGas.status === "ok") {
-      // 🚀 VITÓRIA: A senha está certa na planilha! 
-      // Agora você precisa de uma conta administrativa ou instruir o usuário 
-      // a logar com a senha antiga no Firebase e mudar, OU usar um Token personalizado.
-      
-      // Para o seu nível atual, a solução mais simples é:
-      alert("Sincronizando sua nova senha com o sistema de segurança...");
-      
-      // O ideal aqui é você ter um usuário "Master" no Firebase que possa 
-      // resetar a senha via Cloud Function, mas por enquanto,
-      // vamos apenas retornar um erro amigável que explique o delay:
-      throw new Error("Senha resetada na planilha! Aguarde um minuto para a atualização.");
+  const login = async (matricula, senha) => {
+    let reProcessado = String(matricula || "").trim();
+    if (reProcessado.length > 0 && reProcessado.length <= 6) {
+      reProcessado = "1000" + reProcessado; 
     }
+    const email = `${reProcessado.toLowerCase()}@pm.br`;
 
-    throw error; // Se nem na planilha bater, aí a senha está errada mesmo.
-  }
-};
+    try {
+      const result = await signInWithEmailAndPassword(auth, email, senha);
+      return { user: result.user, needsPasswordChange: senha === '123456' };
+    } catch (error) {
+      console.warn("Falha no login Firebase. Verificando Planilha...");
+
+      // Tenta validar na planilha via GAS caso a senha tenha sido resetada lá
+      try {
+        const resGas = await gasApi.post('validarLoginPlanilha', { 
+          re: reProcessado, 
+          senha: senha 
+        });
+
+        if (resGas.status === "ok") {
+          alert("Sincronizando sua nova senha com o sistema de segurança...");
+          throw new Error("Senha atualizada na planilha! Aguarde 1 minuto para o Firebase processar.");
+        }
+      } catch (gasError) {
+        console.error("Erro na validação GAS:", gasError);
+      }
+
+      throw error;
+    }
+  };
 
   const logout = () => signOut(auth);
 
   const mudarSenha = async (novaSenha) => {
     if (auth.currentUser) {
-      // Atualiza no Firebase Auth
+      const reUsuario = auth.currentUser.email.split('@')[0];
+
+      // 1. Atualiza a senha no Firebase Auth (Login)
       await updatePassword(auth.currentUser, novaSenha);
       
-      // Atualiza no Firestore
+      // 2. Atualiza o status no Firestore usando o RE como ID
       await setDoc(doc(db, "usuarios", reUsuario), {
         senhaAlterada: true,
         dataUltimaTroca: serverTimestamp() 
       }, { merge: true });
 
-      // Opcional: Atualizar na Planilha também para manter paridade total
-      const re = auth.currentUser.email.split('@')[0];
-      await gasApi.resetPassword(re, novaSenha);
+      // 3. Sincroniza de volta com a Planilha
+      await gasApi.resetPassword(reUsuario, novaSenha);
     }
   };
 
