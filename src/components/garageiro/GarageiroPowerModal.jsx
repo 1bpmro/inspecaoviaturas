@@ -1,5 +1,5 @@
 import React, { useState } from "react";
-import { X, AlertTriangle, Loader2 } from "lucide-react"; // Adicionei Loader2 para o loading
+import { X, AlertTriangle, Loader2 } from "lucide-react";
 import { gasApi } from "../../api/gasClient";
 
 const GarageiroPowerModal = ({ viatura, onClose, user, onSuccess }) => {
@@ -10,12 +10,12 @@ const GarageiroPowerModal = ({ viatura, onClose, user, onSuccess }) => {
 
   if (!viatura) return null;
 
-  // Normalização do prefixo para evitar erros de comparação
+  // Normalização do prefixo
   const prefixoOriginal = viatura.PREFIXO || "";
   const prefixoAlvo = prefixoOriginal.toString().trim().toUpperCase();
 
-  const executarAcao = async (acaoStatus) => {
-    // Validação Robusta de Prefixo
+  const executarAcao = async (acaoParaGAS) => {
+    // Validação de Prefixo
     if (confirmText.trim().toUpperCase() !== prefixoAlvo) {
       alert(`Confirmação incorreta. Digite exatamente: ${prefixoAlvo}`);
       return;
@@ -29,11 +29,16 @@ const GarageiroPowerModal = ({ viatura, onClose, user, onSuccess }) => {
     setLoading(true);
 
     try {
-      // Chamada para a função do GAS
-      // Nota: Usei o objeto de payload esperado pelas suas funções forcarAcaoViatura/alterarStatusVtr
-      const response = await gasApi.alterarStatusVtr(prefixoAlvo, acaoStatus, {
+      /**
+       * AJUSTE PRINCIPAL: 
+       * Alterado de 'alterarStatusVtr' para 'forcarAcaoViatura' 
+       * para bater com o seu gasClient.js
+       */
+      const response = await gasApi.forcarAcaoViatura({
+        prefixo: prefixoAlvo,
+        acao: acaoParaGAS, // "LIBERAR" ou "BAIXAR"
         motivo: `AÇÃO GARAGEIRO: ${motivo.trim().toUpperCase()}`,
-        re_responsavel: `${user?.re || 'NI'} - ${user?.nome || 'SISTEMA'}`,
+        garageiro_re: `${user?.re || 'NI'} - ${user?.nome || 'SISTEMA'}`,
         km_registro: km ? Number(km) : null
       });
 
@@ -84,7 +89,7 @@ const GarageiroPowerModal = ({ viatura, onClose, user, onSuccess }) => {
               placeholder="EX: PNEU FURADO, TROCA DE ÓLEO, ETC..."
               className="w-full p-4 bg-slate-100 rounded-2xl text-xs font-bold focus:ring-2 focus:ring-blue-500 outline-none transition-all min-h-[80px]"
               value={motivo}
-              onChange={(e) => setMotivo(e.target.value)}
+              onChange={(e) => setMotivo(e.target.value.toUpperCase())}
               disabled={loading}
             />
           </div>
@@ -118,7 +123,7 @@ const GarageiroPowerModal = ({ viatura, onClose, user, onSuccess }) => {
         <div className="grid grid-cols-2 gap-3 mt-8">
           <button
             disabled={loading}
-            onClick={() => executarAcao("DISPONIVEL")}
+            onClick={() => executarAcao("LIBERAR")}
             className="flex items-center justify-center gap-2 bg-emerald-500 hover:bg-emerald-600 disabled:bg-slate-300 text-white p-4 rounded-2xl text-[10px] font-black uppercase tracking-widest transition-all active:scale-95"
           >
             {loading ? <Loader2 className="animate-spin" size={16} /> : "LIBERAR VTR"}
@@ -126,26 +131,26 @@ const GarageiroPowerModal = ({ viatura, onClose, user, onSuccess }) => {
 
           <button
             disabled={loading}
-            onClick={() => executarAcao("MANUTENCAO")}
+            onClick={() => executarAcao("BAIXAR")}
             className="bg-slate-900 hover:bg-red-600 disabled:bg-slate-300 text-white p-4 rounded-2xl text-[10px] font-black uppercase tracking-widest transition-all active:scale-95"
           >
-            BAIXAR MANUT.
+            {loading ? <Loader2 className="animate-spin" size={16} /> : "BAIXAR MANUT."}
           </button>
 
           <button
             disabled={loading}
-            onClick={() => executarAcao("MANUTENCAO")}
+            onClick={() => executarAcao("BLOQUEAR")}
             className="bg-orange-500 hover:bg-orange-600 disabled:bg-slate-300 text-white p-4 rounded-2xl text-[10px] font-black uppercase tracking-widest transition-all active:scale-95"
           >
-            OFICINA / EXTERNO
+            {loading ? <Loader2 className="animate-spin" size={16} /> : "OFICINA / EXT"}
           </button>
 
           <button
             disabled={loading}
-            onClick={() => executarAcao("DISPONIVEL")}
+            onClick={() => executarAcao("LIBERAR")}
             className="border-2 border-slate-200 text-slate-400 hover:bg-blue-50 hover:text-blue-600 hover:border-blue-200 p-4 rounded-2xl text-[10px] font-black uppercase tracking-widest transition-all"
           >
-            FORÇAR STATUS
+             {loading ? <Loader2 className="animate-spin" size={16} /> : "FORÇAR STATUS"}
           </button>
         </div>
       </div>
