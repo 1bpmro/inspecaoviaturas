@@ -1,3 +1,6 @@
+import React from 'react';
+import { X, ShieldCheck } from 'lucide-react'; // ADICIONE ESTA LINHA
+
 const FichaViaturaModal = ({ vtr, onClose }) => {
   if (!vtr) return null;
 
