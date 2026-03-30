@@ -1,5 +1,5 @@
 import React, { useState } from "react";
-import { X, AlertTriangle } from "lucide-react";
+import { X, AlertTriangle, Loader2 } from "lucide-react"; // Adicionei Loader2 para o loading
 import { gasApi } from "../../api/gasClient";
 
 const GarageiroPowerModal = ({ viatura, onClose, user, onSuccess }) => {
@@ -10,119 +10,143 @@ const GarageiroPowerModal = ({ viatura, onClose, user, onSuccess }) => {
 
   if (!viatura) return null;
 
-  const prefixo = viatura.PREFIXO;
+  // Normalização do prefixo para evitar erros de comparação
+  const prefixoOriginal = viatura.PREFIXO || "";
+  const prefixoAlvo = prefixoOriginal.toString().trim().toUpperCase();
 
-  const executarAcao = async (acao) => {
-    if (confirmText !== prefixo) {
-      alert("Digite o PREFIXO para confirmar.");
+  const executarAcao = async (acaoStatus) => {
+    // Validação Robusta de Prefixo
+    if (confirmText.trim().toUpperCase() !== prefixoAlvo) {
+      alert(`Confirmação incorreta. Digite exatamente: ${prefixoAlvo}`);
       return;
     }
 
     if (!motivo.trim()) {
-      alert("Motivo obrigatório.");
+      alert("Por favor, informe o motivo da alteração.");
       return;
     }
 
     setLoading(true);
 
     try {
-      await gasApi.alterarStatusVtr(prefixo, acao, {
-        motivo: `AÇÃO GARAGEIRO: ${motivo}`,
-        re_responsavel: `${user?.re} - ${user?.nome}`,
+      // Chamada para a função do GAS
+      // Nota: Usei o objeto de payload esperado pelas suas funções forcarAcaoViatura/alterarStatusVtr
+      const response = await gasApi.alterarStatusVtr(prefixoAlvo, acaoStatus, {
+        motivo: `AÇÃO GARAGEIRO: ${motivo.trim().toUpperCase()}`,
+        re_responsavel: `${user?.re || 'NI'} - ${user?.nome || 'SISTEMA'}`,
         km_registro: km ? Number(km) : null
       });
 
-      onSuccess?.();
-      onClose();
+      if (response.status === "success" || response.status === "ok") {
+        onSuccess?.();
+        onClose();
+      } else {
+        throw new Error(response.message || "Erro retornado pelo servidor.");
+      }
     } catch (e) {
-      alert("Erro na ação.");
+      console.error("Erro na ação do garageiro:", e);
+      alert("Falha ao processar ação. Verifique a conexão com a planilha.");
     } finally {
       setLoading(false);
     }
   };
 
   return (
-    <div className="fixed inset-0 bg-black/70 z-50 flex items-center justify-center p-4">
-      <div className="bg-white rounded-3xl w-full max-w-md p-6 shadow-2xl">
-
+    <div className="fixed inset-0 bg-black/80 z-[110] flex items-center justify-center p-4 backdrop-blur-sm">
+      <div className="bg-white rounded-[2.5rem] w-full max-w-md p-8 shadow-2xl animate-in zoom-in-95 duration-200">
+        
         {/* HEADER */}
-        <div className="flex justify-between items-center mb-4">
-          <h2 className="font-black text-sm uppercase">
-            ⚡ Ações Avançadas
-          </h2>
-          <button onClick={onClose}>
-            <X />
+        <div className="flex justify-between items-center mb-6">
+          <div className="flex items-center gap-2 text-slate-900">
+            <span className="text-xl">🚨</span>
+            <h2 className="font-black text-sm uppercase tracking-tighter">Ações Avançadas</h2>
+          </div>
+          <button 
+            onClick={onClose} 
+            className="p-2 hover:bg-slate-100 rounded-full transition-colors"
+            disabled={loading}
+          >
+            <X size={20} />
           </button>
         </div>
 
-        {/* INFO */}
-        <div className="mb-4 text-xs font-bold">
-          PREFIXO: <span className="text-amber-600">{prefixo}</span>
+        {/* INFO CARD */}
+        <div className="mb-6 p-4 bg-slate-50 rounded-2xl border border-slate-100">
+          <p className="text-[10px] font-black text-slate-400 uppercase mb-1">Viatura Selecionada</p>
+          <div className="text-2xl font-black text-slate-900">{prefixoAlvo}</div>
         </div>
 
-        {/* MOTIVO */}
-        <textarea
-          placeholder="MOTIVO (OBRIGATÓRIO)"
-          className="w-full p-3 border rounded-xl text-xs font-bold mb-3"
-          value={motivo}
-          onChange={(e) => setMotivo(e.target.value.toUpperCase())}
-        />
+        {/* FORMULÁRIO */}
+        <div className="space-y-4">
+          <div>
+            <label className="text-[10px] font-black text-slate-500 uppercase ml-2">Motivo da Alteração</label>
+            <textarea
+              placeholder="EX: PNEU FURADO, TROCA DE ÓLEO, ETC..."
+              className="w-full p-4 bg-slate-100 rounded-2xl text-xs font-bold focus:ring-2 focus:ring-blue-500 outline-none transition-all min-h-[80px]"
+              value={motivo}
+              onChange={(e) => setMotivo(e.target.value)}
+              disabled={loading}
+            />
+          </div>
 
-        {/* KM */}
-        <input
-          placeholder="KM (opcional)"
-          className="w-full p-3 border rounded-xl text-xs font-bold mb-3"
-          value={km}
-          onChange={(e) => setKm(e.target.value)}
-        />
-
-        {/* CONFIRMAÇÃO */}
-        <div className="mb-4">
-          <p className="text-[10px] font-black text-red-600 mb-1 flex items-center gap-1">
-            <AlertTriangle size={12} /> DIGITE O PREFIXO PARA CONFIRMAR
-          </p>
-          <input
-            className="w-full p-3 border-2 border-red-400 rounded-xl text-xs font-black"
-            value={confirmText}
-            onChange={(e) => setConfirmText(e.target.value.toUpperCase())}
-          />
+          <div className="grid grid-cols-2 gap-4">
+            <div>
+              <label className="text-[10px] font-black text-slate-500 uppercase ml-2">KM Atual (Opcional)</label>
+              <input
+                type="number"
+                placeholder="00000"
+                className="w-full p-4 bg-slate-100 rounded-2xl text-xs font-bold outline-none"
+                value={km}
+                onChange={(e) => setKm(e.target.value)}
+                disabled={loading}
+              />
+            </div>
+            <div>
+              <label className="text-[10px] font-black text-red-500 uppercase ml-2">Confirmar Prefixo</label>
+              <input
+                placeholder={prefixoAlvo}
+                className="w-full p-4 bg-red-50 border-2 border-red-100 rounded-2xl text-xs font-black text-red-600 outline-none focus:border-red-400 transition-all"
+                value={confirmText}
+                onChange={(e) => setConfirmText(e.target.value.toUpperCase())}
+                disabled={loading}
+              />
+            </div>
+          </div>
         </div>
 
-        {/* AÇÕES */}
-        <div className="grid grid-cols-2 gap-2">
-
+        {/* BOTÕES DE AÇÃO */}
+        <div className="grid grid-cols-2 gap-3 mt-8">
           <button
             disabled={loading}
             onClick={() => executarAcao("DISPONIVEL")}
-            className="bg-emerald-500 text-white p-3 rounded-xl text-xs font-black"
+            className="flex items-center justify-center gap-2 bg-emerald-500 hover:bg-emerald-600 disabled:bg-slate-300 text-white p-4 rounded-2xl text-[10px] font-black uppercase tracking-widest transition-all active:scale-95"
           >
-            LIBERAR
+            {loading ? <Loader2 className="animate-spin" size={16} /> : "LIBERAR VTR"}
           </button>
 
           <button
             disabled={loading}
             onClick={() => executarAcao("MANUTENCAO")}
-            className="bg-red-600 text-white p-3 rounded-xl text-xs font-black"
+            className="bg-slate-900 hover:bg-red-600 disabled:bg-slate-300 text-white p-4 rounded-2xl text-[10px] font-black uppercase tracking-widest transition-all active:scale-95"
           >
-            MANUTENÇÃO
+            BAIXAR MANUT.
           </button>
 
           <button
             disabled={loading}
-            onClick={() => executarAcao("OFICINA")}
-            className="bg-orange-500 text-white p-3 rounded-xl text-xs font-black"
+            onClick={() => executarAcao("MANUTENCAO")}
+            className="bg-orange-500 hover:bg-orange-600 disabled:bg-slate-300 text-white p-4 rounded-2xl text-[10px] font-black uppercase tracking-widest transition-all active:scale-95"
           >
-            OFICINA
+            OFICINA / EXTERNO
           </button>
 
           <button
             disabled={loading}
             onClick={() => executarAcao("DISPONIVEL")}
-            className="bg-blue-600 text-white p-3 rounded-xl text-xs font-black"
+            className="border-2 border-slate-200 text-slate-400 hover:bg-blue-50 hover:text-blue-600 hover:border-blue-200 p-4 rounded-2xl text-[10px] font-black uppercase tracking-widest transition-all"
           >
-            FORÇAR LIBERAÇÃO
+            FORÇAR STATUS
           </button>
-
         </div>
       </div>
     </div>
