@@ -17,18 +17,33 @@ export const AuthProvider = ({ children }) => {
     const unsubscribe = onAuthStateChanged(auth, async (firebaseUser) => {
       if (firebaseUser) {
         try {
-          const userDoc = await getDoc(doc(db, "usuarios", firebaseUser.uid));
-          if (userDoc.exists()) {
+          // 1. Extrai o RE do e-mail do usuário logado
+          const reUsuario = firebaseUser.email?.split('@')[0];
+
+          // 2. EM VEZ DE getDoc, fazemos uma QUERY pelo campo "re"
+          const q = query(
+            collection(db, "usuarios"),
+            where("re", "==", reUsuario)
+          );
+          
+          const querySnapshot = await getDocs(q);
+
+          if (!querySnapshot.empty) {
+            // Achou o militar pelo RE!
+            const userDoc = querySnapshot.docs[0];
             const dados = userDoc.data();
+            
             setUser({ 
               uid: firebaseUser.uid, 
+              docId: userDoc.id, // Guarda o ID do doc se precisar atualizar depois
               ...dados,
               nome: dados.nome_guerra || "Militar" 
             });
           } else {
+            // Se não achar no banco, mantém o padrão
             setUser({ 
               uid: firebaseUser.uid, 
-              re: firebaseUser.email?.split('@')[0] || "---",
+              re: reUsuario || "---",
               nome: "Militar",
               nivelAcesso: 'POLICIAL'
             });
@@ -92,7 +107,7 @@ const login = async (matricula, senha) => {
       await updatePassword(auth.currentUser, novaSenha);
       
       // Atualiza no Firestore
-      await setDoc(doc(db, "usuarios", auth.currentUser.uid), {
+      await setDoc(doc(db, "usuarios", reUsuario), {
         senhaAlterada: true,
         dataUltimaTroca: serverTimestamp() 
       }, { merge: true });
