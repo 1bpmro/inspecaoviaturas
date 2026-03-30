@@ -26,39 +26,52 @@ export const AuthProvider = ({ children }) => {
     const unsubscribe = onAuthStateChanged(auth, async (firebaseUser) => {
       if (firebaseUser) {
         try {
-          // 1. Extrai o RE do e-mail do usuário logado (ex: 100012345@pm.br)
-          const reUsuario = firebaseUser.email?.split('@')[0];
+          // 1. Extrai e normaliza o RE do e-mail
+          let reBase = firebaseUser.email?.split('@')[0] || "";
+          let reUsuario = reBase.trim().toLowerCase();
 
-          // 2. Busca no Firestore pelo campo "re" em vez do UID
-          const q = query(
-            collection(db, "usuarios"),
-            where("re", "==", reUsuario)
-          );
-          
-          const querySnapshot = await getDocs(q);
+          console.log("Sistema: Tentando carregar perfil para o RE:", reUsuario);
 
-          if (!querySnapshot.empty) {
-            // Encontrou o documento criado pelo Google Sheets (ID numérico)
-            const userDoc = querySnapshot.docs[0];
-            const dados = userDoc.data();
-            
+          // 2. TENTATIVA A: Busca direta pelo ID (Caminho mais rápido)
+          const userRef = doc(db, "usuarios", reUsuario);
+          const userSnap = await getDoc(userRef);
+
+          if (userSnap.exists()) {
+            const dados = userSnap.data();
+            console.log("Sucesso: Perfil carregado via ID direto.");
             setUser({ 
               uid: firebaseUser.uid, 
-              docId: userDoc.id, // Este será o RE
               ...dados,
               nome: dados.nome_guerra || "Militar" 
             });
           } else {
-            // Caso o militar esteja no Auth mas não tenha sido sincronizado no Firestore
-            setUser({ 
-              uid: firebaseUser.uid, 
-              re: reUsuario || "---",
-              nome: "Militar",
-              nivelAcesso: 'POLICIAL'
-            });
+            // 3. TENTATIVA B: Busca via Query (Fallback se o ID do doc for diferente)
+            console.warn("Aviso: Doc não achado pelo ID. Tentando busca por campo 're'...");
+            const q = query(collection(db, "usuarios"), where("re", "==", reUsuario));
+            const querySnapshot = await getDocs(q);
+
+            if (!querySnapshot.empty) {
+              const userDoc = querySnapshot.docs[0];
+              const dados = userDoc.data();
+              console.log("Sucesso: Perfil carregado via Query.");
+              setUser({ 
+                uid: firebaseUser.uid, 
+                ...dados,
+                nome: dados.nome_guerra || "Militar" 
+              });
+            } else {
+              // 4. Se nada funcionar, define perfil básico para não quebrar o App
+              console.error("Erro: Militar não encontrado no Firestore.");
+              setUser({ 
+                uid: firebaseUser.uid, 
+                re: reUsuario,
+                nome: "Militar",
+                nivelAcesso: 'POLICIAL'
+              });
+            }
           }
         } catch (error) {
-          console.error("Erro ao carregar perfil:", error);
+          console.error("Erro crítico ao carregar perfil:", error);
         }
       } else {
         setUser(null);
@@ -69,11 +82,11 @@ export const AuthProvider = ({ children }) => {
   }, []);
 
   const login = async (matricula, senha) => {
-    let reProcessado = String(matricula || "").trim();
+    let reProcessado = String(matricula || "").trim().toLowerCase();
     if (reProcessado.length > 0 && reProcessado.length <= 6) {
       reProcessado = "1000" + reProcessado; 
     }
-    const email = `${reProcessado.toLowerCase()}@pm.br`;
+    const email = `${reProcessado}@pm.br`;
 
     try {
       const result = await signInWithEmailAndPassword(auth, email, senha);
@@ -81,14 +94,13 @@ export const AuthProvider = ({ children }) => {
     } catch (error) {
       console.warn("Falha no login Firebase. Verificando Planilha...");
 
-      // Tenta validar na planilha via GAS caso a senha tenha sido resetada lá
       try {
         const resGas = await gasApi.post('validarLoginPlanilha', { 
           re: reProcessado, 
           senha: senha 
         });
 
-        if (resGas.status === "ok") {
+        if (resGas?.status === "ok") {
           alert("Sincronizando sua nova senha com o sistema de segurança...");
           throw new Error("Senha atualizada na planilha! Aguarde 1 minuto para o Firebase processar.");
         }
@@ -104,18 +116,16 @@ export const AuthProvider = ({ children }) => {
 
   const mudarSenha = async (novaSenha) => {
     if (auth.currentUser) {
-      const reUsuario = auth.currentUser.email.split('@')[0];
+      const reUsuario = auth.currentUser.email.split('@')[0].toLowerCase();
 
-      // 1. Atualiza a senha no Firebase Auth (Login)
       await updatePassword(auth.currentUser, novaSenha);
       
-      // 2. Atualiza o status no Firestore usando o RE como ID
+      // Atualiza usando o RE como ID para manter paridade com o GAS
       await setDoc(doc(db, "usuarios", reUsuario), {
         senhaAlterada: true,
         dataUltimaTroca: serverTimestamp() 
       }, { merge: true });
 
-      // 3. Sincroniza de volta com a Planilha
       await gasApi.resetPassword(reUsuario, novaSenha);
     }
   };
