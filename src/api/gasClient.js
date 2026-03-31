@@ -57,6 +57,14 @@ export const gasApi = {
   // --- MÉTODOS DO GARAGEIRO ---
   getVistoriasPendentes: () => gasApi.post('getVistoriasPendentes'),
 
+  /** * BUSCA UNIFICADA: Busca dados fixos na PATRIMONIO 
+   * e a guarnição atual na PAINEL 
+   */
+  getDadosCompletosVtr: (prefixo) => gasApi.post('getDadosCompletosVtr', { prefixo }),
+
+  // --- MÉTODOS DO GARAGEIRO ---
+  getVistoriasPendentes: () => gasApi.post('getVistoriasPendentes'),
+
   /** SOLUÇÃO DO ERRO: Busca a última vistoria de uma VTR específica */
   getUltimaVistoria: (prefixo) => gasApi.post('getUltimaVistoria', { prefixo }),
 
