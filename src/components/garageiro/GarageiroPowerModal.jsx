@@ -70,7 +70,7 @@ const GarageiroPowerModal = ({ viatura, onClose, user, onSuccess }) => {
       <div className="bg-white rounded-[2.5rem] w-full max-w-md p-8 shadow-2xl animate-in zoom-in-95">
         
         <div className="flex justify-between items-center mb-6">
-          <h2 className="font-black text-sm uppercase tracking-tighter">⚡ Ações do Garageiro</h2>
+          <h2 className="font-black text-sm uppercase tracking-tighter">🚨 Ações do Garageiro</h2>
           <button onClick={onClose} disabled={loading} className="p-2 hover:bg-slate-100 rounded-full">
             <X size={20} />
           </button>
