@@ -1,21 +1,21 @@
 import React from 'react';
-import { X, ShieldCheck, Navigation, Calendar } from 'lucide-react';
+import { X, ShieldCheck, Navigation, Calendar, User } from 'lucide-react';
 
 const FichaViaturaModal = ({ vtr, onClose }) => {
   if (!vtr) return null;
 
-  // Função interna para buscar o valor independente se a chave está em 
-  // maiúscula (PAINEL/PATRIMONIO) ou minúscula (Estado do React)
+  // Função ultra-resiliente para buscar dados das abas PAINEL ou PATRIMONIO
   const getDado = (campo) => {
-    const campoUpper = campo.toUpperCase();
-    return vtr[campo] || vtr[campoUpper] || vtr[`${campo}_nome`] || "NÃO INFORMADO";
+    const c = campo.toUpperCase();
+    // Tenta: comandante_nome -> COMANDANTE -> comandante
+    return vtr[`${campo}_nome`] || vtr[c] || vtr[campo] || "NÃO INFORMADO";
   };
 
   return (
     <div className="fixed inset-0 z-[100] flex items-end sm:items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm animate-in fade-in duration-300">
       <div className="w-full max-w-md bg-white rounded-[3rem] shadow-2xl overflow-hidden animate-in slide-in-from-bottom-10 duration-500">
         
-        {/* Header - Identificação da VTR */}
+        {/* Header */}
         <div className="bg-slate-900 p-6 text-white relative">
           <button onClick={onClose} className="absolute right-6 top-6 p-2 bg-slate-800 rounded-full text-slate-400 hover:text-white transition-colors">
             <X size={20} />
@@ -35,44 +35,29 @@ const FichaViaturaModal = ({ vtr, onClose }) => {
           </div>
         </div>
 
-        {/* Corpo - Composição da Guarnição (Dados vindos da Guia PAINEL) */}
-        <div className="p-6 space-y-4 bg-slate-50">
-          <label className="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em] ml-2">Composição da Guarnição</label>
+        {/* Guarnição - Lendo da Aba PAINEL */}
+        <div className="p-6 space-y-3 bg-slate-50">
+          <label className="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em] ml-2">Equipe em Serviço (Painel)</label>
           
-          {/* Card Comandante */}
-          <div className="flex items-center gap-4 p-4 bg-white border-2 border-slate-100 rounded-[1.5rem] shadow-sm">
-            <div className="w-10 h-10 rounded-full bg-slate-100 flex items-center justify-center text-slate-400 font-black text-xs">CMT</div>
-            <div className="flex-1">
-              <p className="text-[9px] font-black text-slate-400 uppercase">Comandante</p>
-              <p className="font-bold text-slate-800 uppercase leading-tight">
-                {getDado('comandante')}
-              </p>
+          {[
+            { label: 'Comandante', key: 'comandante', color: 'bg-slate-100 text-slate-400', tag: 'CMT' },
+            { label: 'Motorista', key: 'motorista', color: 'bg-emerald-50 text-emerald-600', tag: 'MOT' },
+            { label: 'Patrulheiro', key: 'patrulheiro', color: 'bg-blue-50 text-blue-600', tag: 'PAT' }
+          ].map((item) => (
+            <div key={item.key} className="flex items-center gap-4 p-4 bg-white border-2 border-slate-100 rounded-[1.5rem] shadow-sm">
+              <div className={`w-10 h-10 rounded-full ${item.color} flex items-center justify-center font-black text-xs`}>
+                {item.tag}
+              </div>
+              <div className="flex-1">
+                <p className="text-[9px] font-black text-slate-400 uppercase">{item.label}</p>
+                <p className="font-bold text-slate-800 uppercase leading-tight">
+                  {getDado(item.key)}
+                </p>
+              </div>
             </div>
-          </div>
-
-          {/* Card Motorista */}
-          <div className="flex items-center gap-4 p-4 bg-white border-2 border-slate-100 rounded-[1.5rem] shadow-sm">
-            <div className="w-10 h-10 rounded-full bg-emerald-50 flex items-center justify-center text-emerald-600 font-black text-xs">MOT</div>
-            <div className="flex-1">
-              <p className="text-[9px] font-black text-slate-400 uppercase">Motorista</p>
-              <p className="font-bold text-slate-800 uppercase leading-tight">
-                {getDado('motorista')}
-              </p>
-            </div>
-          </div>
-
-          {/* Card Patrulheiro */}
-          <div className="flex items-center gap-4 p-4 bg-white border-2 border-slate-100 rounded-[1.5rem] shadow-sm">
-            <div className="w-10 h-10 rounded-full bg-blue-50 flex items-center justify-center text-blue-600 font-black text-xs">PAT</div>
-            <div className="flex-1">
-              <p className="text-[9px] font-black text-slate-400 uppercase">Patrulheiro</p>
-              <p className="font-bold text-slate-800 uppercase leading-tight">
-                {getDado('patrulheiro')}
-              </p>
-            </div>
-          </div>
+          ))}
           
-          {/* Status de Hodômetro e Data */}
+          {/* Rodapé de Informações Técnicas */}
           <div className="grid grid-cols-2 gap-3 mt-4">
              <div className="bg-slate-200 p-3 rounded-2xl text-center flex flex-col justify-center border border-slate-300/50">
                 <div className="flex items-center justify-center gap-1 mb-1">
@@ -86,7 +71,7 @@ const FichaViaturaModal = ({ vtr, onClose }) => {
              <div className="bg-slate-200 p-3 rounded-2xl text-center flex flex-col justify-center border border-slate-300/50">
                 <div className="flex items-center justify-center gap-1 mb-1">
                   <Calendar size={10} className="text-slate-500" />
-                  <p className="text-[8px] font-black text-slate-500 uppercase">ÚLT. VISTORIA</p>
+                  <p className="text-[8px] font-black text-slate-500 uppercase">ÚLT. SINC</p>
                 </div>
                 <p className="font-black text-slate-700">
                   {vtr.DATA_HORA ? new Date(vtr.DATA_HORA).toLocaleDateString('pt-BR') : '--/--'}
@@ -95,11 +80,10 @@ const FichaViaturaModal = ({ vtr, onClose }) => {
           </div>
         </div>
 
-        {/* Botão de Fechar */}
-        <div className="p-4 bg-white text-center">
+        <div className="p-4 bg-white">
           <button 
             onClick={onClose} 
-            className="w-full p-4 bg-slate-900 text-white rounded-3xl font-black text-xs uppercase tracking-widest active:scale-95 transition-all shadow-lg hover:bg-slate-800"
+            className="w-full p-4 bg-slate-900 text-white rounded-3xl font-black text-xs uppercase tracking-widest active:scale-95 transition-all shadow-lg"
           >
             FECHAR FICHA
           </button>
