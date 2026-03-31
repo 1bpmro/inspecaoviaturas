@@ -55,7 +55,6 @@ const uploadParaCloudinary = async (base64, prefixo, tipo, km, index) => {
   return data.secure_url;
 };
 
-// Função auxiliar para evitar estouro de memória no celular
 const comprimirImagem = (base64) => {
   return new Promise((resolve) => {
     const img = new Image();
@@ -64,8 +63,7 @@ const comprimirImagem = (base64) => {
       const canvas = document.createElement("canvas");
       let width = img.width;
       let height = img.height;
-
-      const MAX_WIDTH = 1280; // Redimensiona para HD
+      const MAX_WIDTH = 1280; 
       const MAX_HEIGHT = 1280;
 
       if (width > height) {
@@ -79,12 +77,10 @@ const comprimirImagem = (base64) => {
           height = MAX_HEIGHT;
         }
       }
-
       canvas.width = width;
       canvas.height = height;
       const ctx = canvas.getContext("2d");
       ctx.drawImage(img, 0, 0, width, height);
-      // Converte para JPEG 70% (fica leve e mantém a nitidez para vistorias)
       resolve(canvas.toDataURL("image/jpeg", 0.7));
     };
   });
@@ -118,7 +114,6 @@ const Vistoria = ({ onBack }) => {
 
   const [tipoServico, setTipoServico] = useState("");
 
-  // 1. Carregamento com Cache de Viaturas
   useEffect(() => {
     (async () => {
       try {
@@ -139,14 +134,12 @@ const Vistoria = ({ onBack }) => {
     })();
   }, []);
 
-  // 2. Reset de estados ao trocar VTR
   useEffect(() => {
     setAlertaOleoDisparado(false);
     setDadosOleo(null);
     setFotos([]);
   }, [formData.prefixo_vtr]);
 
-  // 3. Monitoramento de Alerta de Óleo por KM
   useEffect(() => {
     const kmDigitado = tipoVistoria === "ENTRADA" ? formData.hodometro_entrada : formData.hodometro_saida;
     const kmNum = Number(kmDigitado);
@@ -172,12 +165,17 @@ const Vistoria = ({ onBack }) => {
 
       if (!querySnapshot.empty) {
         const d = querySnapshot.docs[0].data();
-        const nomeMilitar = d.nome_guerra || d.nome || "MILITAR";
-        const patenteMilitar = d.patente || d.graduacao || "";
+        const nomeMilitar = (d.nome_guerra || d.nome || "MILITAR").toUpperCase();
+        const patenteMilitar = (d.patente || d.graduacao || "").toUpperCase();
+
+        // Correção para evitar SGT SGT
+        const nomeCompleto = nomeMilitar.startsWith(patenteMilitar) 
+          ? nomeMilitar 
+          : `${patenteMilitar} ${nomeMilitar}`.trim();
 
         setFormData(p => ({ 
           ...p, 
-          [`${campo}_nome`]: `${patenteMilitar} ${nomeMilitar}`.toUpperCase(), 
+          [`${campo}_nome`]: nomeCompleto, 
           [`${campo}_unidade`]: (d.unidade || "1º BPM").toUpperCase(), 
           [`${campo}_externo`]: false 
         }));
@@ -196,9 +194,7 @@ const Vistoria = ({ onBack }) => {
     const vtr = viaturas.find(v => String(v.PREFIXO ?? v.Prefixo ?? "") === prefixo);
     
     if (!vtr) {
-      setFormData(p => ({ 
-        ...p, prefixo_vtr: "", placa_vtr: "", hodometro_entrada: "", hodometro_saida: "" 
-      }));
+      setFormData(p => ({ ...p, prefixo_vtr: "", placa_vtr: "", hodometro_entrada: "", hodometro_saida: "" }));
       setKmReferencia(0);
       return;
     }
@@ -207,7 +203,6 @@ const Vistoria = ({ onBack }) => {
     const kmReferenciaOleo = Number(vtr.KM_TROCA_OLEO ?? vtr.km_troca_oleo ?? vtr.KM_ULTIMATROCA ?? 0);
     const diff = kmAtualDaVtr - kmReferenciaOleo;
 
-    // Bloqueio de Segurança para Saída (Regra dos 12.000km)
     if (tipoVistoria === "SAÍDA" && diff >= 12000) {
       alert(`🚨 VIATURA BLOQUEADA\n\nO prefixo ${prefixo} rodou ${diff}km desde a última troca.\nProcure a Logística/P4.`);
       setUploadStatus("🚨 Viatura bloqueada para saída");
@@ -228,11 +223,9 @@ const Vistoria = ({ onBack }) => {
       try {
         setLoading(true);
         const res = await gasApi.getUltimaVistoria(prefixo);
-        
         if (res?.status === "success" && res.data) {
           const d = res.data;
           setTipoServico(d.tipo_servico || "");
-
           setFormData(prev => ({
             ...prev,
             ...baseData,
@@ -262,27 +255,20 @@ const Vistoria = ({ onBack }) => {
         setLoading(false); 
       }
     } else {
-      setFormData(prev => ({ 
-        ...prev, ...baseData, hodometro_entrada: "" 
-      }));
+      setFormData(prev => ({ ...prev, ...baseData, hodometro_entrada: "" }));
     }
   };
 
   const handleFinalizar = async () => {
     const kmFinal = tipoVistoria === "ENTRADA" ? formData.hodometro_entrada : formData.hodometro_saida;
-    
     if (Number(kmFinal) < kmReferencia && kmReferencia > 0) {
       return alert(`Erro: KM (${kmFinal}) menor que o registro anterior (${kmReferencia}).`);
     }
-
-    if (!formData.termo_aceite) {
-        return alert("Você precisa aceitar o termo de responsabilidade.");
-    }
+    if (!formData.termo_aceite) return alert("Você precisa aceitar o termo de responsabilidade.");
 
     setLoading(true);
     try {
       let linksSubidos = [];
-
       if (fotos.length > 0) {
         for (let i = 0; i < fotos.length; i++) {
           setUploadStatus(`Enviando foto ${i + 1}/${fotos.length}...`);
@@ -290,9 +276,7 @@ const Vistoria = ({ onBack }) => {
           linksSubidos.push(link);
         }
       }
-
       setUploadStatus("Salvando dados...");
-      
       const payload = {
         ...formData,
         hodometro: kmFinal,
@@ -302,14 +286,11 @@ const Vistoria = ({ onBack }) => {
         links_fotos: linksSubidos.join(" | "), 
         militar_logado: user ? `${user.patente} ${user.nome_guerra || user.nome}` : "NÃO IDENTIFICADO"
       };
-
       if (dadosOleo?.foto) {
         const linkOleo = await uploadParaCloudinary(dadosOleo.foto, formData.prefixo_vtr, "OLEO", dadosOleo.kmTroca, 0);
         payload.troca_oleo = JSON.stringify({ ...dadosOleo, foto: linkOleo });
       }
-
       const res = await gasApi.saveVistoria(payload);
-      
       if (res.status === "success") {
         alert("Vistoria finalizada com sucesso!");
         onBack();
@@ -358,21 +339,10 @@ const Vistoria = ({ onBack }) => {
                     onChange={(e) => setFormData(p => ({ ...p, [`${campo}_re`]: e.target.value }))}
                     onBlur={(e) => buscarMilitarAction(e.target.value, campo)} 
                   />
-                  
                   {formData[`${campo}_externo`] && (
                     <div className="grid grid-cols-2 gap-2 animate-in fade-in zoom-in-95">
-                      <input 
-                        placeholder="NOME" 
-                        className="vtr-input w-full border-orange-200 bg-orange-50/50" 
-                        value={formData[`${campo}_nome`] || ""} 
-                        onChange={(e) => setFormData(p => ({ ...p, [`${campo}_nome`]: e.target.value.toUpperCase() }))} 
-                      />
-                      <input 
-                        placeholder="UNIDADE" 
-                        className="vtr-input w-full border-orange-200 bg-orange-50/50" 
-                        value={formData[`${campo}_unidade`] || ""} 
-                        onChange={(e) => setFormData(p => ({ ...p, [`${campo}_unidade`]: e.target.value.toUpperCase() }))} 
-                      />
+                      <input placeholder="NOME" className="vtr-input w-full border-orange-200 bg-orange-50/50" value={formData[`${campo}_nome`] || ""} onChange={(e) => setFormData(p => ({ ...p, [`${campo}_nome`]: e.target.value.toUpperCase() }))} />
+                      <input placeholder="UNIDADE" className="vtr-input w-full border-orange-200 bg-orange-50/50" value={formData[`${campo}_unidade`] || ""} onChange={(e) => setFormData(p => ({ ...p, [`${campo}_unidade`]: e.target.value.toUpperCase() }))} />
                     </div>
                   )}
                 </div>
@@ -381,7 +351,6 @@ const Vistoria = ({ onBack }) => {
 
             <div className="space-y-3 bg-white p-4 rounded-2xl shadow-sm border border-slate-100">
               <h3 className="text-xs font-black text-slate-400 flex items-center gap-2 uppercase"><Car size={14} /> Viatura</h3>
-              
               {loadingViaturas ? (
                 <div className="animate-pulse h-12 bg-slate-100 rounded-xl" />
               ) : (
@@ -409,7 +378,6 @@ const Vistoria = ({ onBack }) => {
                     })}
                 </select>
               )}
-
               <select className="vtr-input w-full" value={tipoServico} onChange={(e) => {
                   setTipoServico(e.target.value);
                   if(e.target.value === "PATRULHA COMUNITÁRIA") setModalComunitaria(true);
@@ -421,7 +389,6 @@ const Vistoria = ({ onBack }) => {
                 <option value="PATRULHA COMUNITÁRIA">PATRULHA COMUNITÁRIA</option>
                 <option value="OUTROS">OUTROS</option>
               </select>
-
               <div className="relative">
                 <input placeholder="HODÔMETRO (KM)" type="number" className="vtr-input w-full" value={tipoVistoria === "ENTRADA" ? formData.hodometro_entrada : formData.hodometro_saida} onChange={(e) => setFormData({ ...formData, [tipoVistoria === "ENTRADA" ? "hodometro_entrada" : "hodometro_saida"]: e.target.value })} />
                 {uploadStatus && <div className="text-[10px] mt-1 font-bold text-red-500 uppercase">{uploadStatus}</div>}
@@ -449,16 +416,9 @@ const Vistoria = ({ onBack }) => {
                 </div>
               </div>
             ))}
-
             <div className="bg-white p-4 rounded-2xl shadow-sm border border-slate-100 space-y-3">
-              <h4 className="text-[10px] font-black text-slate-400 flex items-center gap-2 uppercase">
-                <Camera size={16} /> Fotos da Vistoria ({fotos.length}/4)
-              </h4>
-              <input 
-                type="file" 
-                accept="image/*" 
-                multiple 
-                onChange={async (e) => {
+              <h4 className="text-[10px] font-black text-slate-400 flex items-center gap-2 uppercase"><Camera size={16} /> Fotos da Vistoria ({fotos.length}/4)</h4>
+              <input type="file" accept="image/*" multiple onChange={async (e) => {
                   const files = Array.from(e.target.files || []);
                   if (fotos.length + files.length > 4) return alert("Máximo de 4 fotos.");
                   setUploadStatus("Processando imagens...");
@@ -472,16 +432,11 @@ const Vistoria = ({ onBack }) => {
                     setFotos(prev => [...prev, fotoComprimida]);
                   }
                   setUploadStatus("");
-                }}
-                className="hidden" 
-                id="foto-input"
-              />
-              
+                }} className="hidden" id="foto-input" />
               <label htmlFor="foto-input" className="flex flex-col items-center justify-center p-6 border-2 border-dashed border-slate-200 rounded-xl text-slate-400 hover:bg-slate-50 cursor-pointer">
                 <Camera size={24} className="mb-2" />
                 <span className="text-[10px] font-bold uppercase">Anexar fotos de vistoria</span>
               </label>
-              
               {fotos.length > 0 && (
                 <div className="grid grid-cols-4 gap-2">
                   {fotos.map((f, i) => (
@@ -495,64 +450,26 @@ const Vistoria = ({ onBack }) => {
                 </div>
               )}
             </div>
-
             <div className={`p-4 rounded-2xl border-2 transition-all ${formData.termo_aceite ? 'bg-slate-900 border-slate-900' : 'bg-white border-slate-200'}`}>
               <label className="flex items-start gap-4 cursor-pointer">
                 <div className="relative flex items-center mt-1">
-                  <input 
-                    type="checkbox" 
-                    className="w-6 h-6 rounded border-slate-300 text-slate-900 focus:ring-slate-500 cursor-pointer" 
-                    checked={formData.termo_aceite} 
-                    onChange={(e) => setFormData({...formData, termo_aceite: e.target.checked})} 
-                  />
+                  <input type="checkbox" className="w-6 h-6 rounded border-slate-300 text-slate-900 focus:ring-slate-500 cursor-pointer" checked={formData.termo_aceite} onChange={(e) => setFormData({...formData, termo_aceite: e.target.checked})} />
                 </div>
                 <div className="flex-1">
                   <p className={`text-[11px] font-bold leading-relaxed uppercase ${formData.termo_aceite ? 'text-slate-100' : 'text-slate-500'}`}>
-                    Eu, <span className={formData.termo_aceite ? 'text-yellow-400' : 'text-slate-800'}>
-                      {formData.motorista_nome || "O MOTORISTA"}
-                    </span>, de posse da VTR <span className={formData.termo_aceite ? 'text-yellow-400' : 'text-slate-800'}>
-                      {formData.prefixo_vtr || "---"}
-                    </span>, informo ter realizado a correta inspeção dos itens, me responsabilizando por qualquer divergência encontrada entre o que aqui se afirma e o estado real da viatura.
+                    Eu, <span className={formData.termo_aceite ? 'text-yellow-400' : 'text-slate-800'}>{formData.motorista_nome || "O MOTORISTA"}</span>, de posse da VTR <span className={formData.termo_aceite ? 'text-yellow-400' : 'text-slate-800'}>{formData.prefixo_vtr || "---"}</span>, informo ter realizado a correta inspeção dos itens, me responsabilizando por qualquer divergência encontrada entre o que aqui se afirma e o estado real da viatura.
                   </p>
                 </div>
               </label>
             </div>
-
-            <button 
-              onClick={handleFinalizar} 
-              className={`w-full py-4 rounded-2xl shadow-lg flex justify-center items-center gap-2 font-black transition-all ${
-                !formData.termo_aceite || loading 
-                ? "bg-slate-200 text-slate-400 cursor-not-allowed" 
-                : "bg-green-600 text-white hover:bg-green-700 active:scale-95"
-              }`} 
-              disabled={!formData.termo_aceite || loading}
-            >
-              {loading ? (
-                <><Loader2 className="animate-spin" /> {uploadStatus || "PROCESSANDO..."}</>
-              ) : (
-                <>
-                  <CheckCircle2 size={20} />
-                  FINALIZAR VISTORIA DE {tipoVistoria}
-                </>
-              )}
+            <button onClick={handleFinalizar} className={`w-full py-4 rounded-2xl shadow-lg flex justify-center items-center gap-2 font-black transition-all ${!formData.termo_aceite || loading ? "bg-slate-200 text-slate-400 cursor-not-allowed" : "bg-green-600 text-white hover:bg-green-700 active:scale-95"}`} disabled={!formData.termo_aceite || loading}>
+              {loading ? ( <><Loader2 className="animate-spin" /> {uploadStatus || "PROCESSANDO..."}</> ) : ( <> <CheckCircle2 size={20} /> FINALIZAR VISTORIA DE {tipoVistoria} </> )}
             </button>
-
-            <button 
-              onClick={() => { setStep(1); setChecklist({}); setFotos([]); }} 
-              className="w-full py-3 text-[10px] font-black text-slate-400 uppercase tracking-widest hover:text-slate-600 transition-colors"
-            >
-              ← Voltar e Corrigir Dados
-            </button>
+            <button onClick={() => { setStep(1); setChecklist({}); setFotos([]); }} className="w-full py-3 text-[10px] font-black text-slate-400 uppercase tracking-widest hover:text-slate-600 transition-colors"> ← Voltar e Corrigir Dados </button>
           </div>
         )}
-
         <ModalComunitaria isOpen={modalComunitaria} onClose={() => setModalComunitaria(false)} onSelect={(v) => { setFormData(p => ({ ...p, modalidade: v })); setModalComunitaria(false); }} />
-        <ModalTrocaOleo 
-          isOpen={modalOleo} 
-          onClose={() => setModalOleo(false)} 
-          kmAtual={tipoVistoria === "ENTRADA" ? formData.hodometro_entrada : formData.hodometro_saida} 
-          onConfirm={(dados) => { setDadosOleo(dados); setModalOleo(false); }} 
-        />
+        <ModalTrocaOleo isOpen={modalOleo} onClose={() => setModalOleo(false)} kmAtual={tipoVistoria === "ENTRADA" ? formData.hodometro_entrada : formData.hodometro_saida} onConfirm={(dados) => { setDadosOleo(dados); setModalOleo(false); }} />
       </main>
     </div>
   );
